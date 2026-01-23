@@ -9,7 +9,7 @@ export interface EnsayoItem {
   tiempo: string;
   comentarios: string;
   categoria: string;
-  codigoRelacionado?: string;
+  codigosRelacionados?: string[];
 }
 
 export const ensayosData: EnsayoItem[] = [
@@ -271,7 +271,7 @@ export const ensayosData: EnsayoItem[] = [
     tiempo: '7 dias',
     comentarios: '* Se requiere realizar granulometria agregado AG19\nPrecio referencia: 350',
     categoria: 'ENSAYO AGREGADO',
-    codigoRelacionado: 'AG19',
+    codigosRelacionados: ['AG19'],
   },
 
   {
@@ -285,7 +285,7 @@ export const ensayosData: EnsayoItem[] = [
     tiempo: '7 dias',
     comentarios: '* Se requiere realizar granulometria agregado AG19\nPrecio referencia: 350',
     categoria: 'ENSAYO AGREGADO',
-    codigoRelacionado: 'AG19',
+    codigosRelacionados: ['AG19'],
   },
 
   {
@@ -351,7 +351,7 @@ export const ensayosData: EnsayoItem[] = [
     tiempo: '3 dias',
     comentarios: '* Se requiere hacer el peso especifico fino AG18 o grueso AG28, fino si es arena y grueso si es grava\nPrecio referencia: 120',
     categoria: 'ENSAYO AGREGADO',
-    codigoRelacionado: 'AG18',
+    codigosRelacionados: ['AG18', 'AG28'],
   },
 
   {
@@ -378,7 +378,7 @@ export const ensayosData: EnsayoItem[] = [
     tiempo: '3 dias',
     comentarios: '* Se requiere realizar granulometria agregado AG19\nPrecio referencia: 350',
     categoria: 'ENSAYO AGREGADO',
-    codigoRelacionado: 'AG19',
+    codigosRelacionados: ['AG19'],
   },
 
   {
@@ -418,7 +418,7 @@ export const ensayosData: EnsayoItem[] = [
     tiempo: '3 dias',
     comentarios: '* Se requiere realizar granulometria agregado AG19\nPrecio referencia: 120',
     categoria: 'ENSAYO AGREGADO',
-    codigoRelacionado: 'AG19',
+    codigosRelacionados: ['AG19'],
   },
 
   {
@@ -432,7 +432,7 @@ export const ensayosData: EnsayoItem[] = [
     tiempo: '3 dias',
     comentarios: '* Se requiere realizar granulometria agregado AG19\nPrecio referencia: 120',
     categoria: 'ENSAYO AGREGADO',
-    codigoRelacionado: 'AG19',
+    codigosRelacionados: ['AG19'],
   },
 
   {
@@ -446,7 +446,7 @@ export const ensayosData: EnsayoItem[] = [
     tiempo: '3 dias',
     comentarios: '* Se requiere realizar granulometria agregado AG19\nPrecio referencia: 250',
     categoria: 'ENSAYO AGREGADO',
-    codigoRelacionado: 'AG19',
+    codigosRelacionados: ['AG19'],
   },
 
   {
@@ -720,7 +720,7 @@ export const ensayosData: EnsayoItem[] = [
     tiempo: '2 dias',
     comentarios: 'Para realizar el ensayo de proctor se requiere tambien realizar: granulometria SU24 y/o AG19/ peso especifico grueso AG28 /  peso relativo del solido SU32 / correccion por grava SU31\nPrecio referencia: 150',
     categoria: 'ENSAYO ESTÁNDAR SUELO',
-    codigoRelacionado: 'SU24',
+    codigosRelacionados: ['SU24', 'AG19', 'AG28', 'SU32', 'SU31'],
   },
 
   {
@@ -773,7 +773,7 @@ export const ensayosData: EnsayoItem[] = [
     tiempo: '3 dias',
     comentarios: 'Para el ensayo se requiere de granulometria SU24 y/o AG28 y limites SU23\nPrecio referencia: 20',
     categoria: 'ENSAYO ESTÁNDAR SUELO',
-    codigoRelacionado: 'SU24',
+    codigosRelacionados: ['SU24', 'AG28', 'SU23'],
   },
 
   {
@@ -1962,8 +1962,8 @@ export const getEnsayoByCodigo = (codigo: string): EnsayoItem | undefined => {
 
 export const getEnsayosRelacionados = (codigo: string): EnsayoItem[] => {
   const ensayo = getEnsayoByCodigo(codigo);
-  if (!ensayo || !ensayo.codigoRelacionado) return [];
-  return ensayosData.filter((item) => item.codigo === ensayo.codigoRelacionado);
+  if (!ensayo || !ensayo.codigosRelacionados || ensayo.codigosRelacionados.length === 0) return [];
+  return ensayosData.filter((item) => ensayo.codigosRelacionados!.includes(item.codigo));
 };
 
 export const getCategorias = (): string[] => {
