@@ -186,16 +186,19 @@ export function QuoteBuilderPage() {
 
   // Cargar plantillas del vendedor al iniciar
   useEffect(() => {
-    if (currentUser?.id) {
+    const vendedorId = currentUser?.id || urlParams.user_id;
+    if (vendedorId) {
       fetchPlantillas();
     }
-  }, [currentUser]);
+  }, [currentUser, urlParams.user_id]);
 
   const fetchPlantillas = async () => {
-    if (!currentUser?.id) return;
+    const vendedorId = currentUser?.id || urlParams.user_id;
+    if (!vendedorId) return;
+    
     setLoadingPlantillas(true);
     try {
-      const resp = await fetch(`${apiBaseUrl}/plantillas?vendedor_id=${currentUser.id}`);
+      const resp = await fetch(`${apiBaseUrl}/plantillas?vendedor_id=${vendedorId}`);
       if (resp.ok) {
         const data = await resp.json();
         setPlantillas(data);
@@ -208,8 +211,16 @@ export function QuoteBuilderPage() {
   };
 
   const handleSavePlantilla = async () => {
-    if (!nuevaPlantilla.nombre.trim() || !currentUser?.id) {
+    const vendedorId = currentUser?.id || urlParams.user_id;
+    
+    if (!nuevaPlantilla.nombre.trim()) {
       setNotification({ show: true, message: 'El nombre es requerido', type: 'error' });
+      setTimeout(() => setNotification(null), 3000);
+      return;
+    }
+
+    if (!vendedorId) {
+      setNotification({ show: true, message: 'No se pudo identificar al vendedor', type: 'error' });
       setTimeout(() => setNotification(null), 3000);
       return;
     }
@@ -219,7 +230,7 @@ export function QuoteBuilderPage() {
       const payload = {
         nombre: nuevaPlantilla.nombre,
         descripcion: nuevaPlantilla.descripcion,
-        vendedor_id: currentUser.id,
+        vendedor_id: vendedorId,
         items: items,
         condiciones_ids: selectedCondiciones,
         plazo_dias: header.plazo_dias,
@@ -256,6 +267,8 @@ export function QuoteBuilderPage() {
       if (!resp.ok) throw new Error('Error al cargar plantilla');
       
       const plantilla = await resp.json();
+      console.log('Plantilla cargada:', plantilla);
+      console.log('Condiciones IDs:', plantilla.condiciones_ids);
       
       // Cargar items de la plantilla
       const plantillaItems = typeof plantilla.items_json === 'string' 
@@ -263,7 +276,11 @@ export function QuoteBuilderPage() {
         : plantilla.items_json;
       
       setItems(plantillaItems);
-      setSelectedCondiciones(plantilla.condiciones_ids || []);
+      
+      // Solo asignar condiciones si es un array válido con elementos
+      const condicionesIds = Array.isArray(plantilla.condiciones_ids) ? plantilla.condiciones_ids : [];
+      setSelectedCondiciones(condicionesIds);
+      
       setHeader(prev => ({
         ...prev,
         plazo_dias: plantilla.plazo_dias,
@@ -333,8 +350,17 @@ export function QuoteBuilderPage() {
         if (parsed.items && parsed.items.length > 0) setItems(parsed.items);
         if (parsed.includeIgv !== undefined) setIncludeIgv(parsed.includeIgv);
         if (parsed.selectedCondiciones) setSelectedCondiciones(parsed.selectedCondiciones);
-        if (parsed.selectedCliente) setSelectedCliente(parsed.selectedCliente);
-        if (parsed.selectedProyecto) setSelectedProyecto(parsed.selectedProyecto);
+        
+        // Restaurar cliente y proyecto, y actualizar los IDs en header
+        if (parsed.selectedCliente) {
+          setSelectedCliente(parsed.selectedCliente);
+          setHeader(prev => ({ ...prev, cliente_id: parsed.selectedCliente.id }));
+        }
+        if (parsed.selectedProyecto) {
+          setSelectedProyecto(parsed.selectedProyecto);
+          setHeader(prev => ({ ...prev, proyecto_id: parsed.selectedProyecto.id }));
+        }
+        
         console.log('Datos cargados desde localStorage');
       }
     } catch (err) {

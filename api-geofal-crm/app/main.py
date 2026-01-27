@@ -1259,7 +1259,7 @@ async def update_quote(quote_id: int, payload: QuoteExportRequest):
 @app.get("/plantillas")
 async def get_plantillas(vendedor_id: str):
     """Obtiene todas las plantillas del vendedor"""
-    conn = get_db()
+    conn = _get_connection()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""
@@ -1281,14 +1281,14 @@ async def get_plantillas(vendedor_id: str):
 @app.post("/plantillas")
 async def create_plantilla(payload: dict):
     """Crea una nueva plantilla desde una cotización actual"""
-    conn = get_db()
+    conn = _get_connection()
     try:
         with conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO plantillas_cotizacion 
                 (nombre, descripcion, vendedor_id, items_json, condiciones_ids, 
                  plazo_dias, condicion_pago)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s::uuid[], %s, %s)
                 RETURNING id
             """, (
                 payload.get('nombre'),
@@ -1313,7 +1313,7 @@ async def create_plantilla(payload: dict):
 @app.get("/plantillas/{plantilla_id}")
 async def get_plantilla(plantilla_id: str):
     """Obtiene una plantilla específica"""
-    conn = get_db()
+    conn = _get_connection()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""
@@ -1347,13 +1347,13 @@ async def get_plantilla(plantilla_id: str):
 @app.put("/plantillas/{plantilla_id}")
 async def update_plantilla(plantilla_id: str, payload: dict):
     """Actualiza una plantilla existente"""
-    conn = get_db()
+    conn = _get_connection()
     try:
         with conn.cursor() as cur:
             cur.execute("""
                 UPDATE plantillas_cotizacion
                 SET nombre = %s, descripcion = %s, items_json = %s, 
-                    condiciones_ids = %s, plazo_dias = %s, condicion_pago = %s,
+                    condiciones_ids = %s::uuid[], plazo_dias = %s, condicion_pago = %s,
                     updated_at = NOW()
                 WHERE id = %s
                 RETURNING id
@@ -1383,7 +1383,7 @@ async def update_plantilla(plantilla_id: str, payload: dict):
 @app.delete("/plantillas/{plantilla_id}")
 async def delete_plantilla(plantilla_id: str):
     """Elimina (desactiva) una plantilla"""
-    conn = get_db()
+    conn = _get_connection()
     try:
         with conn.cursor() as cur:
             cur.execute("""

@@ -9,8 +9,8 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install dependencies (need devDependencies for build)
+RUN npm ci
 
 # Copy source code
 COPY . .
@@ -21,44 +21,14 @@ RUN npm run build
 # Production stage with nginx
 FROM nginx:alpine
 
+# Install wget for healthcheck
+RUN apk add --no-cache wget
+
 # Copy built files from builder
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Create nginx configuration for SPA
-RUN echo 'server { \
-    listen 80; \
-    server_name _; \
-    root /usr/share/nginx/html; \
-    index index.html; \
-    \
-    # Gzip compression \
-    gzip on; \
-    gzip_vary on; \
-    gzip_min_length 1024; \
-    gzip_types text/plain text/css text/xml text/javascript application/x-javascript application/xml+rss application/json application/javascript; \
-    \
-    # SPA routing \
-    location / { \
-        try_files $uri $uri/ /index.html; \
-        add_header Cache-Control "no-cache"; \
-    } \
-    \
-    # Cache static assets \
-    location ~* \\.(?:css|js|jpg|jpeg|gif|png|ico|svg|woff|woff2|ttf|eot)$ { \
-        expires 1y; \
-        add_header Cache-Control "public, immutable"; \
-    } \
-    \
-    # Health check endpoint \
-    location /health { \
-        access_log off; \
-        return 200 "healthy\\n"; \
-        add_header Content-Type text/plain; \
-    } \
-}' > /etc/nginx/conf.d/default.conf
-
-# Remove default nginx config
-RUN rm -f /etc/nginx/conf.d/default.conf.dpkg-dist
+# Copy nginx configuration
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
 
