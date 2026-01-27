@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import type { ModuleType, User } from "@/hooks/use-auth"
 
 interface SidebarProps {
-  activeModule: ModuleType | null
+  activeModule: ModuleType
   setActiveModule: (module: ModuleType) => void
   user: User
 }
