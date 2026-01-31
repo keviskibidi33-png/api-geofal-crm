@@ -1995,7 +1995,7 @@ async def get_programacion(
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             # Query base
             query = """
-                SELECT * FROM programacion_servicios
+                SELECT * FROM cuadro_control
                 WHERE activo = true
             """
             params = []
@@ -2062,7 +2062,7 @@ async def get_programacion_by_id(prog_id: str):
         conn = _get_connection()
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""
-                SELECT * FROM programacion_servicios
+                SELECT * FROM cuadro_control
                 WHERE id = %s AND activo = true
             """, (prog_id,))
             result = cur.fetchone()
@@ -2101,7 +2101,7 @@ async def create_programacion(data: dict):
                 ot = cur.fetchone()['numero']
             
             cur.execute("""
-                INSERT INTO programacion_servicios (
+                INSERT INTO programacion_lab (
                     recep_numero, ot, codigo_muestra, fecha_recepcion,
                     fecha_inicio, fecha_entrega_estimada, cliente_nombre,
                     descripcion_servicio, proyecto, estado_trabajo,
@@ -2174,7 +2174,7 @@ async def update_programacion_laboratorio(prog_id: str, data: dict):
             params.append(prog_id)
             
             query = f"""
-                UPDATE programacion_servicios
+                UPDATE programacion_lab
                 SET {', '.join(updates)}
                 WHERE id = %s AND activo = true
                 RETURNING *
@@ -2232,9 +2232,9 @@ async def update_programacion_comercial(prog_id: str, data: dict):
             params.append(prog_id)
             
             query = f"""
-                UPDATE programacion_servicios
+                UPDATE programacion_comercial
                 SET {', '.join(updates)}
-                WHERE id = %s AND activo = true
+                WHERE programacion_id = %s
                 RETURNING *
             """
             
@@ -2288,9 +2288,9 @@ async def update_programacion_administracion(prog_id: str, data: dict):
             params.append(prog_id)
             
             query = f"""
-                UPDATE programacion_servicios
+                UPDATE programacion_administracion
                 SET {', '.join(updates)}
-                WHERE id = %s AND activo = true
+                WHERE programacion_id = %s
                 RETURNING *
             """
             
@@ -2326,7 +2326,7 @@ async def delete_programacion(prog_id: str):
         conn = _get_connection()
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""
-                UPDATE programacion_servicios
+                UPDATE programacion_lab
                 SET activo = false, updated_at = NOW()
                 WHERE id = %s
                 RETURNING id
