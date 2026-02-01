@@ -76,13 +76,15 @@ def _db_disabled() -> bool:
 
 
 def _get_cors_origins() -> list[str]:
+    origins = ["http://localhost:3000", "http://localhost:3001", "http://localhost:5173", "http://127.0.0.1:3000"]
     raw = os.getenv("QUOTES_CORS_ORIGINS")
     if raw:
-        raw = raw.strip()
         if raw == "*":
             return ["*"]
-        return [o.strip() for o in raw.split(",") if o.strip()]
-    return ["*"]
+        extra = [o.strip() for o in raw.split(",") if o.strip()]
+        origins.extend(extra)
+    return list(set(origins))
+
  
  
 # Determine CORS origins
@@ -2401,111 +2403,184 @@ async def get_programacion_historial(prog_id: str):
 
 
 
-# --- Roles & Permissions Endpoints ---
+# --- Roles & Permissions Endpoints (Using Supabase REST API) ---
 
-@app.get("/roles", response_model=list[RoleDefinition])
+def _get_supabase_headers():
+    """Get headers for Supabase REST API calls"""
+    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    return {
+        "apikey": service_key,
+        "Authorization": f"Bearer {service_key}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation"
+    }
+
+def _get_supabase_url():
+    """Get Supabase REST API base URL"""
+    url = os.getenv("SUPABASE_URL", "https://db.geofal.com.pe")
+    return f"{url}/rest/v1"
+
+
+@app.get("/roles")
 async def get_roles():
-    conn = _get_connection()
+    """Get all role definitions using Supabase REST API"""
     try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT * FROM role_definitions ORDER BY label ASC")
-            rows = cur.fetchall()
-            return rows
-    finally:
-        conn.close()
+        url = f"{_get_supabase_url()}/role_definitions?order=label.asc"
+        response = requests.get(url, headers=_get_supabase_headers())
+        
+        if response.status_code == 404 or (response.status_code == 200 and response.json() == []):
+            # Table doesn't exist or is empty - return default roles
+            return [
+                {
+                    "role_id": "admin",
+                    "label": "Administrador",
+                    "description": "Acceso completo al sistema",
+                    "permissions": {
+                        "clientes": {"read": True, "write": True, "delete": True},
+                        "proyectos": {"read": True, "write": True, "delete": True},
+                        "cotizadora": {"read": True, "write": True, "delete": True},
+                        "programacion": {"read": True, "write": True, "delete": True},
+                        "usuarios": {"read": True, "write": True, "delete": True},
+                        "auditoria": {"read": True, "write": True, "delete": True},
+                        "configuracion": {"read": True, "write": True, "delete": True},
+                        "laboratorio": {"read": True, "write": True, "delete": True},
+                        "permisos": {"read": True, "write": True, "delete": True}
+                    },
+                    "is_system": True
+                },
+                {
+                    "role_id": "vendor",
+                    "label": "Vendedor",
+                    "description": "Acceso a modulos de ventas",
+                    "permissions": {
+                        "clientes": {"read": True, "write": True, "delete": False},
+                        "proyectos": {"read": True, "write": True, "delete": False},
+                        "cotizadora": {"read": True, "write": True, "delete": False},
+                        "programacion": {"read": True, "write": False, "delete": False},
+                        "usuarios": {"read": False, "write": False, "delete": False},
+                        "auditoria": {"read": False, "write": False, "delete": False},
+                        "configuracion": {"read": False, "write": False, "delete": False},
+                        "laboratorio": {"read": False, "write": False, "delete": False},
+                        "permisos": {"read": False, "write": False, "delete": False}
+                    },
+                    "is_system": True
+                },
+                {
+                    "role_id": "laboratorio",
+                    "label": "Laboratorio",
+                    "description": "Acceso a programacion y laboratorio",
+                    "permissions": {
+                        "clientes": {"read": True, "write": False, "delete": False},
+                        "proyectos": {"read": True, "write": False, "delete": False},
+                        "cotizadora": {"read": False, "write": False, "delete": False},
+                        "programacion": {"read": True, "write": True, "delete": False},
+                        "usuarios": {"read": False, "write": False, "delete": False},
+                        "auditoria": {"read": False, "write": False, "delete": False},
+                        "configuracion": {"read": False, "write": False, "delete": False},
+                        "laboratorio": {"read": True, "write": True, "delete": False},
+                        "permisos": {"read": False, "write": False, "delete": False}
+                    },
+                    "is_system": True
+                }
+            ]
+        
+        if response.status_code != 200:
+            print(f"Supabase error: {response.status_code} - {response.text}")
+            raise HTTPException(status_code=500, detail=f"Error fetching roles: {response.text}")
+        
+        return response.json()
+    except requests.RequestException as e:
+        print(f"Request error: {e}")
+        # Return default roles on connection error
+        return [
+            {"role_id": "admin", "label": "Administrador", "description": "Acceso completo", "permissions": {}, "is_system": True},
+            {"role_id": "vendor", "label": "Vendedor", "description": "Acceso ventas", "permissions": {}, "is_system": True}
+        ]
 
-@app.put("/roles/{role_id}", response_model=RoleDefinition)
+
+@app.put("/roles/{role_id}")
 async def update_role(role_id: str, payload: RoleUpdate):
-    conn = _get_connection()
+    """Update a role using Supabase REST API"""
     try:
-        # Build update query dynamically
-        updates = []
-        params = []
+        url = f"{_get_supabase_url()}/role_definitions?role_id=eq.{role_id}"
+        
+        update_data = {}
         if payload.label is not None:
-            updates.append("label = %s")
-            params.append(payload.label)
+            update_data["label"] = payload.label
         if payload.description is not None:
-            updates.append("description = %s")
-            params.append(payload.description)
+            update_data["description"] = payload.description
         if payload.permissions is not None:
-            updates.append("permissions = %s")
-            # Convert Pydantic model to JSON string for Postgres JSONB
-            params.append(payload.permissions.model_dump_json())
+            update_data["permissions"] = payload.permissions.model_dump()
         
-        updates.append("updated_at = NOW()")
+        response = requests.patch(url, headers=_get_supabase_headers(), json=update_data)
         
-        if not updates:
-            raise HTTPException(status_code=400, detail="No fields to update")
-            
-        params.append(role_id)
+        if response.status_code not in [200, 204]:
+            raise HTTPException(status_code=500, detail=f"Error updating role: {response.text}")
         
-        query = f"""
-            UPDATE role_definitions 
-            SET {", ".join(updates)}
-            WHERE role_id = %s
-            RETURNING *
-        """
+        result = response.json()
+        if not result:
+            raise HTTPException(status_code=404, detail="Role not found")
         
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(query, tuple(params))
-            updated_role = cur.fetchone()
-            if not updated_role:
-                raise HTTPException(status_code=404, detail="Role not found")
-            conn.commit()
-            return updated_role
-    finally:
-        conn.close()
+        return result[0]
+    except requests.RequestException as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-# --- Session Control Endpoints ---
+
+# --- Session Control Endpoints (Using Supabase REST API) ---
 
 @app.post("/users/{user_id}/logout")
 async def force_logout_user(user_id: str):
-    conn = _get_connection()
+    """Force logout a user using Supabase REST API"""
     try:
-        with conn.cursor() as cur:
-            cur.execute("""
-                UPDATE perfiles 
-                SET last_force_logout_at = NOW() 
-                WHERE id = %s
-            """, (user_id,))
-            if cur.rowcount == 0:
-                 raise HTTPException(status_code=404, detail="User not found")
-            conn.commit()
+        url = f"{_get_supabase_url()}/perfiles?id=eq.{user_id}"
+        update_data = {"last_force_logout_at": datetime.utcnow().isoformat()}
+        
+        response = requests.patch(url, headers=_get_supabase_headers(), json=update_data)
+        
+        if response.status_code not in [200, 204]:
+            raise HTTPException(status_code=500, detail=f"Error: {response.text}")
+        
         return {"success": True, "message": "User session terminated"}
-    finally:
-        conn.close()
+    except requests.RequestException as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/users/heartbeat")
 async def user_heartbeat(payload: HeartbeatRequest):
-    conn = _get_connection()
+    """Update user heartbeat using Supabase REST API"""
     try:
-        with conn.cursor() as cur:
-            # Check if user is active first
-            cur.execute("SELECT activo FROM perfiles WHERE id = %s", (payload.user_id,))
-            row = cur.fetchone()
-            
-            if not row:
-                 # User might not exist or be deleted
-                 return {"success": False, "error": "User not found"}
-                 
-            # Handle None as True (default) or check explicitly
-            is_active = row[0] if row[0] is not None else True
-            
-            if not is_active:
-                return {"success": False, "status": "inactive"}
-
-            cur.execute("""
-                UPDATE perfiles 
-                SET last_seen_at = NOW() 
-                WHERE id = %s
-            """, (payload.user_id,))
-            conn.commit()
+        # First check if user is active
+        url = f"{_get_supabase_url()}/perfiles?id=eq.{payload.user_id}&select=activo"
+        response = requests.get(url, headers=_get_supabase_headers())
+        
+        if response.status_code != 200:
+            return {"success": False, "error": "User not found"}
+        
+        data = response.json()
+        if not data:
+            return {"success": False, "error": "User not found"}
+        
+        is_active = data[0].get("activo", True)
+        if is_active is False:
+            return {"success": False, "status": "inactive"}
+        
+        # Update last_seen_at
+        update_url = f"{_get_supabase_url()}/perfiles?id=eq.{payload.user_id}"
+        update_data = {"last_seen_at": datetime.utcnow().isoformat()}
+        
+        update_response = requests.patch(update_url, headers=_get_supabase_headers(), json=update_data)
+        
+        if update_response.status_code not in [200, 204]:
+            return {"success": False, "error": "Failed to update heartbeat"}
+        
         return {"success": True, "status": "active"}
-    finally:
-        conn.close()
+    except requests.RequestException as e:
+        print(f"Heartbeat error: {e}")
+        return {"success": False, "error": str(e)}
 
 
 if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
