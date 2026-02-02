@@ -43,6 +43,8 @@ class RolePermissions(BaseModel):
     auditoria: ModulePermission | None = None
     configuracion: ModulePermission | None = None
     laboratorio: ModulePermission | None = None
+    comercial: ModulePermission | None = None
+    administracion: ModulePermission | None = None
     permisos: ModulePermission | None = None
 
 class RoleDefinition(BaseModel):
@@ -2444,6 +2446,8 @@ async def get_roles():
                         "auditoria": {"read": True, "write": True, "delete": True},
                         "configuracion": {"read": True, "write": True, "delete": True},
                         "laboratorio": {"read": True, "write": True, "delete": True},
+                        "comercial": {"read": True, "write": True, "delete": True},
+                        "administracion": {"read": True, "write": True, "delete": True},
                         "permisos": {"read": True, "write": True, "delete": True}
                     },
                     "is_system": True
@@ -2461,6 +2465,8 @@ async def get_roles():
                         "auditoria": {"read": False, "write": False, "delete": False},
                         "configuracion": {"read": False, "write": False, "delete": False},
                         "laboratorio": {"read": False, "write": False, "delete": False},
+                        "comercial": {"read": True, "write": True, "delete": False},
+                        "administracion": {"read": False, "write": False, "delete": False},
                         "permisos": {"read": False, "write": False, "delete": False}
                     },
                     "is_system": True
@@ -2478,6 +2484,8 @@ async def get_roles():
                         "auditoria": {"read": False, "write": False, "delete": False},
                         "configuracion": {"read": False, "write": False, "delete": False},
                         "laboratorio": {"read": True, "write": True, "delete": False},
+                        "comercial": {"read": False, "write": False, "delete": False},
+                        "administracion": {"read": False, "write": False, "delete": False},
                         "permisos": {"read": False, "write": False, "delete": False}
                     },
                     "is_system": True
@@ -2500,30 +2508,61 @@ async def get_roles():
 
 @app.put("/roles/{role_id}")
 async def update_role(role_id: str, payload: RoleUpdate):
-    """Update a role using Supabase REST API"""
+    """Update a role using direct SQL for maximum reliability"""
+    if not _has_database_url():
+        raise HTTPException(status_code=400, detail="Database not configured")
+    
     try:
-        url = f"{_get_supabase_url()}/role_definitions?role_id=eq.{role_id}"
-        
-        update_data = {}
-        if payload.label is not None:
-            update_data["label"] = payload.label
-        if payload.description is not None:
-            update_data["description"] = payload.description
-        if payload.permissions is not None:
-            update_data["permissions"] = payload.permissions.model_dump()
-        
-        response = requests.patch(url, headers=_get_supabase_headers(), json=update_data)
-        
-        if response.status_code not in [200, 204]:
-            raise HTTPException(status_code=500, detail=f"Error updating role: {response.text}")
-        
-        result = response.json()
-        if not result:
-            raise HTTPException(status_code=404, detail="Role not found")
-        
-        return result[0]
-    except requests.RequestException as e:
+        conn = _get_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Prepare update map
+            update_fields = []
+            params = []
+            
+            if payload.label is not None:
+                update_fields.append("label = %s")
+                params.append(payload.label)
+                
+            if payload.description is not None:
+                update_fields.append("description = %s")
+                params.append(payload.description)
+                
+            if payload.permissions is not None:
+                update_fields.append("permissions = %s")
+                # Ensure we serialize to JSON string for Postgres JSONB
+                params.append(json.dumps(payload.permissions.model_dump(exclude_unset=True)))
+            
+            if not update_fields:
+                raise HTTPException(status_code=400, detail="No fields to update")
+            
+            update_fields.append("updated_at = NOW()")
+            params.append(role_id)
+            
+            query = f"""
+                UPDATE role_definitions 
+                SET {', '.join(update_fields)} 
+                WHERE role_id = %s
+                RETURNING *
+            """
+            
+            cur.execute(query, params)
+            result = cur.fetchone()
+            
+            if not result:
+                conn.rollback()
+                raise HTTPException(status_code=404, detail="Role not found")
+                
+            conn.commit()
+            return dict(result)
+            
+    except Exception as e:
+        print(f"Error updating role via SQL: {e}")
+        if 'conn' in locals() and conn:
+            conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if 'conn' in locals() and conn:
+            conn.close()
 
 
 # --- Session Control Endpoints (Using Supabase REST API) ---
