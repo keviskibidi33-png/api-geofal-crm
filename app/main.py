@@ -24,7 +24,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 
 # Importar el nuevo exportador XML
-from app.xlsx_direct_v2 import export_xlsx_direct
+# from app.xlsx_direct_v2 import export_xlsx_direct
 from app.programacion_export import export_programacion_xlsx
 from app.recepciones import router as recepciones_router
 
