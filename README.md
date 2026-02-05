@@ -1,161 +1,86 @@
-# 🔌 API Geofal CRM - Servicio de Cotizaciones
+# API GeoFal CRM - Documentación del Sistema
 
-API REST para generación y gestión de cotizaciones del sistema CRM Geofal.
+Este repositorio contiene el backend del CRM de GeoFal, construido con **FastAPI** y **PostgreSQL**. El sistema sigue una arquitectura híbrida con módulos independientes y servicios core compartidos.
 
-## 🚀 Quick Start
+## 🏗 Arquitectura del Sistema
+
+El sistema se divide en **Módulos Funcionales** (en `app/modules/`) y **Servicios Core** (en `app/`).
+
+### Estructura de Directorios
+```
+app/
+├── modules/              # Módulos de negocio independientes
+│   ├── cotizacion/       # Lógica de cotizaciones y exportación Excel
+│   ├── recepcion/        # Gestión de muestras y recepción
+│   └── programacion/     # Planificación de servicios
+├── templates/            # Plantillas Excel (.xlsx) base
+├── database.py           # Conexión a BD (SQLAlchemy + Psycopg2)
+├── main.py               # Punto de entrada, Auth, y endpoints generales (Clientes)
+└── xlsx_direct_v2.py     # Motor de inyección XML para Excel (Core)
+```
+
+---
+
+## 📦 Módulos Detallados
+
+### 1. Módulo de Cotización (`app/modules/cotizacion`)
+Encargado de la generación, cálculo y exportación de cotizaciones.
+- **Funcionalidad Clave:** Exportación de Excel de alta fidelidad.
+- **Archivos Principales:**
+    - `excel.py`: Controlador de lógica de exportación. Recupera textos de condiciones desde la BD y llama al motor XML.
+    - `router.py`: Endpoints de la API.
+    - `schemas.py`: Modelos Pydantic (`QuoteExportRequest`).
+- **Motor Excel (`xlsx_direct_v2.py`):**
+    - Se utiliza un enfoque de **manipulación directa de XML** en lugar de librerías estándar como `openpyxl`.
+    - **Por qué:** Para preservar logos, márgenes y celdas combinadas del template original que `openpyxl` suele corromper.
+    - **Capacidades:** Expansión dinámica de filas, desplazamiento de fórmulas y saltos de página inteligentes.
+
+### 2. Módulo de Recepción (`app/modules/recepcion`)
+Gestiona el ingreso de muestras al laboratorio.
+- **Funcionalidad:** Registro de muestras, asignación de códigos y estados.
+- **Modelos:** Define la estructura de la tabla `recepciones` usando SQLAlchemy.
+
+### 3. Módulo de Programación (`app/modules/programacion`)
+Maneja la agenda y estados de los servicios.
+- **Funcionalidad:** Asignación de fechas de ensayo, personal y control de tiempos.
+- **Integración:** Se conecta con Cotización para jalar items y con Recepción para estados de muestra.
+
+### 4. Gestión de Clientes (En `app/main.py`)
+Módulo ligero para administración de cartera de clientes.
+- **Funcionalidad:** Búsqueda (`/clientes?search=...`) y creación de clientes.
+- **Ubicación:** Definido directamente en `main.py` por simplicidad histórica.
+
+---
+
+## ⚙️ Core & Lógica Transversal
+
+### Base de Datos (`app/database.py`)
+El sistema utiliza una conexión híbrida:
+1.  **SQLAlchemy (`engine`):** Para operaciones ORM y manejo seguro de pools de conexión.
+2.  **Psycopg2 (`_get_connection`):** Para operaciones legacy y queries raw de alto rendimiento.
+
+### Motor Excel XML (`app/xlsx_direct_v2.py`)
+Es el corazón del sistema de reportes. Funciona descomprimiendo el `.xlsx` (que es un ZIP), modificando los archivos XML internos (`sheet36.xml`, `sharedStrings.xml`) y recomprimiendo.
+- **Importante:** Permite inyectar condiciones comerciales dinámicas traídas de la BD sin romper el formato visual del documento legal.
+
+### Autenticación
+- Integrada con **Directus**.
+- El endpoint `/user/me` actúa como proxy validando el token contra el servicio de identidad de Directus.
+
+---
+
+## 🚀 Despliegue y Ejecución
+
+**Requisitos:** Docker y Docker Compose.
 
 ```bash
-# Instalar dependencias
-pip install -r requirements.txt
+# Levantar servicios
+docker-compose up -d --build
 
-# Configurar variables de entorno
-cp .env.example .env
-# Editar .env con tus credenciales
-
-# Ejecutar en desarrollo
-uvicorn app.main:app --reload --port 8000
-
-# Con Docker
-docker build -t api-geofal-crm .
-docker run -p 8000:8000 --env-file .env api-geofal-crm
+# Ver logs
+docker-compose logs -f api-geofal-crm
 ```
 
-## 📋 Variables de Entorno
-
-| Variable | Requerida | Descripción |
-|----------|-----------|-------------|
-| `QUOTES_DATABASE_URL` | ✅ | PostgreSQL connection string |
-| `SUPABASE_URL` | ✅ | URL de proyecto Supabase |
-| `SUPABASE_SERVICE_ROLE_KEY` | ✅ | Service Role Key para Storage |
-| `QUOTES_CORS_ORIGINS` | ❌ | Orígenes CORS permitidos (default: `*`) |
-| `QUOTES_DISABLE_DB` | ❌ | Deshabilitar conexión DB (`true/false`) |
-
-## 🔗 Endpoints
-
-### Health & Debug
-
-| Método | Endpoint | Descripción |
-|--------|----------|-------------|
-| GET | `/` | Health check |
-| GET | `/health` | Estado del servicio |
-| GET | `/debug-db` | Diagnóstico de DB |
-
-### Cotizaciones
-
-| Método | Endpoint | Descripción |
-|--------|----------|-------------|
-| POST | `/export` | Genera XLSX de cotización |
-| POST | `/export/xlsx` | Alias de `/export` |
-| GET | `/quotes` | Lista cotizaciones |
-| GET | `/quotes/{id}/download` | Descarga archivo |
-| DELETE | `/quotes/{id}` | Elimina cotización |
-| POST | `/quote/next-number` | Siguiente número secuencial |
-
-### Clientes
-
-| Método | Endpoint | Descripción |
-|--------|----------|-------------|
-| GET | `/clientes?search=` | Buscar clientes |
-| POST | `/clientes` | Crear cliente |
-
-### Proyectos
-
-| Método | Endpoint | Descripción |
-|--------|----------|-------------|
-| GET | `/proyectos?cliente_id=&search=` | Listar proyectos |
-| POST | `/proyectos` | Crear proyecto |
-
-## 📝 Ejemplo: Crear Cotización
-
-```bash
-curl -X POST http://localhost:8000/export \
-  -H "Content-Type: application/json" \
-  -d '{
-    "cliente": "EMPRESA SAC",
-    "ruc": "20123456789",
-    "contacto": "Juan Pérez",
-    "telefono_contacto": "999888777",
-    "correo": "juan@empresa.com",
-    "proyecto": "Obra Centro Comercial",
-    "ubicacion": "Lima, Perú",
-    "personal_comercial": "Carlos López",
-    "telefono_comercial": "999111222",
-    "include_igv": true,
-    "igv_rate": 0.18,
-    "template_id": "V1",
-    "items": [
-      {
-        "codigo": "SC-001",
-        "descripcion": "Análisis Granulométrico por Tamizado",
-        "norma": "NTP 339.128",
-        "acreditado": "SI",
-        "costo_unitario": 45.00,
-        "cantidad": 5
-      }
-    ]
-  }' --output cotizacion.xlsx
-```
-
-## 📁 Estructura del Proyecto
-
-```
-api-geofal-crm/
-├── app/
-│   ├── __init__.py
-│   ├── main.py              # Endpoints FastAPI
-│   ├── database.py          # Conexión SQLAlchemy
-│   ├── xlsx_direct.py       # Exportador XLSX legacy
-│   └── xlsx_direct_v2.py    # Exportador XLSX XML
-├── cotizaciones/            # Archivos generados (local)
-│   └── {year}/              # Organizados por año
-├── Formato-cotizacion.xlsx  # Template default
-├── V1 - MUESTRA DE SUELO... # Templates adicionales
-├── requirements.txt
-├── Dockerfile
-└── docker-compose.yml
-```
-
-## 🎨 Plantillas
-
-| ID | Nombre | Archivo |
-|----|--------|---------|
-| V1 | Muestra de Suelo y Agregado | `V1 - MUESTRA DE SUELO Y AGREGADO.xlsx` |
-| V2 | Probetas | `V2 - PROBETAS.xlsx` |
-| V3 | Densidad de Campo y Muestreo | `V3 - DENSIDAD DE CAMPO Y MUESTREO.xlsx` |
-| V4 | Extracción de Diamantina | `V4 - EXTRACCIÓN DE DIAMANTINA.xlsx` |
-| V5 | Diamantina para Pases | `V5 - DIAMANTINA PARA PASES.xlsx` |
-| V6 | Albañilería | `V6 - ALBAÑILERÍA.xlsx` |
-| V7 | Viga Beckelman | `V7 - VIGA BECKELMAN.xlsx` |
-| V8 | Control de Calidad de Concreto | `V8 - CONTROL DE CALIDAD DE CONCRETO FRESCO EN OBRA.xlsx` |
-
-## 🗄️ Base de Datos
-
-La API espera las siguientes tablas:
-
-- `cotizaciones` - Registro de cotizaciones
-- `clientes` - Catálogo de clientes
-- `proyectos` - Proyectos por cliente
-- `vendedores` - Usuarios del sistema
-- `quote_sequences` - Numeración secuencial
-
-Ver `DOCUMENTATION.md` en el proyecto raíz para esquemas completos.
-
-## 🐳 Docker
-
-```bash
-# Build
-docker build -t api-geofal-crm .
-
-# Run
-docker run -d \
-  --name api-geofal-crm \
-  -p 8000:8000 \
-  -e QUOTES_DATABASE_URL="postgresql://..." \
-  -e SUPABASE_URL="https://..." \
-  -e SUPABASE_SERVICE_ROLE_KEY="eyJ..." \
-  api-geofal-crm
-```
-
-## 📄 Licencia
-
-Propietario - GEOFAL Laboratorios
+**Variables de Entorno Clave (.env):**
+- `QUOTES_DATABASE_URL`: String de conexión PostgreSQL.
+- `SUPABASE_URL` / `KEY`: Para almacenamiento de archivos generados.
