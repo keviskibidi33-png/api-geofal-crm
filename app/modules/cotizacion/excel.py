@@ -109,7 +109,8 @@ def generate_quote_excel(payload: QuoteExportRequest) -> io.BytesIO:
         try:
             # We use engine.connect() for a raw connection feel similar to psycopg2
             # but via SQLAlchemy to be safe with the pool
-            t = text("SELECT texto FROM condiciones_especificas WHERE id = ANY(:ids) AND activo = true ORDER BY orden ASC")
+            # FIX: Added ::uuid[] cast for the input array
+            t = text("SELECT texto FROM condiciones_especificas WHERE id = ANY(:ids::uuid[]) AND activo = true ORDER BY orden ASC")
             
             # Using clean list of strings for ANY(:ids)
             # Ensure the IDs are valid UUID format or strings? 
