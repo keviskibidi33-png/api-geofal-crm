@@ -1,4 +1,4 @@
-
+import io
 import copy
 from lxml import etree
 from datetime import datetime, date
@@ -137,6 +137,7 @@ def _shift_rows(sheet_data: etree._Element, from_row: int, shift: int, ns: str):
             col, _ = _parse_cell_ref(old_ref)
             cell.set('r', f'{col}{new_num}')
 
+
 def _shift_merged_cells(root: etree._Element, from_row: int, shift: int, ns: str):
     if shift <= 0: return
     merged_cells_node = root.find(f'{{{ns}}}mergeCells')
@@ -156,3 +157,116 @@ def _shift_merged_cells(root: etree._Element, from_row: int, shift: int, ns: str
                 new_parts.append(part)
         if changed:
             mc.set('ref', ':'.join(new_parts))
+
+def _find_label_anchors(sheet_data: etree._Element, shared_strings: list[str], ns: str) -> dict[str, str]:
+    """Finds cell references for labels in the template."""
+    anchors = {}
+    for row in sheet_data.findall(f'{{{ns}}}row'):
+        for cell in row.findall(f'{{{ns}}}c'):
+            if cell.get('t') == 's':
+                v = cell.find(f'{{{ns}}}v')
+                if v is not None:
+                    try:
+                        idx = int(v.text)
+                        if 0 <= idx < len(shared_strings):
+                            val = shared_strings[idx].strip().upper()
+                            if val and val not in anchors:
+                                anchors[val] = cell.get('r')
+                    except: pass
+    return anchors
+
+def export_xlsx_direct(template_path: str, data: dict) -> io.BytesIO:
+    """
+    High-level export function with Label-Based Mapping.
+    """
+    import zipfile
+    import io
+
+    # 1. Read shared strings
+    shared_strings = []
+    with zipfile.ZipFile(template_path, 'r') as z:
+        if 'xl/sharedStrings.xml' in z.namelist():
+            ss_xml = z.read('xl/sharedStrings.xml')
+            ss_root = etree.fromstring(ss_xml)
+            ss_ns = ss_root.nsmap.get(None, NAMESPACES['main'])
+            for si in ss_root.findall(f'{{{ss_ns}}}si'):
+                t = si.find(f'{{{ss_ns}}}t')
+                if t is not None:
+                    shared_strings.append(t.text or "")
+                else:
+                    shared_strings.append("".join(node.text or "" for node in si.xpath(".//main:t", namespaces=NAMESPACES)))
+
+    # 2. Read sheet1
+    with zipfile.ZipFile(template_path, 'r') as z:
+        sheet_xml = z.read('xl/worksheets/sheet1.xml')
+    
+    root = etree.fromstring(sheet_xml)
+    ns = NAMESPACES['main']
+    sheet_data = root.find(f'{{{ns}}}sheetData')
+
+    # 3. Map labels to anchors
+    anchors = _find_label_anchors(sheet_data, shared_strings, ns)
+    
+    # 4. Process Dynamic Rows (Items)
+    # The logic for items usually involves finding a "marker" label and duplicating rows.
+    # For Cotización, it's usually "ITEM", "DESCRIPCIÓN", etc.
+    items = data.get('items', [])
+    if items:
+        # Find item table marker
+        marker_ref = anchors.get("ITEM") or anchors.get("CÓDIGO") or "A20"
+        _, marker_row = _parse_cell_ref(marker_ref)
+        data_start_row = marker_row + 1
+        
+        # Cotización usually has one template row (data_start_row)
+        if len(items) > 1:
+            shift = len(items) - 1
+            _shift_rows(sheet_data, data_start_row + 1, shift, ns)
+            # Duplicate merged cells and rows
+            for i in range(1, len(items)):
+                target_row = data_start_row + i
+                _duplicate_row(sheet_data, data_start_row, target_row, ns)
+        
+        # Fill items
+        # We assume columns: A=Item, B=Code/Desc, etc. 
+        # Better to have meta-mapping, but for now we follow the template pattern.
+        for idx, item in enumerate(items):
+            current_row_idx = data_start_row + idx
+            row_el = _find_or_create_row(sheet_data, current_row_idx, ns)
+            # Fill logic... (simplified for now, ideally uses meta-mapping)
+            _set_cell_value(row_el, f"A{current_row_idx}", idx + 1, ns, is_number=True)
+            _set_cell_value(row_el, f"B{current_row_idx}", item.get('descripcion', ''), ns)
+            _set_cell_value(row_el, f"O{current_row_idx}", item.get('total', 0), ns, is_number=True)
+
+    # 5. Fill Static Data (Headers/Footers)
+    # Mapping data keys to labels
+    label_to_key = {
+        "CLIENTE:": "cliente",
+        "RUC:": "ruc",
+        "PROYECTO:": "proyecto",
+        "FECHA:": "fecha_emision",
+        "TOTAL:": "total",
+    }
+    
+    for label, cell_ref in anchors.items():
+        # Match label to data
+        for lbl_match, key in label_to_key.items():
+            if lbl_match in label:
+                val = data.get(key, "")
+                col, row_num = _parse_cell_ref(cell_ref)
+                # Usually value is in neighbor cell
+                target_col = _num_to_col_letter(_col_letter_to_num(col) + 1)
+                row_el = _find_or_create_row(sheet_data, row_num, ns)
+                _set_cell_value(row_el, f"{target_col}{row_num}", val, ns)
+
+    # 6. Save back
+    output = io.BytesIO()
+    with zipfile.ZipFile(template_path, 'r') as z_in:
+        with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED) as z_out:
+            for item in z_in.namelist():
+                if item == 'xl/worksheets/sheet1.xml':
+                    z_out.writestr(item, etree.tostring(root))
+                else:
+                    z_out.writestr(item, z_in.read(item))
+    
+    output.seek(0)
+    return output

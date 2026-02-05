@@ -1,0 +1,387 @@
+import io
+import os
+import zipfile
+import copy
+from datetime import datetime, date
+from typing import List, Dict, Any, Optional
+from lxml import etree
+from .models import RecepcionMuestra, MuestraConcreto
+
+NAMESPACES = {
+    'main': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main',
+}
+
+def _parse_cell_ref(ref: str) -> tuple[str, int]:
+    col = ''.join(c for c in ref if c.isalpha())
+    row = int(''.join(c for c in ref if c.isdigit()))
+    return col, row
+
+def _col_letter_to_num(col: str) -> int:
+    num = 0
+    for c in col.upper():
+        num = num * 26 + (ord(c) - ord('A') + 1)
+    return num
+
+def _num_to_col_letter(n: int) -> str:
+    string = ""
+    while n > 0:
+        n, remainder = divmod(n - 1, 26)
+        string = chr(65 + remainder) + string
+    return string
+
+def _find_or_create_row(sheet_data: etree._Element, row_num: int, ns: str) -> etree._Element:
+    for row in sheet_data.iterfind(f'{{{ns}}}row'):
+        if row.get('r') == str(row_num):
+            return row
+    row = etree.SubElement(sheet_data, f'{{{ns}}}row')
+    row.set('r', str(row_num))
+    return row
+
+def _set_cell_value_fast(row, ref, value, ns, is_number=False, get_string_idx=None):
+    c = row.find(f'{{{ns}}}c[@r="{ref}"]')
+    if c is None:
+        c = etree.SubElement(row, f'{{{ns}}}c')
+        c.set('r', ref)
+    
+    style = c.get('s')
+    for child in list(c):
+        c.remove(child)
+    
+    if value is None or value == '':
+        if 't' in c.attrib: del c.attrib['t']
+        if style: c.set('s', style)
+        return
+
+    if is_number:
+        if 't' in c.attrib: del c.attrib['t']
+        v = etree.SubElement(c, f'{{{ns}}}v')
+        v.text = str(value)
+    else:
+        if get_string_idx:
+            c.set('t', 's')
+            v = etree.SubElement(c, f'{{{ns}}}v')
+            v.text = str(get_string_idx(str(value)))
+        else:
+            c.set('t', 'inlineStr')
+            is_elem = etree.SubElement(c, f'{{{ns}}}is')
+            t = etree.SubElement(is_elem, f'{{{ns}}}t')
+            t.text = str(value)
+    
+    if style:
+        c.set('s', style)
+
+def _duplicate_row_xml(sheet_data: etree._Element, source_row_num: int, target_row_num: int, ns: str):
+    source_row = sheet_data.find(f'{{{ns}}}row[@r="{source_row_num}"]')
+    if source_row is None:
+        return
+    
+    new_row = copy.deepcopy(source_row)
+    new_row.set('r', str(target_row_num))
+    
+    for cell in new_row.findall(f'{{{ns}}}c'):
+        old_ref = cell.get('r')
+        col, _ = _parse_cell_ref(old_ref)
+        cell.set('r', f'{col}{target_row_num}')
+        # Clear value but keep style
+        for child in list(cell):
+            if child.tag != f'{{{ns}}}v' or True: # Clear all kids to be safe, we will write later
+                cell.remove(child)
+
+    # Insert in order
+    rows = sheet_data.findall(f'{{{ns}}}row')
+    inserted = False
+    for i, r in enumerate(rows):
+        if int(r.get('r')) > target_row_num:
+            r.addprevious(new_row)
+            inserted = True
+            break
+    if not inserted:
+        sheet_data.append(new_row)
+
+def _shift_rows(sheet_data: etree._Element, from_row: int, shift: int, ns: str):
+    if shift <= 0: return
+    rows = list(sheet_data.findall(f'{{{ns}}}row'))
+    rows.sort(key=lambda r: int(r.get('r')), reverse=True)
+    for row in rows:
+        row_num = int(row.get('r'))
+        if row_num >= from_row:
+            new_num = row_num + shift
+            row.set('r', str(new_num))
+            for cell in row.findall(f'{{{ns}}}c'):
+                old_ref = cell.get('r')
+                col, _ = _parse_cell_ref(old_ref)
+                cell.set('r', f'{col}{new_num}')
+
+def _shift_merged_cells(root: etree._Element, from_row: int, shift: int, ns: str):
+    if shift <= 0: return
+    merged_cells_node = root.find(f'{{{ns}}}mergeCells')
+    if merged_cells_node is None: return
+    for mc in merged_cells_node.findall(f'{{{ns}}}mergeCell'):
+        ref = mc.get('ref')
+        if not ref: continue
+        parts = ref.split(':')
+        new_parts = []
+        changed = False
+        for part in parts:
+            c, r = _parse_cell_ref(part)
+            if r >= from_row:
+                new_parts.append(f"{c}{r + shift}")
+                changed = True
+            else:
+                new_parts.append(part)
+        if changed:
+            mc.set('ref', ':'.join(new_parts))
+
+def _duplicate_merged_cells(root: etree._Element, source_row_num: int, target_row_num: int, ns: str):
+    merged_cells_node = root.find(f'{{{ns}}}mergeCells')
+    if merged_cells_node is None: return
+    
+    new_merges = []
+    for mc in merged_cells_node.findall(f'{{{ns}}}mergeCell'):
+        ref = mc.get('ref')
+        if not ref: continue
+        parts = ref.split(':')
+        if len(parts) != 2: continue
+        
+        c1, r1 = _parse_cell_ref(parts[0])
+        c2, r2 = _parse_cell_ref(parts[1])
+        
+        # If the merge is exactly on the source row (e.g. B23:C23)
+        if r1 == source_row_num and r2 == source_row_num:
+            new_ref = f"{c1}{target_row_num}:{c2}{target_row_num}"
+            new_merges.append(new_ref)
+            
+    for ref in new_merges:
+        mc = etree.SubElement(merged_cells_node, f'{{{ns}}}mergeCell')
+        mc.set('ref', ref)
+    
+    if new_merges:
+        merged_cells_node.set('count', str(int(merged_cells_node.get('count', '0')) + len(new_merges)))
+
+class ExcelLogic:
+    def __init__(self, template_path: Optional[str] = None):
+        if template_path:
+            self.template_path = template_path
+        else:
+            # Template: app/templates/Temp_Recepcion.xlsx
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            # base_dir = app/modules/recepcion
+            # Up to app/
+            app_dir = os.path.dirname(os.path.dirname(base_dir))
+            self.template_path = os.path.join(app_dir, "templates", "Temp_Recepcion.xlsx")
+
+    def generar_excel_recepcion(self, recepcion: RecepcionMuestra) -> bytes:
+        if not os.path.exists(self.template_path):
+            raise FileNotFoundError(f"Template no encontrado en {self.template_path}")
+
+        shared_strings = []
+        ss_xml_original = None
+        with zipfile.ZipFile(self.template_path, 'r') as z:
+            if 'xl/sharedStrings.xml' in z.namelist():
+                ss_xml_original = z.read('xl/sharedStrings.xml')
+                ss_root = etree.fromstring(ss_xml_original)
+                ns_ss = ss_root.nsmap.get(None, NAMESPACES['main'])
+                sis = ss_root.findall(f'{{{ns_ss}}}si')
+                for i, si in enumerate(sis):
+                    t = si.find(f'{{{ns_ss}}}t')
+                    if t is not None: shared_strings.append((t.text or "").strip())
+                    else: shared_strings.append(''.join([x.text or '' for x in si.findall(f'.//{{{ns_ss}}}t')]).strip())
+
+        ss_map = {text: i for i, text in enumerate(shared_strings)}
+        
+        def get_string_idx(text: str) -> int:
+            text = str(text or "").strip()
+            if text in ss_map: return ss_map[text]
+            idx = len(shared_strings)
+            shared_strings.append(text)
+            ss_map[text] = idx
+            return idx
+
+        sheet_file = 'xl/worksheets/sheet1.xml'
+        with zipfile.ZipFile(self.template_path, 'r') as z:
+            sheet_xml = z.read(sheet_file)
+        
+        root = etree.fromstring(sheet_xml)
+        ns = NAMESPACES['main']
+        sheet_data = root.find(f'.//{{{ns}}}sheetData')
+
+        # 1. Anchor Detection
+        anchors = {} # label -> (col, row)
+        for row_el in sheet_data.findall(f'{{{ns}}}row'):
+            r_num = int(row_el.get('r'))
+            for cell_el in row_el.findall(f'{{{ns}}}c'):
+                val = ""
+                if cell_el.get('t') == 's':
+                    v_el = cell_el.find(f'{{{ns}}}v')
+                    if v_el is not None:
+                        try:
+                            s_idx = int(v_el.text)
+                            if 0 <= s_idx < len(shared_strings):
+                                val = shared_strings[s_idx]
+                        except: pass
+                
+                if val:
+                    key = val.upper().strip()
+                    c_name, _ = _parse_cell_ref(cell_el.get('r'))
+                    if key not in anchors: # Take first occurrence
+                        anchors[key] = (c_name, r_num)
+
+        # 2. Dynamic Row Logic
+        muestras = recepcion.muestras
+        n_muestras = len(muestras)
+        threshold = 18 # Rows 23 to 40 inclusive
+        
+        # Determine base coordinates using anchors or fallbacks
+        row_n_label = anchors.get("N°", ("A", 21))[1]
+        data_start_row = row_n_label + 2
+        row_nota_label = anchors.get("NOTA:", ("B", 43))[1]
+        
+        if n_muestras > threshold:
+            extra_rows = n_muestras - threshold
+            # Shift from first row after the template table (Row 41 if threshold=18)
+            shift_start = data_start_row + threshold 
+            _shift_rows(sheet_data, shift_start, extra_rows, ns)
+            _shift_merged_cells(root, shift_start, extra_rows, ns)
+            # Duplicate template row for data
+            # Row 23 is header-adjacent, Row 24 is inner (standard).
+            inner_row_source = data_start_row + 1 
+            for i in range(threshold, n_muestras):
+                target_row = data_start_row + i
+                _duplicate_row_xml(sheet_data, inner_row_source, target_row, ns)
+                _duplicate_merged_cells(root, inner_row_source, target_row, ns)
+
+        # Refresh cache for writing
+        rows_cache = {r.get('r'): r for r in sheet_data.findall(f'{{{ns}}}row')}
+        
+        def write_cell(col, row_idx, value, is_num=False, is_footer=False):
+            actual_row = row_idx
+            if is_footer and n_muestras > threshold:
+                actual_row += (n_muestras - threshold)
+            
+            row_el = rows_cache.get(str(actual_row))
+            if row_el is None:
+                row_el = _find_or_create_row(sheet_data, actual_row, ns)
+                rows_cache[str(actual_row)] = row_el
+            
+            ref = f"{col}{actual_row}"
+            _set_cell_value_fast(row_el, ref, value, ns, is_num, get_string_idx)
+
+        # 3. Filling Data
+        def format_dt(dt):
+            if not dt: return "-"
+            if isinstance(dt, (datetime, date)): return dt.strftime("%d/%m/%Y")
+            return str(dt)
+
+        # Header Section
+        # Anchors: RECEPCIÓN N°, COTIZACIÓN N°, FECHA DE RECEPCIÓN, OT:, CLIENTE:, PROYECTO:, etc.
+        def write_to_neighbor(label, value, is_num=False, offset_col=0):
+            if label.upper() in anchors:
+                c, r = anchors[label.upper()]
+                target_col = _num_to_col_letter(_col_letter_to_num(c) + 1 + offset_col)
+                write_cell(target_col, r, value, is_num)
+
+        write_cell('D', anchors.get("RECEPCIÓN N°:", ("A", 6))[1], recepcion.numero_recepcion)
+        write_to_neighbor("COTIZACIÓN N°:", recepcion.numero_cotizacion or "-", offset_col=2)
+        write_to_neighbor("FECHA DE RECEPCIÓN:", format_dt(recepcion.fecha_recepcion))
+        write_to_neighbor("OT N°:", recepcion.numero_ot)
+        
+        # Details (D/H offsets)
+        write_cell('D', anchors.get("CLIENTE :", ("C", 10))[1], recepcion.cliente)
+        write_cell('D', anchors.get("DOMICILIO LEGAL :", ("C", 11))[1], recepcion.domicilio_legal)
+        write_cell('D', anchors.get("RUC :", ("C", 12))[1], recepcion.ruc)
+        write_cell('D', anchors.get("PERSONA CONTACTO :", ("C", 13))[1], recepcion.persona_contacto)
+        write_cell('D', anchors.get("E-MAIL :", ("C", 14))[1], recepcion.email)
+        write_cell('H', anchors.get("TELÉFONO :", ("G", 14))[1], recepcion.telefono)
+        
+        write_cell('D', anchors.get("SOLICITANTE :", ("C", 16))[1], recepcion.solicitante)
+        write_cell('D', anchors.get("SOLICITANTE :", ("C", 16))[1] + 1, recepcion.domicilio_solicitante)
+        write_cell('D', anchors.get("PROYECTO :", ("C", 18))[1], recepcion.proyecto)
+        write_cell('D', anchors.get("UBICACIÓN :", ("C", 19))[1], recepcion.ubicacion)
+
+        # Samples Table
+        for idx, m in enumerate(muestras):
+            curr_row = data_start_row + idx
+            write_cell('A', curr_row, idx + 1, is_num=True)
+            write_cell('B', curr_row, getattr(m, 'codigo_muestra_lem', '') or '')
+            # C is skipped (merged or empty in template)
+            write_cell('D', curr_row, getattr(m, 'identificacion_muestra', '') or '')
+            write_cell('E', curr_row, m.estructura)
+            write_cell('F', curr_row, m.fc_kg_cm2, is_num=True)
+            write_cell('G', curr_row, m.fecha_moldeo)
+            write_cell('H', curr_row, m.hora_moldeo)
+            write_cell('I', curr_row, m.edad, is_num=True)
+            write_cell('J', curr_row, m.fecha_rotura)
+            write_cell('K', curr_row, "SI" if m.requiere_densidad else "NO")
+
+        # Footer
+        footer_row = row_nota_label
+        write_cell('D', footer_row, recepcion.observaciones or "", is_footer=True)
+        
+        # Checkboxes
+        write_cell('B', footer_row + 3, "X" if recepcion.emision_fisica else "", is_footer=True)
+        write_cell('B', footer_row + 4, "X" if recepcion.emision_digital else "", is_footer=True)
+
+        # Fecha Culminacion
+        write_cell('H', footer_row + 3, format_dt(recepcion.fecha_estimada_culminacion), is_footer=True)
+
+        # Signatures
+        write_cell('D', footer_row + 6, recepcion.entregado_por or "", is_footer=True)
+        write_cell('I', footer_row + 6, recepcion.recibido_por or "", is_footer=True)
+
+        # 4. Handle Drawings (Blue Line Shift)
+        drawing_file = 'xl/drawings/drawing1.xml'
+        modified_drawing_xml = None
+        if n_muestras > threshold:
+            shift = n_muestras - threshold
+            with zipfile.ZipFile(self.template_path, 'r') as z:
+                if drawing_file in z.namelist():
+                    draw_xml = z.read(drawing_file)
+                    d_root = etree.fromstring(draw_xml)
+                    d_ns = {'xdr': 'http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing'}
+                    
+                    anchors_list = d_root.xpath('//xdr:twoCellAnchor | //xdr:oneCellAnchor', namespaces=d_ns)
+                    for anchor in anchors_list:
+                        frow = anchor.find('.//xdr:from/xdr:row', namespaces=d_ns)
+                        trow = anchor.find('.//xdr:to/xdr:row', namespaces=d_ns)
+                        
+                        if frow is not None:
+                            orig_row = int(frow.text)
+                            if orig_row < 10:
+                                continue
+                                
+                            if orig_row >= (row_nota_label - 1):
+                                frow.text = str(orig_row + shift)
+                                if trow is not None:
+                                    trow.text = str(int(trow.text) + shift)
+                        
+                    modified_drawing_xml = etree.tostring(d_root, encoding='utf-8', xml_declaration=True)
+
+        # 5. Serialize Sheet
+        modified_sheet_xml = etree.tostring(root, encoding='utf-8', xml_declaration=True)
+
+        # 6. Reconstruct Shared Strings (Cleanly)
+        ss_root_new = etree.Element(f'{{{ns}}}sst', nsmap={None: ns})
+        for text in shared_strings:
+            si = etree.SubElement(ss_root_new, f'{{{ns}}}si')
+            t = etree.SubElement(si, f'{{{ns}}}t')
+            t.text = text
+        ss_root_new.set('count', str(len(shared_strings)))
+        ss_root_new.set('uniqueCount', str(len(shared_strings)))
+        modified_ss_xml = etree.tostring(ss_root_new, encoding='utf-8', xml_declaration=True)
+
+        # 7. Build Final ZIP
+        output = io.BytesIO()
+        with zipfile.ZipFile(self.template_path, 'r') as z_in:
+            with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED) as z_out:
+                for item in z_in.namelist():
+                    if item == sheet_file:
+                        z_out.writestr(item, modified_sheet_xml)
+                    elif item == 'xl/sharedStrings.xml':
+                        z_out.writestr(item, modified_ss_xml)
+                    elif item == drawing_file and modified_drawing_xml is not None:
+                        z_out.writestr(item, modified_drawing_xml)
+                    else:
+                        z_out.writestr(item, z_in.read(item))
+        
+        output.seek(0)
+        return output.getvalue()
