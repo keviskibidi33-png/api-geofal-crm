@@ -468,33 +468,75 @@ def generate_quote_excel(payload: QuoteExportRequest) -> io.BytesIO:
     # Cargar el libro de trabajo con openpyxl
     wb = openpyxl.load_workbook(str(template_path))
     
-    # Seleccionar la hoja correcta. 
-    # Según nuestro análisis, 'PRUEBA 1' (sheet8) es la hoja visible de la cotización.
-    # Si no existe por nombre, buscamos una que contenga 'PRUEBA' o la primera visible.
+    # Seleccionar la hoja correcta con una lógica de prioridad flexible
     ws = None
-    if 'PRUEBA 1' in wb.sheetnames:
-        ws = wb['PRUEBA 1']
-    else:
-        # Fallback a la primera hoja visible que no sea Hoja1/Hoja2
+    
+    # 1. Intentar con la hoja activa (la que guardó el usuario) si parece ser el formulario
+    active_ws = wb.active
+    if active_ws and active_ws.sheet_state == 'visible':
+        # Verificamos si tiene "CLIENTE:" o "COTIZACIÓN" en las primeras filas
+        is_form = False
+        for r in range(1, 10):
+            for c in range(1, 5):
+                val = str(active_ws.cell(row=r, column=c).value or "").upper()
+                if "CLIENTE:" in val or "COTIZACIÓN" in val:
+                    is_form = True; break
+            if is_form: break
+        if is_form: ws = active_ws
+
+    # 2. Si no, buscar hojas por nombres conocidos (Priorizando MORT2 que vimos en screenshot)
+    if not ws:
+        for target in ['MORT2', 'MORT1', 'PRUEBA 1']:
+            if target in wb.sheetnames and wb[target].sheet_state == 'visible':
+                ws = wb[target]; break
+
+    # 3. Si no, buscar cualquier hoja visible que tenga "CLIENTE:" en B5 (o cerca)
+    if not ws:
         for name in wb.sheetnames:
-            if wb[name].sheet_state == 'visible' and name not in ['Hoja1', 'Hoja2']:
-                ws = wb[name]
-                break
+            temp_ws = wb[name]
+            if temp_ws.sheet_state == 'visible':
+                val = str(temp_ws.cell(row=5, column=2).value or "").upper()
+                if "CLIENTE:" in val:
+                    ws = temp_ws; break
     
     if not ws:
         ws = wb.active # Último recurso
+    
+    # Asegurarnos de que esta sea la hoja activa al abrir el archivo
+    wb.active = ws
 
-    def _safe_write(addr, val):
+    def _normalize(text):
+        if not text or not isinstance(text, str): return ""
+        t = text.upper().strip()
+        for a, b in [("Á", "A"), ("É", "E"), ("Í", "I"), ("Ó", "O"), ("Ú", "U")]:
+            t = t.replace(a, b)
+        return t
+
+    def _find_anchor(label_text, max_row=60, max_col=20):
+        target = _normalize(label_text)
+        for r in range(1, max_row + 1):
+            for c in range(1, max_col + 1):
+                val = _normalize(ws.cell(row=r, column=c).value)
+                if target in val:
+                    return r, c
+        return None, None
+
+    def _safe_write(r, c, val):
         """Escribe en una celda, manejando si es parte de un rango combinado."""
         from openpyxl.cell.cell import MergedCell
-        cell = ws[addr]
+        cell = ws.cell(row=r, column=c)
         if isinstance(cell, MergedCell):
-            # Si es celda combinada y no es la primaria, buscamos la primaria
             for range_ in ws.merged_cells.ranges:
-                if addr in range_:
+                if cell.coordinate in range_:
                     ws.cell(row=range_.min_row, column=range_.min_col).value = val
                     return
         cell.value = val
+
+    def _safe_write_rel(label, val, col_offset=2):
+        """Busca una etiqueta y escribe en la celda a su derecha."""
+        r, c = _find_anchor(label)
+        if r and c:
+            _safe_write(r, c + col_offset, val)
 
     # 1. Poner número de cotización en el título
     fecha_emision = payload.fecha_emision or date.today()
@@ -502,85 +544,64 @@ def generate_quote_excel(payload: QuoteExportRequest) -> io.BytesIO:
     year_suffix = str(fecha_emision.year)[-2:]
     token = f"{numero}-{year_suffix}"
     
-    for r in range(1, 4):
-        for c in range(1, 10):
-            cell = ws.cell(row=r, column=c)
-            if cell.value and isinstance(cell.value, str) and "COTIZACIÓN" in cell.value.upper():
-                if "N°" in cell.value:
-                    cell.value = cell.value.split("N°")[0] + f"N° {token}"
-                break
-    
-    # 2. Datos de Cabecera (Mappings refinados)
-    mappings = {
-        "D5": payload.cliente or "",
-        "D6": payload.ruc or "",
-        "D7": payload.contacto or "",
-        "E8": payload.telefono_contacto or "", # E8 es el inicio de E8:I8
-        "D9": payload.correo or "",
-        "L5": payload.proyecto or "", # L5 es el inicio de L5:N5
-        "L7": payload.ubicacion or "", # L7 es el inicio de L7:N7
-        "L8": payload.personal_comercial or "",
-        "L11": fecha_emision.strftime("%d/%m/%Y"),
-    }
-    
-    # Fecha Solicitud: Intentamos D11
-    _safe_write("D11", payload.fecha_solicitud or "")
-    
-    for addr, val in mappings.items():
-        _safe_write(addr, val)
+    tr, tc = _find_anchor("COTIZACIÓN DE LABORATORIO")
+    if tr and tc:
+        cell = ws.cell(row=tr, column=tc)
+        if cell.value and "N°" in cell.value:
+            cell.value = cell.value.split("N°")[0] + f"N° {token}"
+        else:
+            cell.value = f"COTIZACIÓN DE LABORATORIO N° {token}"
+
+    # 2. Datos de Cabecera
+    _safe_write_rel("CLIENTE:", payload.cliente or "")
+    _safe_write_rel("R.U.C", payload.ruc or "")
+    _safe_write_rel("CONTACTO:", payload.contacto or "")
+    _safe_write_rel("TELÉFONO DE CONTACTO:", payload.telefono_contacto or "", col_offset=3)
+    _safe_write_rel("CORREO:", payload.correo or "")
+    _safe_write_rel("PROYECTO", payload.proyecto or "", col_offset=2)
+    _safe_write_rel("UBICACIÓN", payload.ubicacion or "", col_offset=2)
+    _safe_write_rel("PERSONAL COMERCIAL", payload.personal_comercial or "", col_offset=2)
+    _safe_write_rel("TELÉFONO DE COMERCIAL", payload.telefono_comercial or "", col_offset=2)
+    _safe_write_rel("FECHA SOLICITUD", payload.fecha_solicitud or "")
+    _safe_write_rel("FECHA DE EMISIÓN:", fecha_emision.strftime("%d/%m/%Y"), col_offset=2)
 
     # 3. Tabla de Items
-    # Según análisis, el header está en B13:N14. Los items empiezan en 15.
-    START_ROW = 15
+    ir, ic = _find_anchor("CÓDIGO")
+    if not ir: ir, ic = _find_anchor("ITEM")
+    if not ir: ir, ic = _find_anchor("DESCRIPCIÓN")
+    
+    if ir:
+        START_ROW = ir + 1
+        ic = ic or 2
+    else:
+        START_ROW = 15
+        ic = 2
+        
     items = payload.items or []
     total_parcial = 0
     
     for idx, item in enumerate(items):
-        row = START_ROW + idx
+        r = START_ROW + idx
+        _safe_write(r, ic, item.codigo)
+        _safe_write(r, ic + 1, item.descripcion)
+        _safe_write(r, ic + 7, item.norma)
+        _safe_write(r, ic + 8, item.acreditado)
+        _safe_write(r, ic + 10, item.costo_unitario)
+        _safe_write(r, ic + 11, item.cantidad)
         
-        # B: CODIGO
-        _safe_write(f"B{row}", item.codigo)
-        # C: DESCRIPCION (C16+ son combinadas C:I, pero 15 podría no serlo)
-        _safe_write(f"C{row}", item.descripcion)
-        # I: NORMA
-        _safe_write(f"I{row}", item.norma)
-        # J: ACREDITADO
-        _safe_write(f"J{row}", item.acreditado)
-        # L: COSTO UNITARIO
-        _safe_write(f"L{row}", item.costo_unitario)
-        # M: CANTIDAD
-        _safe_write(f"M{row}", item.cantidad)
-        
-        # O: COSTO PARCIAL
         parcial = (item.costo_unitario or 0) * (item.cantidad or 0)
-        _safe_write(f"O{row}", parcial)
+        _safe_write(r, ic + 13, parcial)
         total_parcial += parcial
 
     # 4. Totales
-    # Buscamos las celdas de "Costo parcial", "IGV 18%", "Costo Total"
-    # Normalmente están debajo de la tabla.
-    # Buscamos por etiqueta en la columna M/N
-    last_row = START_ROW + max(len(items), 1) + 1
-    found_totals = False
-    for r in range(last_row, last_row + 15):
-        val = ws.cell(row=r, column=13).value # Columna M
-        if val and isinstance(val, str):
-            if "PARCIAL" in val.upper():
-                ws.cell(row=r, column=15).value = total_parcial
-            elif "IGV" in val.upper():
-                igv = total_parcial * 0.18 if payload.include_igv else 0
-                ws.cell(row=r, column=15).value = igv
-            elif "TOTAL" in val.upper():
-                total = total_parcial * 1.18 if payload.include_igv else total_parcial
-                ws.cell(row=r, column=15).value = total
-                found_totals = True
+    tr_total, tc_total = _find_anchor("Costo parcial", max_row=START_ROW + 30)
+    if tr_total:
+        _safe_write(tr_total, tc_total + 2, total_parcial)
+        _safe_write(tr_total + 1, tc_total + 2, total_parcial * 0.18 if payload.include_igv else 0)
+        _safe_write(tr_total + 2, tc_total + 2, total_parcial * 1.18 if payload.include_igv else total_parcial)
 
-    # 5. Condiciones del Servicio
-    # Si payload tiene condiciones, buscamos la sección "I. CONDICIONES DEL SERVICIO"
-    if hasattr(payload, 'condiciones_ids') and payload.condiciones_ids:
-        # Esta parte es compleja porque requiere insertar bloques de texto.
-        # Por ahora lo dejamos igual si el template ya tiene las estándar.
-        pass
+    # 5. Condiciones del Servicio (Opcional)
+    # Por ahora no tocamos el texto de condiciones ya que suele estar fijo en el template
 
     # Guardar a un BytesIO
     output = io.BytesIO()
