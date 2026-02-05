@@ -13,9 +13,7 @@ from .service import (
     _upload_to_supabase_storage, QUOTES_FOLDER, get_condiciones_textos,
     update_quote_db
 )
-from .excel import _get_template_path
-# Import export_xlsx_direct from the generic util which we assume exists/remains in app
-from app.xlsx_direct_v2 import export_xlsx_direct
+from .excel import _get_template_path, generate_quote_excel
 
 router = APIRouter(prefix="", tags=["Cotizaciones"]) # Prefix empty to match legacy /export paths if needed, but we should probably use /quotes
 
@@ -100,7 +98,7 @@ async def export_quote(payload: QuoteExportRequest) -> Response:
         }
 
         # Generate Excel
-        xlsx_bytes = export_xlsx_direct(str(template_path), export_data)
+        xlsx_bytes = generate_quote_excel(payload)
         
         # Save mechanics
         year = fecha_emision.year
@@ -330,8 +328,8 @@ async def update_quote(quote_id: str, payload: QuoteExportRequest):
             'igv_rate': payload.igv_rate,
         }
         
-        template_path = _get_template_path(payload.template_id)
-        xlsx_bytes = export_xlsx_direct(str(template_path), export_data)
+        # 3. Generate Excel
+        xlsx_bytes = generate_quote_excel(payload)
         
         # 4. Save file physics
         if existing['filepath']:
