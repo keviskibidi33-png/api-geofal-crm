@@ -484,94 +484,76 @@ def generate_quote_excel(payload: QuoteExportRequest) -> io.BytesIO:
     if not ws:
         ws = wb.active # Último recurso
 
-    # 1. Poner número de cotización en el título (Celda B1 o combinada)
+    def _safe_write(addr, val):
+        """Escribe en una celda, manejando si es parte de un rango combinado."""
+        from openpyxl.cell.cell import MergedCell
+        cell = ws[addr]
+        if isinstance(cell, MergedCell):
+            # Si es celda combinada y no es la primaria, buscamos la primaria
+            for range_ in ws.merged_cells.ranges:
+                if addr in range_:
+                    ws.cell(row=range_.min_row, column=range_.min_col).value = val
+                    return
+        cell.value = val
+
+    # 1. Poner número de cotización en el título
     fecha_emision = payload.fecha_emision or date.today()
     numero = payload.cotizacion_numero or "000"
     year_suffix = str(fecha_emision.year)[-2:]
     token = f"{numero}-{year_suffix}"
     
-    # El título suele estar en una celda combinada que empieza en B1 o similar
-    # Según captura: "COTIZACIÓN DE LABORATORIO N° XXX-XX"
-    # Buscamos la celda que contiene el texto del título para reemplazar el token.
     for r in range(1, 4):
         for c in range(1, 10):
             cell = ws.cell(row=r, column=c)
             if cell.value and isinstance(cell.value, str) and "COTIZACIÓN" in cell.value.upper():
                 if "N°" in cell.value:
-                    ws.cell(row=r, column=c).value = cell.value.split("N°")[0] + f"N° {token}"
+                    cell.value = cell.value.split("N°")[0] + f"N° {token}"
                 break
     
-    # 2. Datos de Cabecera (Mappings basados en análisis de sheet8.xml)
-    # B5: CLIENTE: -> D5 (Valor)
-    # B6: R.U.C: -> D6
-    # B7: CONTACTO: -> D7
-    # B8: TELÉFONO DE CONTACTO: -> D8
-    # B9: CORREO: -> D9
-    
-    # J5: PROYECTO: -> L5
-    # J7: UBICACIÓN: -> L7
-    # J8: PERSONAL COMERCIAL: -> L8
-    # J9: TELÉFONO DE COMERCIAL: -> L9
-    
-    # Fecha Solicitud: B11 -> D11
-    # Fecha Emisión: J11 -> L11
-    
+    # 2. Datos de Cabecera (Mappings refinados)
     mappings = {
         "D5": payload.cliente or "",
         "D6": payload.ruc or "",
         "D7": payload.contacto or "",
-        "D8": payload.telefono_contacto or "",
+        "E8": payload.telefono_contacto or "", # E8 es el inicio de E8:I8
         "D9": payload.correo or "",
-        "L5": payload.proyecto or "",
-        "L7": payload.ubicacion or "",
+        "L5": payload.proyecto or "", # L5 es el inicio de L5:N5
+        "L7": payload.ubicacion or "", # L7 es el inicio de L7:N7
         "L8": payload.personal_comercial or "",
-        "L9": payload.telefono_comercial or "",
-        "D11": payload.fecha_solicitud or "",
         "L11": fecha_emision.strftime("%d/%m/%Y"),
     }
     
+    # Fecha Solicitud: Intentamos D11
+    _safe_write("D11", payload.fecha_solicitud or "")
+    
     for addr, val in mappings.items():
-        # Escribimos el valor y eliminamos cualquier fórmula preexistente para evitar VLOOKUPs fallidos
-        cell = ws[addr]
-        cell.value = val
-        if hasattr(cell, 'data_type'):
-            cell.data_type = 's' # Forzamos a string si es necesario
+        _safe_write(addr, val)
 
     # 3. Tabla de Items
-    # Header: Fila 14
-    # Data Start: Fila 15
+    # Según análisis, el header está en B13:N14. Los items empiezan en 15.
     START_ROW = 15
     items = payload.items or []
-    
-    if len(items) > 1:
-        # Si hay más de un item, insertamos filas para mantener el formato inferior (firmas, etc)
-        # ws.insert_rows(START_ROW + 1, len(items) - 1)
-        # Sin embargo, insert_rows de openpyxl a veces rompe los merged cells complejos.
-        # Es mejor usar el método manual de clonar estilos si es necesario.
-        # Pero para este nivel de urgencia, usaremos las filas existentes si alcanzan,
-        # o confiaremos en que el template tiene suficientes.
-        pass
-
     total_parcial = 0
+    
     for idx, item in enumerate(items):
         row = START_ROW + idx
         
         # B: CODIGO
-        ws[f"B{row}"] = item.codigo
-        # C: DESCRIPCION (Suele estar combinada C-H)
-        ws[f"C{row}"] = item.descripcion
+        _safe_write(f"B{row}", item.codigo)
+        # C: DESCRIPCION (C16+ son combinadas C:I, pero 15 podría no serlo)
+        _safe_write(f"C{row}", item.descripcion)
         # I: NORMA
-        ws[f"I{row}"] = item.norma
+        _safe_write(f"I{row}", item.norma)
         # J: ACREDITADO
-        ws[f"J{row}"] = item.acreditado
+        _safe_write(f"J{row}", item.acreditado)
         # L: COSTO UNITARIO
-        ws[f"L{row}"] = item.costo_unitario
+        _safe_write(f"L{row}", item.costo_unitario)
         # M: CANTIDAD
-        ws[f"M{row}"] = item.cantidad
+        _safe_write(f"M{row}", item.cantidad)
         
         # O: COSTO PARCIAL
         parcial = (item.costo_unitario or 0) * (item.cantidad or 0)
-        ws[f"O{row}"] = parcial
+        _safe_write(f"O{row}", parcial)
         total_parcial += parcial
 
     # 4. Totales
