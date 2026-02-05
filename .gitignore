@@ -33,6 +33,8 @@ Thumbs.db
 
 # Excel stuff
 *.xlsx
+!Temp_Cotizacion.xlsx
+!Temp_Recepcion.xlsx
 !Template.xlsx
 !Template_Programacion.xlsx
 !V2 - PROBETAS.xlsx
