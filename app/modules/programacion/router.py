@@ -14,16 +14,15 @@ async def export_programacion(payload: ProgramacionExportRequest):
     """
     # Locate template
     filename = "Template_Programacion.xlsx"
-    # Logic copied from main.py to find template relative to app root or current file
-    # We are in app/modules/programacion/router.py
-    # app/ is parents[2]
     
-    base_path = Path(__file__).resolve().parents[3] # api-geofal-crm root
+    # Path resolution: app/modules/programacion/router.py -> app/
+    current_dir = Path(__file__).resolve().parent
+    app_dir = current_dir.parents[1] # app/
     
     possible_paths = [
-        base_path / filename,
-        base_path / "app" / filename,
-        Path("/app") / filename,
+        app_dir / "templates" / filename,  # Standard: app/templates/
+        Path("/app/templates") / filename, # Docker absolute
+        current_dir.parents[2] / "app" / "templates" / filename, # Root/app/templates/
     ]
     
     template_path = None
@@ -33,12 +32,8 @@ async def export_programacion(payload: ProgramacionExportRequest):
             break
             
     if not template_path:
-        # Fallback hardcoded path from legacy code
-        fallback = Path("c:/Users/Lenovo/Documents/crmnew/api-geofal-crm/Template_Programacion.xlsx")
-        if fallback.exists():
-            template_path = fallback
-        else:
-             raise HTTPException(status_code=500, detail=f"Template {filename} not found.")
+        # Final fallback/error
+        raise HTTPException(status_code=500, detail=f"Template {filename} not found in any expected location.")
 
     try:
         # Convert Pydantic models to list of dicts

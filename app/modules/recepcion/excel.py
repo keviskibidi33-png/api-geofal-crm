@@ -163,12 +163,25 @@ class ExcelLogic:
         if template_path:
             self.template_path = template_path
         else:
-            # Template: app/templates/Temp_Recepcion.xlsx
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            # base_dir = app/modules/recepcion
-            # Up to app/
-            app_dir = os.path.dirname(os.path.dirname(base_dir))
-            self.template_path = os.path.join(app_dir, "templates", "Temp_Recepcion.xlsx")
+            # Standardized robust resolution
+            filename = "Temp_Recepcion.xlsx"
+            from pathlib import Path
+            current_dir = Path(__file__).resolve().parent
+            app_dir = current_dir.parents[1] # app/
+            
+            possible_paths = [
+                app_dir / "templates" / filename,
+                Path("/app/templates") / filename,
+                current_dir.parents[2] / "app" / "templates" / filename,
+            ]
+            
+            final_path = None
+            for p in possible_paths:
+                if p.exists():
+                    final_path = p
+                    break
+            
+            self.template_path = str(final_path or (app_dir / "templates" / filename))
 
     def generar_excel_recepcion(self, recepcion: RecepcionMuestra) -> bytes:
         if not os.path.exists(self.template_path):

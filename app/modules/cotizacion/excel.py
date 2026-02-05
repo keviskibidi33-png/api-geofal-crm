@@ -31,21 +31,23 @@ def _get_template_path(template_id: str | None = None) -> Path:
     """Get template path based on template_id or default"""
     filename = TEMPLATE_VARIANTS.get(template_id, 'Temp_Cotizacion.xlsx') if template_id else 'Temp_Cotizacion.xlsx'
     
-    # Logic adapted for module structure
-    # app/modules/cotizacion/excel.py -> app/modules/cotizacion -> app/modules -> app -> root
-    # parents[3] is root.
-    base_path = Path(__file__).resolve().parents[3]
+    # Path resolution: app/modules/cotizacion/excel.py -> app/
+    # We use a robust relative path from this file to the templates directory
+    current_dir = Path(__file__).resolve().parent
+    app_dir = current_dir.parents[1] # app/
     
     possible_paths = [
-        base_path / filename,  # Local dev root
-        base_path / "app" / filename,
-        Path("/app") / filename,  # Docker absolute
-        Path("/app/templates") / filename,  # Docker templates folder
+        app_dir / "templates" / filename,  # Standard: app/templates/
+        Path("/app/templates") / filename, # Docker absolute
+        current_dir.parents[2] / "app" / "templates" / filename, # Root/app/templates/
     ]
+    
     for p in possible_paths:
         if p.exists():
             return p
-    return possible_paths[0]  # Fallback
+            
+    # Fallback to standard app location
+    return app_dir / "templates" / filename
 
 # --- Excel Utility Functions (Copied from main.py) ---
 
