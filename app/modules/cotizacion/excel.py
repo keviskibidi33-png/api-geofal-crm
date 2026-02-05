@@ -8,6 +8,7 @@ from datetime import date
 from typing import Any, List
 from pathlib import Path
 from openpyxl.utils.cell import get_column_letter, range_boundaries
+from openpyxl.cell.cell import MergedCell
 from .schemas import QuoteExportRequest
 
 # Keep V1 version logic manually, or rely on a simpler extraction?
@@ -566,39 +567,145 @@ def generate_quote_excel(payload: QuoteExportRequest) -> io.BytesIO:
     _safe_write_rel("FECHA DE EMISIÓN:", fecha_emision.strftime("%d/%m/%Y"), col_offset=2)
 
     # 3. Tabla de Items
-    ir, ic = _find_anchor("CÓDIGO")
-    if not ir: ir, ic = _find_anchor("ITEM")
-    if not ir: ir, ic = _find_anchor("DESCRIPCIÓN")
-    
-    if ir:
-        START_ROW = ir + 1
-        ic = ic or 2
+    ir_last, ic_code = None, None
+    for r in range(1, 40):
+        # Miramos columnas A o B para el keyword CÓDIGO o ITEM (normalizado)
+        v1 = _normalize(ws.cell(row=r, column=1).value)
+        v2 = _normalize(ws.cell(row=r, column=2).value)
+        if "CODIGO" in v1 or "ITEM" in v1:
+            ir_last, ic_code = r, 1
+        elif "CODIGO" in v2 or "ITEM" in v2:
+            ir_last, ic_code = r, 2
+
+    if ir_last:
+        # Detectar el final real de la cabecera (merge vertical)
+        max_h_row = ir_last
+        test_cell = ws.cell(row=ir_last, column=ic_code)
+        if isinstance(test_cell, MergedCell):
+            for rng in ws.merged_cells.ranges:
+                if test_cell.coordinate in rng:
+                    max_h_row = max(max_h_row, rng.max_row)
+        
+        # En MORT2 ir_last suele ser 15, max_h_row=16, START_ROW=17
+        START_ROW = max_h_row + 1
+        
+        # Mapa de columnas: escanea la ÚLTIMA fila de cabecera
+        col_map = {}
+        target_header_row = max_h_row
+        header_labels = {
+            "CÓDIGO": "code", "ITEM": "code",
+            "DESCRIPCIÓN": "desc",
+            "NORMA": "norma",
+            "ACREDITADO": "acred",
+            "COSTO UNITARIO": "price", "PRECIO": "price",
+            "CANTIDAD": "cant",
+            "COSTO PARCIAL": "total"
+        }
+        for c in range(1, 20):
+            val = _normalize(ws.cell(row=target_header_row, column=c).value)
+            # Manejar celdas combinadas buscando a la izquierda si está vacío
+            if not val:
+                for cc in range(c-1, 0, -1):
+                    v_neighbor = _normalize(ws.cell(row=target_header_row, column=cc).value)
+                    if v_neighbor: val = v_neighbor; break
+            
+            for lab, key in header_labels.items():
+                if _normalize(lab) in val:
+                    if key not in col_map: col_map[key] = c
+        
+        c_code = col_map.get("code", ic_code or 2)
+        c_desc = col_map.get("desc", c_code + 1)
+        c_norma = col_map.get("norma", c_code + 7) 
+        c_acred = col_map.get("acred", c_code + 8)
+        c_price = col_map.get("price", c_code + 10)
+        c_cant = col_map.get("cant", c_code + 11)
+        c_total = col_map.get("total", c_code + 12) 
     else:
         START_ROW = 15
-        ic = 2
+        c_code, c_desc, c_norma, c_acred, c_price, c_cant, c_total = 2, 3, 9, 10, 12, 13, 14
         
     items = payload.items or []
     total_parcial = 0
     
+    # Detectar el salto de filas (step) entre items
+    step = 1
+    if START_ROW + 1 <= ws.max_row:
+        c1 = ws.cell(row=START_ROW, column=c_code)
+        c2 = ws.cell(row=START_ROW + 1, column=c_code)
+        if isinstance(c1, MergedCell) and isinstance(c2, MergedCell):
+            for rng in ws.merged_cells.ranges:
+                if c1.coordinate in rng and c2.coordinate in rng:
+                    step = 2; break
+
+    # --- Duplicación de filas para múltiples items ---
+    if len(items) > 1:
+        # Tomar snapshot del estilo y combinaciones de la(s) fila(s) del primer item
+        row_snapshots = []
+        for i in range(step):
+            snap = _snapshot_row_style(ws, row=START_ROW + i, min_col=1, max_col=20)
+            merges = _snapshot_row_merges(ws, row=START_ROW + i)
+            row_snapshots.append((snap, merges))
+        
+        # Insertar filas para los items adicionales (idx 1 en adelante)
+        # Insertamos desde abajo hacia arriba o reservamos espacio? 
+        # Insertar en START_ROW + step es lo más limpio
+        num_new_rows = (len(items) - 1) * step
+        ws.insert_rows(START_ROW + step, amount=num_new_rows)
+        
+        # Aplicar estilos y merges a las nuevas filas
+        for idx in range(1, len(items)):
+            base_r = START_ROW + (idx * step)
+            for i in range(step):
+                snap, merges = row_snapshots[i]
+                target_r = base_r + i
+                _apply_row_style(ws, row=target_r, min_col=1, max_col=20, snap=snap)
+                # Ojo: _apply_row_merges necesita delta relativo si se movieron cosas, 
+                # pero aquí las filas son "nuevas" y limpias. 
+                # Re-implementamos un apply simple para merges horizontales en la misma fila:
+                for m_ref in merges:
+                    m_min_col, m_min_row, m_max_col, m_max_row = range_boundaries(m_ref)
+                    r_offset = target_r - m_min_row
+                    new_m_ref = f"{get_column_letter(m_min_col)}{m_min_row + r_offset}:{get_column_letter(m_max_col)}{m_max_row + r_offset}"
+                    try:
+                        ws.merge_cells(new_m_ref)
+                    except Exception: pass
+
     for idx, item in enumerate(items):
-        r = START_ROW + idx
-        _safe_write(r, ic, item.codigo)
-        _safe_write(r, ic + 1, item.descripcion)
-        _safe_write(r, ic + 7, item.norma)
-        _safe_write(r, ic + 8, item.acreditado)
-        _safe_write(r, ic + 10, item.costo_unitario)
-        _safe_write(r, ic + 11, item.cantidad)
+        r = START_ROW + (idx * step)
+        _safe_write(r, c_code, item.codigo)
+        
+        # Manejo de Descripcion + Norma (pueden estar unidas C-I)
+        cell_desc = ws.cell(row=r, column=c_desc)
+        cell_norma = ws.cell(row=r, column=c_norma)
+        is_unified = False
+        if isinstance(cell_desc, MergedCell) and isinstance(cell_norma, MergedCell):
+            for range_ in ws.merged_cells.ranges:
+                if cell_desc.coordinate in range_ and cell_norma.coordinate in range_:
+                    is_unified = True; break
+        
+        if is_unified:
+            text = f"{item.descripcion or ''}"
+            if item.norma: text += f" - {item.norma}"
+            _safe_write(r, c_desc, text)
+        else:
+            _safe_write(r, c_desc, item.descripcion)
+            _safe_write(r, c_norma, item.norma)
+            
+        _safe_write(r, c_acred, item.acreditado)
+        _safe_write(r, c_price, item.costo_unitario)
+        _safe_write(r, c_cant, item.cantidad)
         
         parcial = (item.costo_unitario or 0) * (item.cantidad or 0)
-        _safe_write(r, ic + 13, parcial)
+        _safe_write(r, c_total, parcial)
         total_parcial += parcial
 
     # 4. Totales
-    tr_total, tc_total = _find_anchor("Costo parcial", max_row=START_ROW + 30)
+    tr_total, tc_total_label = _find_anchor("Costo parcial", max_row=START_ROW + 50)
     if tr_total:
-        _safe_write(tr_total, tc_total + 2, total_parcial)
-        _safe_write(tr_total + 1, tc_total + 2, total_parcial * 0.18 if payload.include_igv else 0)
-        _safe_write(tr_total + 2, tc_total + 2, total_parcial * 1.18 if payload.include_igv else total_parcial)
+        target_c = c_total if 'c_total' in locals() else tc_total_label + 2
+        _safe_write(tr_total, target_c, total_parcial)
+        _safe_write(tr_total + 1, target_c, total_parcial * 0.18 if payload.include_igv else 0)
+        _safe_write(tr_total + 2, target_c, total_parcial * 1.18 if payload.include_igv else total_parcial)
 
     # 5. Condiciones del Servicio (Opcional)
     # Por ahora no tocamos el texto de condiciones ya que suele estar fijo en el template
