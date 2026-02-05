@@ -3,6 +3,14 @@ Database module for shared PostgreSQL connection with Directus.
 Both Directus and this cotizador service use the same database.
 """
 import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load env immediately
+env_path = Path(__file__).resolve().parents[1] / ".env"
+print(f"DEBUG: Loading .env from {env_path}, exists={env_path.exists()}")
+load_dotenv(env_path)
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from contextlib import contextmanager
@@ -25,7 +33,19 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 @contextmanager
 def get_db():
-    """Context manager for database sessions."""
+    """Context manager for database sessions (internal use)."""
+    db = SessionLocal()
+    try:
+        yield db
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+def get_db_session():
+    """Generator for FastAPI Depends (no contextmanager decorator)."""
     db = SessionLocal()
     try:
         yield db
@@ -188,3 +208,54 @@ def eliminar_cotizacion(quote_id: int) -> bool:
         """), {"id": quote_id})
         conn.commit()
         return result.fetchone() is not None
+
+
+import requests
+
+def _upload_to_supabase_storage(file_obj, bucket: str, filename: str) -> str:
+    """
+    Upload a file-like object to Supabase Storage.
+    Returns the public URL or internal path.
+    """
+    url = os.getenv('SUPABASE_URL')
+    key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+    
+    if not url or not key:
+        print("Supabase credentials missing.")
+        return None
+
+    # Storage API Endpoint
+    # POST /storage/v1/object/{bucket}/{wildcard}
+    # But usually PUT /storage/v1/object/{bucket}/{filename} to overwrite?
+    # Or POST using multipart.
+    
+    # Let's use PUT (Update/Create) logic or POST.
+    # Supabase API: POST /storage/v1/object/{bucket}/{name}
+    
+    api_url = f"{url}/storage/v1/object/{bucket}/{filename}"
+    
+    headers = {
+        "Authorization": f"Bearer {key}",
+        "x-upsert": "true", # Allow overwrite
+    }
+    
+    # We need to ensure we are at start of file
+    file_obj.seek(0)
+    files = {'file': file_obj} 
+    # Actually for binary body in requests just pass data=file_obj usually works if stream
+    
+    try:
+        # Pass the bytes directly as body
+        response = requests.post(api_url, headers=headers, data=file_obj.read())
+        
+        if response.status_code in [200, 201]:
+             # Return valid path or URL
+             # Key returned in response usually "Key": "bucket/filename"
+             # Or we construct it.
+             return f"{bucket}/{filename}"
+        else:
+            print(f"Storage Upload Failed: {response.status_code} - {response.text}")
+            return None
+    except Exception as e:
+        print(f"Exception Uploading: {e}")
+        return None

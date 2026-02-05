@@ -26,6 +26,7 @@ from psycopg2.extras import RealDictCursor
 # Importar el nuevo exportador XML
 from app.xlsx_direct_v2 import export_xlsx_direct
 from app.programacion_export import export_programacion_xlsx
+from app.recepciones import router as recepciones_router
 
 # --- Pydantic Models for Roles & Permissions ---
 
@@ -78,7 +79,7 @@ def _db_disabled() -> bool:
 
 
 def _get_cors_origins() -> list[str]:
-    origins = ["http://localhost:3000", "http://localhost:3001", "http://localhost:5173", "http://127.0.0.1:3000"]
+    origins = ["http://localhost:3000", "http://localhost:3001", "http://localhost:5173", "http://127.0.0.1:3000", "http://localhost:3002"]
     raw = os.getenv("QUOTES_CORS_ORIGINS")
     if raw:
         if raw == "*":
@@ -2616,6 +2617,9 @@ async def user_heartbeat(payload: HeartbeatRequest):
     except requests.RequestException as e:
         print(f"Heartbeat error: {e}")
         return {"success": False, "error": str(e)}
+
+
+app.include_router(recepciones_router)
 
 
 if __name__ == "__main__":
