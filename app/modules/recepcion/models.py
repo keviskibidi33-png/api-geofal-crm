@@ -60,6 +60,8 @@ class RecepcionMuestra(Base):
     
     # Información adicional
     observaciones = Column(Text, nullable=True, comment="Observaciones generales")
+    bucket = Column(String(100), nullable=True, comment="Nombre del bucket en Supabase")
+    object_key = Column(String(500), nullable=True, comment="Ruta del objeto en Supabase")
     
     aperturada_por = Column(String(100), nullable=True, comment="Persona que aperturó la recepción")
     designada_a = Column(String(100), nullable=True, comment="Persona designada para el trabajo")

@@ -1,8 +1,6 @@
-
-"""
-Servicio para gestión de recepciones de muestras
-"""
-
+import os
+import requests
+import io
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from typing import List, Optional
@@ -10,8 +8,43 @@ from datetime import datetime
 from .models import RecepcionMuestra, MuestraConcreto
 from .schemas import RecepcionMuestraCreate, RecepcionMuestraResponse
 from .exceptions import DuplicateRecepcionError
+from .excel import ExcelLogic
 
 class RecepcionService:
+    def __init__(self):
+        self.excel_logic = ExcelLogic()
+
+    def _upload_to_supabase(self, file_content: bytes, filename: str) -> Optional[str]:
+        """Subir archivo a Supabase Storage y retornar el object_key"""
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        bucket_name = "recepciones"
+
+        if not supabase_url or not supabase_key:
+            print("Warning: Supabase credentials not found. Skipping upload.")
+            return None
+
+        # Supabase Storage API URL
+        upload_url = f"{supabase_url}/storage/v1/object/{bucket_name}/{filename}"
+
+        headers = {
+            "Authorization": f"Bearer {supabase_key}",
+            "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "upsert": "true"
+        }
+
+        try:
+            response = requests.post(upload_url, headers=headers, data=file_content)
+            if response.status_code in [200, 201]:
+                # Retornar el path relativo (object_key)
+                return filename
+            else:
+                print(f"Error uploading to Supabase: {response.status_code} - {response.text}")
+                return None
+        except Exception as e:
+            print(f"Exception uploading to Supabase: {e}")
+            return None
+
     def crear_recepcion(self, db: Session, recepcion_data: RecepcionMuestraCreate) -> RecepcionMuestra:
         """Crear nueva recepción de muestra"""
         try:
@@ -79,6 +112,21 @@ class RecepcionService:
             
             db.commit()
             db.refresh(recepcion)
+
+            # --- NUEVO: Generar y subir Excel a Supabase ---
+            try:
+                excel_content = self.excel_logic.generar_excel_recepcion(recepcion)
+                filename = f"Recepcion_{recepcion.numero_ot.replace('/', '_')}.xlsx"
+                obj_key = self._upload_to_supabase(excel_content, filename)
+                
+                if obj_key:
+                    recepcion.bucket = "recepciones"
+                    recepcion.object_key = obj_key
+                    db.commit()
+                    db.refresh(recepcion)
+            except Exception as e:
+                print(f"Error post-procesamiento (Excel/Supabase): {e}")
+
             return recepcion
             
         except DuplicateRecepcionError:

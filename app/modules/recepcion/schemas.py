@@ -88,6 +88,8 @@ class RecepcionMuestraBase(BaseModel):
     aperturada_por: Optional[str] = Field(None, max_length=100, description="Persona que aperturó la recepción")
     designada_a: Optional[str] = Field(None, max_length=100, description="Persona designada para el trabajo")
     estado: str = Field("PENDIENTE", max_length=20, description="Estado de la recepción")
+    bucket: Optional[str] = Field(None, description="Nombre del bucket en Supabase")
+    object_key: Optional[str] = Field(None, description="Ruta del objeto en Supabase")
 
     @validator('fecha_recepcion', 'fecha_estimada_culminacion')
     def validate_date_format(cls, v):

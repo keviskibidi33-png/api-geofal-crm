@@ -50,6 +50,15 @@ Módulo ligero para administración de cartera de clientes.
 - **Funcionalidad:** Búsqueda (`/clientes?search=...`) y creación de clientes.
 - **Ubicación:** Definido directamente en `main.py` por simplicidad histórica.
 
+### 5. El archivo Core `app/main.py`
+Este archivo es el **Entry Point** y orquestador del servicio.
+**Responsabilidades Críticas:**
+1.  **CORS Global:** Define quién puede consumir la API (CRM, Cotizadores, etc.).
+    - *Nota:* Si hay errores de "CORS blocked", revisar la lista `_get_cors_origins()`.
+2.  **Auth Proxy (`/user/me`):** Actúa como puente validador entre el frontend y **Directus**.
+    - Recibe el token Bearer, consulta a Directus y devuelve el perfil unificado.
+3.  **Endpoints Globales:** Maneja recursos compartidos como `Clientes` y `Health Checks`.
+
 ---
 
 ## ⚙️ Core & Lógica Transversal

@@ -54,18 +54,22 @@ async def generar_excel_recepcion(
     recepcion_id: int,
     db: Session = Depends(get_db_session)
 ):
-    """Generar Excel del formulario de recepción de muestras"""
+    """Generar Excel del formulario de recepción y devolver directamente (Estilo Cotizadora)"""
     recepcion = recepcion_service.obtener_recepcion(db, recepcion_id)
     if not recepcion:
         raise HTTPException(status_code=404, detail="Recepción no encontrada")
     
     try:
+        # Generar siempre al vuelo para descarga directa e instantánea
         excel_content = excel_logic.generar_excel_recepcion(recepcion)
+        
+        filename = f"Recepcion_{recepcion.numero_ot.replace('/', '_')}.xlsx"
+        
         return Response(
             content=excel_content,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={
-                "Content-Disposition": f"attachment; filename=Recepcion_{recepcion.numero_ot}.xlsx"
+                "Content-Disposition": f"attachment; filename={filename}"
             }
         )
     except Exception as e:

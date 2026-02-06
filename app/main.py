@@ -14,7 +14,7 @@ import asyncio
 import requests # Moved by user
 from fastapi import FastAPI, HTTPException, Header, Response, Depends # Added Response, Depends; kept Header
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse # Kept StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse # Added JSONResponse
 from dotenv import load_dotenv
 from openpyxl import load_workbook
 from openpyxl.worksheet.pagebreak import Break
@@ -93,8 +93,6 @@ def _get_cors_origins() -> list[str]:
         "http://127.0.0.1:3000", 
         "http://localhost:3002",
         "https://crm.geofal.com.pe",
-        "https://crm.geofal.com.pe/",
-        "https://recepcion.geofal.com.pe",
         "https://recepcion.geofal.com.pe/",
         "https://cotizador.geofal.com.pe",
         "https://programacion.geofal.com.pe"
@@ -143,6 +141,14 @@ def _has_database_url() -> bool:
 def _get_connection():
     dsn = _get_database_url()
     return psycopg2.connect(dsn)
+
+@app.exception_handler(ValueError)
+async def value_error_handler(request, exc):
+    """Catch-all for simple validation logic errors in service layer"""
+    return JSONResponse(
+        status_code=400,
+        content={"message": str(exc)},
+    )
 
  
 @app.get("/")
@@ -288,27 +294,518 @@ async def create_cliente(data: dict):
         conn = _get_connection()
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""
-                INSERT INTO clientes (nombre, email, telefono, empresa, ruc, estado, sector, direccion, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
-                RETURNING id
+                INSERT INTO clientes (nombre, email, telefono, empresa, ruc, estado, sector, direccion)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id, nombre, email, telefono, empresa, ruc, estado, sector, direccion
             """, (
                 data.get('contacto', '') or data.get('nombre', ''),
                 data.get('email', ''),
                 data.get('telefono', ''),
-                data.get('nombre', ''), # Empresa
+                data.get('nombre', ''),
                 data.get('ruc', ''),
                 'prospecto',
                 'General',
                 data.get('direccion', '')
             ))
+            result = cur.fetchone()
             conn.commit()
-            new_id = cur.fetchone()['id']
-            return {"data": {"id": new_id}}
+            # Map back to cotizador format
+            mapped = {
+                'id': str(result['id']),
+                'nombre': result.get('empresa', ''),
+                'contacto': result.get('nombre', ''),
+                'email': result.get('email', ''),
+                'telefono': result.get('telefono', ''),
+                'ruc': result.get('ruc', ''),
+                'direccion': result.get('direccion', ''),
+            }
+            return {"data": mapped}
     except Exception as e:
         import traceback
         print(f"Error in create_cliente: {e}")
+        traceback.print_exc()
+        if 'conn' in locals() and conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if 'conn' in locals() and conn:
+            conn.close()
+
+
+@app.get("/proyectos")
+async def get_proyectos(cliente_id: str = None, search: str = ""):
+    """Get projects list, optionally filtered by client - reads from CRM proyectos table"""
+    if not _has_database_url():
+        return {"data": []}
+    
+    try:
+        conn = _get_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            query = """
+                SELECT 
+                    p.id, p.nombre, p.descripcion, p.cliente_id, p.created_at, p.direccion, p.ubicacion, 
+                    c.empresa as cliente_nombre,
+                    v.full_name as vendedor_nombre, v.phone as vendedor_telefono
+                FROM proyectos p
+                LEFT JOIN clientes c ON p.cliente_id = c.id
+                LEFT JOIN perfiles v ON p.vendedor_id = v.id
+                WHERE p.deleted_at IS NULL
+            """
+            params = []
+
+            if cliente_id:
+                query += " AND p.cliente_id = %s"
+                params.append(cliente_id)
+            
+            if search:
+                query += " AND p.nombre ILIKE %s"
+                params.append(f"%{search}%")
+            
+            query += " ORDER BY p.nombre LIMIT 50"
+            
+            cur.execute(query, tuple(params))
+            results = cur.fetchall()
+            
+            # Map results to ensure JSON serializability (handle datetime and UUID)
+            mapped = []
+            for r in results:
+                mapped.append({
+                    'id': str(r['id']),
+                    'nombre': r['nombre'],
+                    'direccion': r.get('direccion', ''),
+                    'ubicacion': r.get('ubicacion', ''),
+                    'descripcion': r.get('descripcion', ''),
+                    'cliente_id': str(r['cliente_id']),
+                    'cliente_nombre': r.get('cliente_nombre', ''),
+                    'vendedor_nombre': r.get('vendedor_nombre', ''),
+                    'vendedor_telefono': r.get('vendedor_telefono', ''),
+                    'created_at': r['created_at'].isoformat() if r.get('created_at') else None
+                })
+            
+            return {"data": mapped}
+    except Exception as e:
+        import traceback
+        print(f"Error in get_proyectos: {e}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         if 'conn' in locals() and conn:
             conn.close()
+
+
+@app.post("/proyectos")
+async def create_proyecto(data: dict):
+    """Create a new project (requires cliente_id)"""
+    if not _has_database_url():
+        raise HTTPException(status_code=400, detail="Database not configured")
+    
+    if not data.get('cliente_id'):
+        raise HTTPException(status_code=400, detail="cliente_id is required")
+    
+    try:
+        conn = _get_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Extract vendedor_id from data or fallback to None
+            vendedor_id = data.get('vendedor_id') or data.get('user_id')
+            
+            cur.execute("""
+                INSERT INTO proyectos (nombre, ubicacion, descripcion, cliente_id, vendedor_id)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id, nombre, ubicacion, descripcion, cliente_id, vendedor_id
+            """, (
+                data.get('nombre', ''),
+                data.get('ubicacion', ''),
+                data.get('descripcion', ''),
+                data.get('cliente_id'),
+                vendedor_id
+            ))
+            result = cur.fetchone()
+            conn.commit()
+            # Convert results to ensure JSON serializability
+            mapped = {k: (str(v) if k in ('id', 'cliente_id', 'vendedor_id') else v) for k, v in result.items()}
+            return {"data": mapped}
+    except Exception as e:
+        import traceback
+        print(f"Error in create_proyecto: {e}")
+        traceback.print_exc()
+        if 'conn' in locals() and conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if 'conn' in locals() and conn:
+            conn.close()
+
+
+# ============================================================================
+# CONDICIONES ESPECÍFICAS ENDPOINTS
+# ============================================================================
+
+@app.get("/condiciones")
+async def get_condiciones(search: str = ""):
+    """Get all active specific conditions, optionally filtered by search"""
+    if not _has_database_url():
+        return {"data": []}
+    
+    try:
+        conn = _get_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            query = """
+                SELECT id, texto, categoria, orden, created_by, created_at
+                FROM condiciones_especificas
+                WHERE activo = true
+            """
+            params = []
+            
+            if search:
+                query += " AND texto ILIKE %s"
+                params.append(f"%{search}%")
+            
+            query += " ORDER BY orden ASC, created_at ASC"
+            
+            cur.execute(query, params)
+            results = cur.fetchall()
+            # Ensure JSON serializable
+            return {"data": [dict(r) for r in results]}
+    except Exception as e:
+        print(f"Error in get_condiciones: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"data": []}
+    finally:
+        if 'conn' in locals() and conn:
+            conn.close()
+
+
+@app.post("/condiciones")
+async def create_condicion(data: dict):
+    """Create a new specific condition"""
+    if not _has_database_url():
+        raise HTTPException(status_code=400, detail="Database not configured")
+    
+    try:
+        conn = _get_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                INSERT INTO condiciones_especificas (texto, categoria, orden, created_by, activo)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id, texto, categoria, orden, created_by, created_at
+            """, (
+                data.get('texto', ''),
+                data.get('categoria', ''),
+                data.get('orden', 0),
+                data.get('vendedor_id'),  # created_by = vendedor_id
+                True
+            ))
+            result = cur.fetchone()
+            conn.commit()
+            return {"data": dict(result)}
+    except Exception as e:
+        import traceback
+        print(f"Error in create_condicion: {e}")
+        traceback.print_exc()
+        if 'conn' in locals() and conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if 'conn' in locals() and conn:
+            conn.close()
+
+
+@app.put("/condiciones/{condicion_id}")
+async def update_condicion(condicion_id: str, data: dict):
+    """Update an existing condition"""
+    if not _has_database_url():
+        raise HTTPException(status_code=400, detail="Database not configured")
+    
+    try:
+        conn = _get_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                UPDATE condiciones_especificas
+                SET texto = %s, categoria = %s, orden = %s, updated_at = NOW()
+                WHERE id = %s
+                RETURNING id, texto, categoria, orden, created_at, updated_at
+            """, (
+                data.get('texto', ''),
+                data.get('categoria', ''),
+                data.get('orden', 0),
+                condicion_id
+            ))
+            result = cur.fetchone()
+            if not result:
+                raise HTTPException(status_code=404, detail="Condición no encontrada")
+            conn.commit()
+            return {"data": dict(result)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"Error in update_condicion: {e}")
+        traceback.print_exc()
+        if 'conn' in locals() and conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if 'conn' in locals() and conn:
+            conn.close()
+
+
+@app.delete("/condiciones/{condicion_id}")
+async def delete_condicion(condicion_id: str):
+    """Soft delete a condition (set activo = false)"""
+    if not _has_database_url():
+        raise HTTPException(status_code=400, detail="Database not configured")
+    
+    try:
+        conn = _get_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                UPDATE condiciones_especificas
+                SET activo = false, updated_at = NOW()
+                WHERE id = %s
+                RETURNING id
+            """, (condicion_id,))
+            result = cur.fetchone()
+            if not result:
+                raise HTTPException(status_code=404, detail="Condición no encontrada")
+            conn.commit()
+            return {"message": "Condición eliminada", "id": str(result['id'])}
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"Error in delete_condicion: {e}")
+        traceback.print_exc()
+        if 'conn' in locals() and conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if 'conn' in locals() and conn:
+            conn.close()
+
+
+# Note: All legacy programacion endpoints have been moved to app.modules.programacion.router.
+
+
+
+
+# --- Roles & Permissions Endpoints (Using Supabase REST API) ---
+
+def _get_supabase_headers():
+    """Get headers for Supabase REST API calls"""
+    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    return {
+        "apikey": service_key,
+        "Authorization": f"Bearer {service_key}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation"
+    }
+
+def _get_supabase_url():
+    """Get Supabase REST API base URL"""
+    url = os.getenv("SUPABASE_URL", "https://db.geofal.com.pe")
+    return f"{url}/rest/v1"
+
+
+@app.get("/roles")
+async def get_roles():
+    """Get all role definitions using Supabase REST API"""
+    try:
+        url = f"{_get_supabase_url()}/role_definitions?order=label.asc"
+        response = requests.get(url, headers=_get_supabase_headers())
+        
+        if response.status_code == 404 or (response.status_code == 200 and response.json() == []):
+            # Table doesn't exist or is empty - return default roles
+            return [
+                {
+                    "role_id": "admin",
+                    "label": "Administrador",
+                    "description": "Acceso completo al sistema",
+                    "permissions": {
+                        "clientes": {"read": True, "write": True, "delete": True},
+                        "proyectos": {"read": True, "write": True, "delete": True},
+                        "cotizadora": {"read": True, "write": True, "delete": True},
+                        "programacion": {"read": True, "write": True, "delete": True},
+                        "usuarios": {"read": True, "write": True, "delete": True},
+                        "auditoria": {"read": True, "write": True, "delete": True},
+                        "configuracion": {"read": True, "write": True, "delete": True},
+                        "laboratorio": {"read": True, "write": True, "delete": True},
+                        "comercial": {"read": True, "write": True, "delete": True},
+                        "administracion": {"read": True, "write": True, "delete": True},
+                        "permisos": {"read": True, "write": True, "delete": True}
+                    },
+                    "is_system": True
+                },
+                {
+                    "role_id": "vendor",
+                    "label": "Vendedor",
+                    "description": "Acceso a modulos de ventas",
+                    "permissions": {
+                        "clientes": {"read": True, "write": True, "delete": False},
+                        "proyectos": {"read": True, "write": True, "delete": False},
+                        "cotizadora": {"read": True, "write": True, "delete": False},
+                        "programacion": {"read": True, "write": False, "delete": False},
+                        "usuarios": {"read": False, "write": False, "delete": False},
+                        "auditoria": {"read": False, "write": False, "delete": False},
+                        "configuracion": {"read": False, "write": False, "delete": False},
+                        "laboratorio": {"read": False, "write": False, "delete": False},
+                        "comercial": {"read": True, "write": True, "delete": False},
+                        "administracion": {"read": False, "write": False, "delete": False},
+                        "permisos": {"read": False, "write": False, "delete": False}
+                    },
+                    "is_system": True
+                },
+                {
+                    "role_id": "laboratorio",
+                    "label": "Laboratorio",
+                    "description": "Acceso a programacion y laboratorio",
+                    "permissions": {
+                        "clientes": {"read": True, "write": False, "delete": False},
+                        "proyectos": {"read": True, "write": False, "delete": False},
+                        "cotizadora": {"read": False, "write": False, "delete": False},
+                        "programacion": {"read": True, "write": True, "delete": False},
+                        "usuarios": {"read": False, "write": False, "delete": False},
+                        "auditoria": {"read": False, "write": False, "delete": False},
+                        "configuracion": {"read": False, "write": False, "delete": False},
+                        "laboratorio": {"read": True, "write": True, "delete": False},
+                        "comercial": {"read": False, "write": False, "delete": False},
+                        "administracion": {"read": False, "write": False, "delete": False},
+                        "permisos": {"read": False, "write": False, "delete": False}
+                    },
+                    "is_system": True
+                }
+            ]
+        
+        if response.status_code != 200:
+            print(f"Supabase error: {response.status_code} - {response.text}")
+            raise HTTPException(status_code=500, detail=f"Error fetching roles: {response.text}")
+        
+        return response.json()
+    except requests.RequestException as e:
+        print(f"Request error: {e}")
+        # Return default roles on connection error
+        return [
+            {"role_id": "admin", "label": "Administrador", "description": "Acceso completo", "permissions": {}, "is_system": True},
+            {"role_id": "vendor", "label": "Vendedor", "description": "Acceso ventas", "permissions": {}, "is_system": True}
+        ]
+
+
+@app.put("/roles/{role_id}")
+async def update_role(role_id: str, payload: RoleUpdate):
+    """Update a role using direct SQL for maximum reliability"""
+    if not _has_database_url():
+        raise HTTPException(status_code=400, detail="Database not configured")
+    
+    try:
+        conn = _get_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Prepare update map
+            update_fields = []
+            params = []
+            
+            if payload.label is not None:
+                update_fields.append("label = %s")
+                params.append(payload.label)
+                
+            if payload.description is not None:
+                update_fields.append("description = %s")
+                params.append(payload.description)
+                
+            if payload.permissions is not None:
+                update_fields.append("permissions = %s")
+                # Ensure we serialize to JSON string for Postgres JSONB
+                params.append(json.dumps(payload.permissions.model_dump(exclude_unset=True)))
+            
+            if not update_fields:
+                raise HTTPException(status_code=400, detail="No fields to update")
+            
+            update_fields.append("updated_at = NOW()")
+            params.append(role_id)
+            
+            query = f"""
+                UPDATE role_definitions 
+                SET {', '.join(update_fields)} 
+                WHERE role_id = %s
+                RETURNING *
+            """
+            
+            cur.execute(query, params)
+            result = cur.fetchone()
+            
+            if not result:
+                conn.rollback()
+                raise HTTPException(status_code=404, detail="Role not found")
+                
+            conn.commit()
+            return dict(result)
+            
+    except Exception as e:
+        print(f"Error updating role via SQL: {e}")
+        if 'conn' in locals() and conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if 'conn' in locals() and conn:
+            conn.close()
+
+
+# --- Session Control Endpoints (Using Supabase REST API) ---
+
+@app.post("/users/{user_id}/logout")
+async def force_logout_user(user_id: str):
+    """Force logout a user using Supabase REST API"""
+    try:
+        url = f"{_get_supabase_url()}/perfiles?id=eq.{user_id}"
+        update_data = {"last_force_logout_at": datetime.utcnow().isoformat()}
+        
+        response = requests.patch(url, headers=_get_supabase_headers(), json=update_data)
+        
+        if response.status_code not in [200, 204]:
+            raise HTTPException(status_code=500, detail=f"Error: {response.text}")
+        
+        return {"success": True, "message": "User session terminated"}
+    except requests.RequestException as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/users/heartbeat")
+async def user_heartbeat(payload: HeartbeatRequest):
+    """Update user heartbeat using Supabase REST API"""
+    try:
+        # First check if user is active
+        url = f"{_get_supabase_url()}/perfiles?id=eq.{payload.user_id}&select=activo"
+        response = requests.get(url, headers=_get_supabase_headers())
+        
+        if response.status_code != 200:
+            return {"success": False, "error": "User not found"}
+        
+        data = response.json()
+        if not data:
+            return {"success": False, "error": "User not found"}
+        
+        is_active = data[0].get("activo", True)
+        if is_active is False:
+            return {"success": False, "status": "inactive"}
+        
+        # Update last_seen_at
+        update_url = f"{_get_supabase_url()}/perfiles?id=eq.{payload.user_id}"
+        update_data = {"last_seen_at": datetime.utcnow().isoformat()}
+        
+        update_response = requests.patch(update_url, headers=_get_supabase_headers(), json=update_data)
+        
+        if update_response.status_code not in [200, 204]:
+            return {"success": False, "error": "Failed to update heartbeat"}
+        
+        return {"success": True, "status": "active"}
+    except requests.RequestException as e:
+        print(f"Heartbeat error: {e}")
+        return {"success": False, "error": str(e)}
+
+
+app.include_router(recepciones_router)
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=8000)
