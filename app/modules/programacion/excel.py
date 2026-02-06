@@ -431,7 +431,8 @@ def export_programacion_administracion_xlsx(template_path: str, items: list[dict
             # F: ESTADO PAGO
             _set_cell_value(sheet_data, f'F{row}', item.get('estado_pago', ''), ns, get_string_idx=get_string_idx)
             # G: ESTADO PARA AUTORIZAR
-            _set_cell_value(sheet_data, f'G{row}', item.get('estado_autorizar', ''), ns, get_string_idx=get_string_idx)
+            autorizar_val = item.get('autorizacion_lab') or item.get('estado_autorizar', '')
+            _set_cell_value(sheet_data, f'G{row}', autorizar_val, ns, get_string_idx=get_string_idx)
             # H: NOTA
             _set_cell_value(sheet_data, f'H{row}', item.get('nota_admin', ''), ns, get_string_idx=get_string_idx)
 
