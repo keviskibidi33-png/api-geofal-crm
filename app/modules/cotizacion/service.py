@@ -12,8 +12,13 @@ from .schemas import QuoteExportRequest
 
 # Load env from parent of module (app level)
 # app/modules/cotizacion -> app/modules -> app -> root
-env_path = Path(__file__).resolve().parents[3] / ".env"
+root_dir = Path(__file__).resolve().parents[3]
+env_path = root_dir / ".env"
 load_dotenv(env_path, override=False)
+
+# Directory for local quote storage
+QUOTES_FOLDER = root_dir / "cotizaciones"
+QUOTES_FOLDER.mkdir(exist_ok=True)
 
 def _get_database_url() -> str:
     url = os.getenv("QUOTES_DATABASE_URL")
@@ -284,7 +289,8 @@ def update_quote_db(quote_id: str, payload: QuoteExportRequest, filepath: str, o
                     fecha_emision = %s, fecha_solicitud = %s, archivo_path = %s,
                     include_igv = %s, updated_at = NOW(),
                     proyecto_id = %s, cliente_id = %s, plazo_dias = %s, 
-                    condicion_pago = %s, condiciones_ids = %s::uuid[], correo_vendedor = %s
+                    condicion_pago = %s, condiciones_ids = %s::uuid[], correo_vendedor = %s,
+                    object_key = %s
                 WHERE id = %s
             """, (
                 payload.cliente, payload.ruc, payload.contacto, payload.telefono_contacto, payload.correo,
@@ -297,6 +303,7 @@ def update_quote_db(quote_id: str, payload: QuoteExportRequest, filepath: str, o
                 payload.condicion_pago or "", 
                 [str(x) for x in payload.condiciones_ids] if payload.condiciones_ids else [], 
                 payload.correo_vendedor,
+                object_key,
                 quote_id
             ))
             conn.commit()
