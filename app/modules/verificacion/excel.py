@@ -136,14 +136,32 @@ class ExcelLogic:
         self._llenar_equipos(ws, verificacion)
         
         if verificacion.nota:
-            ws.cell(row=19, column=2, value=verificacion.nota)
+            self._set_cell_value(ws, 19, 2, verificacion.nota)
+
+    def _set_cell_value(self, ws, row, col, value):
+        """
+        Escribe un valor en una celda, manejando casos de celdas combinadas (MergedCells).
+        Escribe siempre en la celda superior izquierda del rango combinado.
+        """
+        from openpyxl.cell.cell import MergedCell
+        cell = ws.cell(row=row, column=col)
+        
+        if isinstance(cell, MergedCell):
+            # Buscar el rango al que pertenece esta celda
+            for merged_range in ws.merged_cells.ranges:
+                if cell.coordinate in merged_range:
+                    # Escribir en la celda superior izquierda del rango
+                    ws.cell(row=merged_range.min_row, column=merged_range.min_col, value=value)
+                    return
+        else:
+            cell.value = value
 
     def _buscar_y_llenar(self, ws, etiqueta, valor, col_offset=1):
         for r in range(1, 15):
             for c in range(1, 15):
                 cell = ws.cell(row=r, column=c)
                 if cell.value and etiqueta in str(cell.value).upper():
-                    ws.cell(row=r, column=c + col_offset, value=valor)
+                    self._set_cell_value(ws, r, c + col_offset, valor)
                     return
 
     def _llenar_fila_muestra(self, ws, row, numero, muestra: MuestraVerificada):
@@ -152,32 +170,32 @@ class ExcelLogic:
             if val is False: return "✗"
             return str(val) if val is not None else ""
 
-        ws.cell(row=row, column=self.COLUMNS['numero'], value=numero)
-        ws.cell(row=row, column=self.COLUMNS['codigo_lem'], value=muestra.codigo_lem or "")
-        ws.cell(row=row, column=self.COLUMNS['tipo_testigo'], value=muestra.tipo_testigo or "")
-        ws.cell(row=row, column=self.COLUMNS['diametro_1'], value=muestra.diametro_1_mm)
-        ws.cell(row=row, column=self.COLUMNS['diametro_2'], value=muestra.diametro_2_mm)
-        ws.cell(row=row, column=self.COLUMNS['tolerancia_porcentaje'], value=muestra.tolerancia_porcentaje)
-        ws.cell(row=row, column=self.COLUMNS['aceptacion_diametro'], value=muestra.aceptacion_diametro)
+        self._set_cell_value(ws, row, self.COLUMNS['numero'], numero)
+        self._set_cell_value(ws, row, self.COLUMNS['codigo_lem'], muestra.codigo_lem or "")
+        self._set_cell_value(ws, row, self.COLUMNS['tipo_testigo'], muestra.tipo_testigo or "")
+        self._set_cell_value(ws, row, self.COLUMNS['diametro_1'], muestra.diametro_1_mm)
+        self._set_cell_value(ws, row, self.COLUMNS['diametro_2'], muestra.diametro_2_mm)
+        self._set_cell_value(ws, row, self.COLUMNS['tolerancia_porcentaje'], muestra.tolerancia_porcentaje)
+        self._set_cell_value(ws, row, self.COLUMNS['aceptacion_diametro'], muestra.aceptacion_diametro)
         
-        ws.cell(row=row, column=self.COLUMNS['perpendicularidad_sup1'], value=_fmt(muestra.perpendicularidad_sup1))
-        ws.cell(row=row, column=self.COLUMNS['perpendicularidad_sup2'], value=_fmt(muestra.perpendicularidad_sup2))
-        ws.cell(row=row, column=self.COLUMNS['perpendicularidad_inf1'], value=_fmt(muestra.perpendicularidad_inf1))
-        ws.cell(row=row, column=self.COLUMNS['perpendicularidad_inf2'], value=_fmt(muestra.perpendicularidad_inf2))
-        ws.cell(row=row, column=self.COLUMNS['perpendicularidad_medida'], value=_fmt(muestra.perpendicularidad_medida))
+        self._set_cell_value(ws, row, self.COLUMNS['perpendicularidad_sup1'], _fmt(muestra.perpendicularidad_sup1))
+        self._set_cell_value(ws, row, self.COLUMNS['perpendicularidad_sup2'], _fmt(muestra.perpendicularidad_sup2))
+        self._set_cell_value(ws, row, self.COLUMNS['perpendicularidad_inf1'], _fmt(muestra.perpendicularidad_inf1))
+        self._set_cell_value(ws, row, self.COLUMNS['perpendicularidad_inf2'], _fmt(muestra.perpendicularidad_inf2))
+        self._set_cell_value(ws, row, self.COLUMNS['perpendicularidad_medida'], _fmt(muestra.perpendicularidad_medida))
         
-        ws.cell(row=row, column=self.COLUMNS['planitud_superior'], value=muestra.planitud_superior_aceptacion)
-        ws.cell(row=row, column=self.COLUMNS['planitud_inferior'], value=muestra.planitud_inferior_aceptacion)
-        ws.cell(row=row, column=self.COLUMNS['planitud_depresiones'], value=muestra.planitud_depresiones_aceptacion)
+        self._set_cell_value(ws, row, self.COLUMNS['planitud_superior'], muestra.planitud_superior_aceptacion)
+        self._set_cell_value(ws, row, self.COLUMNS['planitud_inferior'], muestra.planitud_inferior_aceptacion)
+        self._set_cell_value(ws, row, self.COLUMNS['planitud_depresiones'], muestra.planitud_depresiones_aceptacion)
         
-        ws.cell(row=row, column=self.COLUMNS['accion'], value=muestra.accion_realizar)
-        ws.cell(row=row, column=self.COLUMNS['conformidad'], value=muestra.conformidad)
+        self._set_cell_value(ws, row, self.COLUMNS['accion'], muestra.accion_realizar)
+        self._set_cell_value(ws, row, self.COLUMNS['conformidad'], muestra.conformidad)
         
-        ws.cell(row=row, column=self.COLUMNS['longitud_1'], value=muestra.longitud_1_mm)
-        ws.cell(row=row, column=self.COLUMNS['longitud_2'], value=muestra.longitud_2_mm)
-        ws.cell(row=row, column=self.COLUMNS['longitud_3'], value=muestra.longitud_3_mm)
-        ws.cell(row=row, column=self.COLUMNS['masa'], value=muestra.masa_muestra_aire_g)
-        ws.cell(row=row, column=self.COLUMNS['pesar'], value=muestra.pesar)
+        self._set_cell_value(ws, row, self.COLUMNS['longitud_1'], muestra.longitud_1_mm)
+        self._set_cell_value(ws, row, self.COLUMNS['longitud_2'], muestra.longitud_2_mm)
+        self._set_cell_value(ws, row, self.COLUMNS['longitud_3'], muestra.longitud_3_mm)
+        self._set_cell_value(ws, row, self.COLUMNS['masa'], muestra.masa_muestra_aire_g)
+        self._set_cell_value(ws, row, self.COLUMNS['pesar'], muestra.pesar)
 
     def _llenar_equipos(self, ws, v: VerificacionMuestras):
         row = 18
@@ -186,4 +204,4 @@ class ExcelLogic:
             (9, v.equipo_escuadra), (11, v.equipo_balanza)
         ]
         for col, val in equipos:
-            if val: ws.cell(row=row, column=col+1, value=val)
+            if val: self._set_cell_value(ws, row, col + 1, val)
