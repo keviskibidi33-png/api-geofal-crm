@@ -45,7 +45,16 @@ Maneja la agenda y estados de los servicios.
 - **Funcionalidad:** Asignación de fechas de ensayo, personal y control de tiempos.
 - **Integración:** Se conecta con Cotización para jalar items y con Recepción para estados de muestra.
 
-### 4. Gestión de Clientes (En `app/main.py`)
+### 4. NUEVO: Módulo de Verificación (`app/modules/verificacion`)
+Valida la integridad de las muestras de concreto cilíndrico según la normativa técnica.
+- **Funcionalidad:** Generación de Acta de Verificación (Formato *F-LEM-P-01.12 V03*) en Excel.
+- **Características Técnicas:**
+    - **Replicación de Estilos**: Algoritmo inteligente que copia bordes y fuentes de la fila base (10) a todas las nuevas filas dinámicas, garantizando consistencia visual.
+    - **Fila "Gap"**: Inserción automática de separador visual entre datos y equipos.
+    - **Footer Dinámico**: Detecta y reubica la firma y pie de página en la Columna J, adaptándose a la cantidad variable de ítems.
+    - **Datos**: Validación estricta de campos críticos como diámetros y condición de pesado ("PESAR"/"NO PESAR").
+
+### 5. Gestión de Clientes (En `app/main.py`)
 Módulo ligero para administración de cartera de clientes.
 - **Funcionalidad:** Búsqueda (`/clientes?search=...`) y creación de clientes.
 - **Ubicación:** Definido directamente en `main.py` por simplicidad histórica.
