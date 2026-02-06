@@ -11,7 +11,7 @@ from .service import (
     _has_database_url, _get_connection, _ensure_sequence_table, 
     _next_quote_sequential, _save_quote_to_folder, register_quote_in_db, 
     _upload_to_supabase_storage, QUOTES_FOLDER, get_condiciones_textos,
-    update_quote_db
+    update_quote_db, _get_safe_filename
 )
 from .excel import _get_template_path, generate_quote_excel
 
@@ -112,8 +112,9 @@ async def export_quote(payload: QuoteExportRequest) -> Response:
             payload.cliente or "SinCliente"
         )
         
-        # Register in DB and Upload
-        cloud_path = f"{year}/COT-{year}-{cotizacion_numero}-{payload.cliente or 'S-N'}.xlsx"
+        # Register in DB and Upload (Sanitized path for cloud)
+        safe_cliente_cloud = _get_safe_filename(payload.cliente or "S-N", "").rstrip('.')
+        cloud_path = f"{year}/COT-{year}-{cotizacion_numero}-{safe_cliente_cloud}.xlsx"
         try:
             register_quote_in_db(cotizacion_numero, year, payload.cliente, str(filepath), payload, object_key=cloud_path)
             

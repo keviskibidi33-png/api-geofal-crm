@@ -29,11 +29,14 @@ from psycopg2.extras import RealDictCursor
 from app.modules.recepcion.router import router as recepciones_router
 from app.modules.cotizacion.router import router as cotizacion_router
 from app.modules.programacion.router import router as programacion_router
+from app.modules.verificacion.router import router as verificacion_router
 from app.modules.recepcion.models import Base as RecepcionBase
+from app.modules.verificacion.models import Base as VerificacionBase
 from app.database import engine
 
 # Ensure tables are created
 RecepcionBase.metadata.create_all(bind=engine)
+VerificacionBase.metadata.create_all(bind=engine)
 
 # --- Pydantic Models for Roles & Permissions ---
 
@@ -192,6 +195,7 @@ async def debug_db():
 app.include_router(recepciones_router)
 app.include_router(cotizacion_router)
 app.include_router(programacion_router)
+app.include_router(verificacion_router)
 
 # Note: All legacy endpoints for Quotes and Programacion have been moved to their respective modules.
 # Check app/modules/cotizacion and app/modules/programacion.

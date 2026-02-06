@@ -9,6 +9,19 @@ from .models import RecepcionMuestra, MuestraConcreto
 from .schemas import RecepcionMuestraCreate, RecepcionMuestraResponse
 from .exceptions import DuplicateRecepcionError
 from .excel import ExcelLogic
+import re
+import unicodedata
+
+def _get_safe_filename(base_name: str, extension: str = "xlsx") -> str:
+    """Sanitiza nombres de archivo para evitar errores en Storage y sistemas de archivos"""
+    # Eliminar acentos y caracteres especiales
+    s = unicodedata.normalize('NFKD', base_name).encode('ascii', 'ignore').decode('ascii')
+    # Reemplazar todo lo que no sea alfanumérico, espacio o guion por nada
+    s = re.sub(r'[^\w\s-]', '', s)
+    # Reemplazar espacios por guiones bajos y limpiar extremos
+    s = s.strip().replace(' ', '_')
+    # Limitar longitud para evitar rutas demasiado largas
+    return f"{s[:60]}.{extension}"
 
 class RecepcionService:
     def __init__(self):
@@ -116,7 +129,9 @@ class RecepcionService:
             # --- NUEVO: Generar y subir Excel a Supabase ---
             try:
                 excel_content = self.excel_logic.generar_excel_recepcion(recepcion)
-                filename = f"Recepcion_{recepcion.numero_ot.replace('/', '_')}.xlsx"
+                # Sanitizar el nombre del archivo para Storage
+                safe_ot = recepcion.numero_ot.replace('/', '_')
+                filename = _get_safe_filename(f"Recepcion_{safe_ot}", "xlsx")
                 obj_key = self._upload_to_supabase(excel_content, filename)
                 
                 if obj_key:

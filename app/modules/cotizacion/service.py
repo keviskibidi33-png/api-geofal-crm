@@ -98,15 +98,24 @@ def _upload_to_supabase_storage(file_data: io.BytesIO, bucket: str, path: str) -
         print(f"Error uploading to storage: {e}")
         return None
 
-# QUOTES_FOLDER relative to API root
-QUOTES_FOLDER = Path(__file__).resolve().parents[3] / "cotizaciones"
-QUOTES_FOLDER.mkdir(exist_ok=True)
+def _get_safe_filename(base_name: str, extension: str = "xlsx") -> str:
+    """Sanitiza nombres de archivo para evitar errores en Storage y sistemas de archivos"""
+    # Eliminar acentos y caracteres especiales
+    import unicodedata
+    s = unicodedata.normalize('NFKD', base_name).encode('ascii', 'ignore').decode('ascii')
+    # Reemplazar todo lo que no sea alfanumérico, espacio o guion por nada
+    s = re.sub(r'[^\w\s-]', '', s)
+    # Reemplazar espacios por guiones bajos y limpiar extremos
+    s = s.strip().replace(' ', '_')
+    # Limitar longitud para evitar rutas demasiado largas
+    return f"{s[:60]}.{extension}"
 
 def _save_quote_to_folder(xlsx_bytes: io.BytesIO, cotizacion_numero: str, year: int, cliente: str) -> Path:
     year_folder = QUOTES_FOLDER / str(year)
     year_folder.mkdir(exist_ok=True)
     
-    safe_cliente = re.sub(r'[^\w\s-]', '', cliente)[:30].strip().replace(' ', '_')
+    # Usar el nuevo helper para el nombre del cliente
+    safe_cliente = _get_safe_filename(cliente, "").rstrip('.')
     filename = f"COT-{year}-{cotizacion_numero}_{safe_cliente}.xlsx"
     filepath = year_folder / filename
     
