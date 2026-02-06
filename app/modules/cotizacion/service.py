@@ -100,15 +100,25 @@ def _upload_to_supabase_storage(file_data: io.BytesIO, bucket: str, path: str) -
 
 def _get_safe_filename(base_name: str, extension: str = "xlsx") -> str:
     """Sanitiza nombres de archivo para evitar errores en Storage y sistemas de archivos"""
+    if not base_name:
+        base_name = "SinNombre"
+        
     # Eliminar acentos y caracteres especiales
     import unicodedata
     s = unicodedata.normalize('NFKD', base_name).encode('ascii', 'ignore').decode('ascii')
-    # Reemplazar todo lo que no sea alfanumérico, espacio o guion por nada
-    s = re.sub(r'[^\w\s-]', '', s)
-    # Reemplazar espacios por guiones bajos y limpiar extremos
-    s = s.strip().replace(' ', '_')
-    # Limitar longitud para evitar rutas demasiado largas
-    return f"{s[:60]}.{extension}"
+    # Reemplazar todo lo que no sea alfanumérico o espacio por espacio
+    s = re.sub(r'[^\w\s-]', ' ', s)
+    # Reemplazar múltiples espacios/guiones por uno solo
+    s = re.sub(r'[-\s_]+', '_', s)
+    # Limpiar extremos
+    s = s.strip('_')
+    
+    # Limitar longitud
+    s = s[:60]
+    
+    if extension:
+        return f"{s}.{extension}"
+    return s
 
 def _save_quote_to_folder(xlsx_bytes: io.BytesIO, cotizacion_numero: str, year: int, cliente: str) -> Path:
     year_folder = QUOTES_FOLDER / str(year)

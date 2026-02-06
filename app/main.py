@@ -96,7 +96,7 @@ def _get_cors_origins() -> list[str]:
         "http://127.0.0.1:3000", 
         "http://localhost:3002",
         "https://crm.geofal.com.pe",
-        "https://recepcion.geofal.com.pe/",
+        "https://recepcion.geofal.com.pe",
         "https://cotizador.geofal.com.pe",
         "https://programacion.geofal.com.pe"
     ]

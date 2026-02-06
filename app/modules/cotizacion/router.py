@@ -113,7 +113,7 @@ async def export_quote(payload: QuoteExportRequest) -> Response:
         )
         
         # Register in DB and Upload (Sanitized path for cloud)
-        safe_cliente_cloud = _get_safe_filename(payload.cliente or "S-N", "").rstrip('.')
+        safe_cliente_cloud = _get_safe_filename(payload.cliente or "S-N", None)
         cloud_path = f"{year}/COT-{year}-{cotizacion_numero}-{safe_cliente_cloud}.xlsx"
         try:
             register_quote_in_db(cotizacion_numero, year, payload.cliente, str(filepath), payload, object_key=cloud_path)
@@ -348,16 +348,18 @@ async def update_quote(quote_id: str, payload: QuoteExportRequest):
         with open(filepath, "wb") as f:
             f.write(xlsx_bytes.read())
             
-        # 5. DB Update
-        update_quote_db(quote_id, payload, str(filepath))
+        # 5. DB Update (Sanitize key)
+        safe_cliente_cloud = _get_safe_filename(payload.cliente or "S-N", None)
+        cloud_path = f"{year}/COT-{year}-{existing['numero']}-{safe_cliente_cloud}.xlsx"
+        
+        update_quote_db(quote_id, payload, str(filepath), object_key=cloud_path)
         
         # 6. Storage Update
-        if existing.get('object_key'):
-            try:
-                xlsx_bytes.seek(0)
-                _upload_to_supabase_storage(xlsx_bytes, "cotizaciones", existing['object_key'])
-            except Exception as e:
-                print(f"Error updating storage: {e}")
+        try:
+            xlsx_bytes.seek(0)
+            _upload_to_supabase_storage(xlsx_bytes, "cotizaciones", cloud_path)
+        except Exception as e:
+            print(f"Error updating storage: {e}")
                 
         return {"success": True, "message": "Quote updated successfully", "quote_id": quote_id}
             
