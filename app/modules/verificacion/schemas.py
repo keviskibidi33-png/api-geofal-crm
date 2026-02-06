@@ -105,9 +105,7 @@ class VerificacionMuestrasBase(BaseModel):
     @field_validator('fecha_documento', 'fecha_verificacion')
     @classmethod
     def validate_date_format(cls, v):
-        """Validar formato de fecha DD/MM/YYYY"""
-        if v and v.strip() and not re.match(r'^\d{2}/\d{2}/\d{4}$', v):
-            raise ValueError('La fecha debe estar en formato DD/MM/YYYY')
+        """Allow dates in various formats or just string"""
         return v
 
 class VerificacionMuestrasCreate(VerificacionMuestrasBase):

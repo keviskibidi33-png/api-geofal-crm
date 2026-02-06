@@ -209,3 +209,266 @@ def export_programacion_xlsx(template_path: str, items: list[dict]) -> io.BytesI
                     
     output.seek(0)
     return output
+
+
+def export_programacion_comercial_xlsx(template_path: str, items: list[dict]) -> io.BytesIO:
+    """
+    Exporta Programacion COMERCIAL XLSX modificando el XML del template directamente.
+    Mapeo (segun Template_Programacion_Comercial.xlsx):
+    ITEM: A
+    RECEP.N: B
+    FECHA RECEPCIÓN: C
+    CLIENTE: D
+    COTIZACION: E
+    FECHA SOLICITUD: F
+    FECHA ENTREGA: G
+    EVIDENCIA SOLICITUD - ENVIO - ACEPTACION COTIZ: H
+    DIAS ATRASO ENVIO COTIZ.: I
+    MOTIVO DIAS ATRASO: J
+    
+    Data starts at Row 9.
+    """
+    
+    # 1. Load shared strings
+    shared_strings = []
+    shared_strings_map = {}
+    ss_xml_original = None
+    
+    with zipfile.ZipFile(template_path, 'r') as z:
+        if 'xl/sharedStrings.xml' in z.namelist():
+            ss_xml_original = z.read('xl/sharedStrings.xml')
+            ss_root = etree.fromstring(ss_xml_original)
+            ns = ss_root.nsmap.get(None, NAMESPACES['main'])
+            
+            for si in ss_root.findall(f'{{{ns}}}si'):
+                t = si.find(f'{{{ns}}}t')
+                if t is not None and t.text:
+                    shared_strings.append(t.text)
+                    shared_strings_map[t.text] = len(shared_strings) - 1
+                else:
+                    r_texts = si.findall(f'.//{{{ns}}}t')
+                    text = ''.join([t.text or '' for t in r_texts])
+                    shared_strings.append(text)
+                    if text:
+                        shared_strings_map[text] = len(shared_strings) - 1
+
+    def get_string_idx(text: str) -> int:
+        if text is None: text = ""
+        s_text = str(text)
+        if s_text in shared_strings_map:
+            return shared_strings_map[s_text]
+        idx = len(shared_strings)
+        shared_strings.append(s_text)
+        shared_strings_map[s_text] = idx
+        return idx
+
+    # 2. Modify Sheet 1
+    sheet_file = 'xl/worksheets/sheet1.xml'
+    
+    with zipfile.ZipFile(template_path, 'r') as z:
+        sheet_data_xml = z.read(sheet_file)
+        
+    root = etree.fromstring(sheet_data_xml)
+    ns = root.nsmap.get(None, NAMESPACES['main'])
+    sheet_data = root.find(f'.//{{{ns}}}sheetData')
+    
+    START_ROW = 9
+    
+    if sheet_data is not None:
+        count = len(items)
+        if count > 1:
+            _shift_rows(sheet_data, START_ROW + 1, count - 1, ns)
+            _shift_merged_cells(root, START_ROW + 1, count - 1, ns)
+            
+            for i in range(1, count):
+                _duplicate_row(sheet_data, START_ROW, START_ROW + i, ns)
+                
+        # Fill Data
+        for idx, item in enumerate(items):
+            row = START_ROW + idx
+            # A: ITEM
+            _set_cell_value(sheet_data, f'A{row}', item.get('item_numero', ''), ns, get_string_idx=get_string_idx)
+            # B: RECEP.N
+            _set_cell_value(sheet_data, f'B{row}', item.get('recep_numero', ''), ns, get_string_idx=get_string_idx)
+            # C: FECHA RECEPCIÓN
+            _set_cell_value(sheet_data, f'C{row}', item.get('fecha_recepcion', ''), ns, get_string_idx=get_string_idx)
+            # D: CLIENTE
+            _set_cell_value(sheet_data, f'D{row}', item.get('cliente_nombre', ''), ns, get_string_idx=get_string_idx)
+            # E: COTIZACION
+            _set_cell_value(sheet_data, f'E{row}', item.get('cotizacion_lab', ''), ns, get_string_idx=get_string_idx)
+            # F: FECHA SOLICITUD
+            _set_cell_value(sheet_data, f'F{row}', item.get('fecha_solicitud_com', ''), ns, get_string_idx=get_string_idx)
+            # G: FECHA ENTREGA
+            _set_cell_value(sheet_data, f'G{row}', item.get('fecha_entrega_com', ''), ns, get_string_idx=get_string_idx)
+            # H: EVIDENCIA
+            _set_cell_value(sheet_data, f'H{row}', item.get('evidencia_solicitud_envio', ''), ns, get_string_idx=get_string_idx)
+            # I: DIAS ATRASO
+            _set_cell_value(sheet_data, f'I{row}', item.get('dias_atraso_envio_coti', ''), ns, is_number=True)
+            # J: MOTIVO
+            _set_cell_value(sheet_data, f'J{row}', item.get('motivo_dias_atraso_com', ''), ns, get_string_idx=get_string_idx)
+
+    # 3. Serialize
+    modified_sheet1 = etree.tostring(root, encoding='utf-8', xml_declaration=True)
+    
+    # 4. Update Shared Strings
+    modified_ss = None
+    if ss_xml_original:
+        ss_root = etree.fromstring(ss_xml_original)
+        ss_ns = ss_root.nsmap.get(None, NAMESPACES['main'])
+        
+        for child in list(ss_root):
+            ss_root.remove(child)
+        
+        for text in shared_strings:
+            si = etree.SubElement(ss_root, f'{{{ss_ns}}}si')
+            t = etree.SubElement(si, f'{{{ss_ns}}}t')
+            t.text = text if text else ''
+        
+        ss_root.set('count', str(len(shared_strings)))
+        ss_root.set('uniqueCount', str(len(shared_strings)))
+        
+        modified_ss = etree.tostring(ss_root, encoding='utf-8', xml_declaration=True)
+
+    # 5. Write Output
+    output = io.BytesIO()
+    with zipfile.ZipFile(template_path, 'r') as z_in:
+        with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED) as z_out:
+            for item in z_in.namelist():
+                if item == sheet_file:
+                    z_out.writestr(item, modified_sheet1)
+                elif item == 'xl/sharedStrings.xml' and modified_ss:
+                    z_out.writestr(item, modified_ss)
+                else:
+                    z_out.writestr(item, z_in.read(item))
+                    
+    output.seek(0)
+    return output
+
+
+def export_programacion_administracion_xlsx(template_path: str, items: list[dict]) -> io.BytesIO:
+    """
+    Exporta Programacion ADMINISTRACION XLSX modificando el XML del template directamente.
+    Mapeo (segun Template_Programacion_Administracion.xlsx):
+    ITEM: A
+    RECEP.N: B
+    FECHA RECEPCIÓN: C
+    CLIENTE: D
+    Nº FACTURA: E
+    ESTADO PAGO: F
+    ESTADO PARA AUTORIZAR: G
+    NOTA: H
+    
+    Data starts at Row 6.
+    """
+    
+    # 1. Load shared strings
+    shared_strings = []
+    shared_strings_map = {}
+    ss_xml_original = None
+    
+    with zipfile.ZipFile(template_path, 'r') as z:
+        if 'xl/sharedStrings.xml' in z.namelist():
+            ss_xml_original = z.read('xl/sharedStrings.xml')
+            ss_root = etree.fromstring(ss_xml_original)
+            ns = ss_root.nsmap.get(None, NAMESPACES['main'])
+            
+            for si in ss_root.findall(f'{{{ns}}}si'):
+                t = si.find(f'{{{ns}}}t')
+                if t is not None and t.text:
+                    shared_strings.append(t.text)
+                    shared_strings_map[t.text] = len(shared_strings) - 1
+                else:
+                    r_texts = si.findall(f'.//{{{ns}}}t')
+                    text = ''.join([t.text or '' for t in r_texts])
+                    shared_strings.append(text)
+                    if text:
+                        shared_strings_map[text] = len(shared_strings) - 1
+
+    def get_string_idx(text: str) -> int:
+        if text is None: text = ""
+        s_text = str(text)
+        if s_text in shared_strings_map:
+            return shared_strings_map[s_text]
+        idx = len(shared_strings)
+        shared_strings.append(s_text)
+        shared_strings_map[s_text] = idx
+        return idx
+
+    # 2. Modify Sheet 1
+    sheet_file = 'xl/worksheets/sheet1.xml'
+    
+    with zipfile.ZipFile(template_path, 'r') as z:
+        sheet_data_xml = z.read(sheet_file)
+        
+    root = etree.fromstring(sheet_data_xml)
+    ns = root.nsmap.get(None, NAMESPACES['main'])
+    sheet_data = root.find(f'.//{{{ns}}}sheetData')
+    
+    START_ROW = 6
+    
+    if sheet_data is not None:
+        count = len(items)
+        if count > 1:
+            _shift_rows(sheet_data, START_ROW + 1, count - 1, ns)
+            _shift_merged_cells(root, START_ROW + 1, count - 1, ns)
+            
+            for i in range(1, count):
+                _duplicate_row(sheet_data, START_ROW, START_ROW + i, ns)
+                
+        # Fill Data
+        for idx, item in enumerate(items):
+            row = START_ROW + idx
+            # A: ITEM
+            _set_cell_value(sheet_data, f'A{row}', item.get('item_numero', ''), ns, get_string_idx=get_string_idx)
+            # B: RECEP.N
+            _set_cell_value(sheet_data, f'B{row}', item.get('recep_numero', ''), ns, get_string_idx=get_string_idx)
+            # C: FECHA RECEPCIÓN
+            _set_cell_value(sheet_data, f'C{row}', item.get('fecha_recepcion', ''), ns, get_string_idx=get_string_idx)
+            # D: CLIENTE
+            _set_cell_value(sheet_data, f'D{row}', item.get('cliente_nombre', ''), ns, get_string_idx=get_string_idx)
+            # E: Nº FACTURA
+            _set_cell_value(sheet_data, f'E{row}', item.get('numero_factura', ''), ns, get_string_idx=get_string_idx)
+            # F: ESTADO PAGO
+            _set_cell_value(sheet_data, f'F{row}', item.get('estado_pago', ''), ns, get_string_idx=get_string_idx)
+            # G: ESTADO PARA AUTORIZAR
+            _set_cell_value(sheet_data, f'G{row}', item.get('estado_autorizar', ''), ns, get_string_idx=get_string_idx)
+            # H: NOTA
+            _set_cell_value(sheet_data, f'H{row}', item.get('nota_admin', ''), ns, get_string_idx=get_string_idx)
+
+    # 3. Serialize
+    modified_sheet1 = etree.tostring(root, encoding='utf-8', xml_declaration=True)
+    
+    # 4. Update Shared Strings
+    modified_ss = None
+    if ss_xml_original:
+        ss_root = etree.fromstring(ss_xml_original)
+        ss_ns = ss_root.nsmap.get(None, NAMESPACES['main'])
+        
+        for child in list(ss_root):
+            ss_root.remove(child)
+        
+        for text in shared_strings:
+            si = etree.SubElement(ss_root, f'{{{ss_ns}}}si')
+            t = etree.SubElement(si, f'{{{ss_ns}}}t')
+            t.text = text if text else ''
+        
+        ss_root.set('count', str(len(shared_strings)))
+        ss_root.set('uniqueCount', str(len(shared_strings)))
+        
+        modified_ss = etree.tostring(ss_root, encoding='utf-8', xml_declaration=True)
+
+    # 5. Write Output
+    output = io.BytesIO()
+    with zipfile.ZipFile(template_path, 'r') as z_in:
+        with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED) as z_out:
+            for item in z_in.namelist():
+                if item == sheet_file:
+                    z_out.writestr(item, modified_sheet1)
+                elif item == 'xl/sharedStrings.xml' and modified_ss:
+                    z_out.writestr(item, modified_ss)
+                else:
+                    z_out.writestr(item, z_in.read(item))
+                    
+    output.seek(0)
+    return output
+
