@@ -138,23 +138,26 @@ class ExcelLogic:
         if verificacion.nota:
             self._set_cell_value(ws, 19, 2, verificacion.nota)
 
-    def _set_cell_value(self, ws, row, col, value):
+    def _set_cell_value(self, ws, row, col, value, apply_style=True):
         """
         Escribe un valor en una celda, manejando casos de celdas combinadas (MergedCells).
-        Escribe siempre en la celda superior izquierda del rango combinado.
+        Escribe siempre en la celda superior izquierda del rango combinado y aplica centrado.
         """
         from openpyxl.cell.cell import MergedCell
         cell = ws.cell(row=row, column=col)
         
+        target_cell = cell
         if isinstance(cell, MergedCell):
             # Buscar el rango al que pertenece esta celda
             for merged_range in ws.merged_cells.ranges:
                 if cell.coordinate in merged_range:
                     # Escribir en la celda superior izquierda del rango
-                    ws.cell(row=merged_range.min_row, column=merged_range.min_col, value=value)
-                    return
-        else:
-            cell.value = value
+                    target_cell = ws.cell(row=merged_range.min_row, column=merged_range.min_col)
+                    break
+        
+        target_cell.value = value
+        if apply_style:
+            target_cell.alignment = self.align_center
 
     def _buscar_y_llenar(self, ws, etiqueta, valor, col_offset=1):
         for r in range(1, 15):
@@ -166,8 +169,11 @@ class ExcelLogic:
 
     def _llenar_fila_muestra(self, ws, row, numero, muestra: MuestraVerificada):
         def _fmt(val):
-            if val is True: return "✓"
-            if val is False: return "✗"
+            if val is True: return "CUMPLE"
+            if val is False: return "NO CUMPLE"
+            # Manejar strings que representan booleanos o el valor directo
+            if str(val).upper() in ["TRUE", "CUMPLE", "✓"]: return "CUMPLE"
+            if str(val).upper() in ["FALSE", "NO CUMPLE", "✗"]: return "NO CUMPLE"
             return str(val) if val is not None else ""
 
         self._set_cell_value(ws, row, self.COLUMNS['numero'], numero)
@@ -176,7 +182,7 @@ class ExcelLogic:
         self._set_cell_value(ws, row, self.COLUMNS['diametro_1'], muestra.diametro_1_mm)
         self._set_cell_value(ws, row, self.COLUMNS['diametro_2'], muestra.diametro_2_mm)
         self._set_cell_value(ws, row, self.COLUMNS['tolerancia_porcentaje'], muestra.tolerancia_porcentaje)
-        self._set_cell_value(ws, row, self.COLUMNS['aceptacion_diametro'], muestra.aceptacion_diametro)
+        self._set_cell_value(ws, row, self.COLUMNS['aceptacion_diametro'], _fmt(muestra.aceptacion_diametro))
         
         self._set_cell_value(ws, row, self.COLUMNS['perpendicularidad_sup1'], _fmt(muestra.perpendicularidad_sup1))
         self._set_cell_value(ws, row, self.COLUMNS['perpendicularidad_sup2'], _fmt(muestra.perpendicularidad_sup2))
@@ -184,9 +190,9 @@ class ExcelLogic:
         self._set_cell_value(ws, row, self.COLUMNS['perpendicularidad_inf2'], _fmt(muestra.perpendicularidad_inf2))
         self._set_cell_value(ws, row, self.COLUMNS['perpendicularidad_medida'], _fmt(muestra.perpendicularidad_medida))
         
-        self._set_cell_value(ws, row, self.COLUMNS['planitud_superior'], muestra.planitud_superior_aceptacion)
-        self._set_cell_value(ws, row, self.COLUMNS['planitud_inferior'], muestra.planitud_inferior_aceptacion)
-        self._set_cell_value(ws, row, self.COLUMNS['planitud_depresiones'], muestra.planitud_depresiones_aceptacion)
+        self._set_cell_value(ws, row, self.COLUMNS['planitud_superior'], _fmt(muestra.planitud_superior_aceptacion))
+        self._set_cell_value(ws, row, self.COLUMNS['planitud_inferior'], _fmt(muestra.planitud_inferior_aceptacion))
+        self._set_cell_value(ws, row, self.COLUMNS['planitud_depresiones'], _fmt(muestra.planitud_depresiones_aceptacion))
         
         self._set_cell_value(ws, row, self.COLUMNS['accion'], muestra.accion_realizar)
         self._set_cell_value(ws, row, self.COLUMNS['conformidad'], muestra.conformidad)
