@@ -4,6 +4,7 @@ from typing import List
 from app.database import get_db, get_db_session
 from .schemas import RecepcionMuestraCreate, RecepcionMuestraResponse, RecepcionMuestraUpdate
 from .service import RecepcionService
+from .exceptions import DuplicateRecepcionError
 from .excel import ExcelLogic
 
 # Use /api/ordenes to maintain frontend compatibility
@@ -17,7 +18,16 @@ async def crear_recepcion(
     db: Session = Depends(get_db_session)
 ):
     """Crear nueva recepción de muestra"""
-    return recepcion_service.crear_recepcion(db, recepcion_data)
+    try:
+        return recepcion_service.crear_recepcion(db, recepcion_data)
+    except DuplicateRecepcionError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
 @router.get("/", response_model=List[RecepcionMuestraResponse])
 async def listar_recepciones(
