@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Response, UploadFile, File
 from psycopg2.extras import RealDictCursor
 from datetime import date, datetime
 from typing import List, Optional
@@ -484,3 +484,64 @@ async def delete_plantilla(plantilla_id: str):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         conn.close()
+
+@router.post("/quotes/{quote_id}/upload")
+async def manual_upload_quote(quote_id: str, file: UploadFile = File(...)):
+    """Permite subir un archivo Excel manualmente para reemplazar el existente"""
+    if not _has_database_url():
+        raise HTTPException(status_code=400, detail="Database not configured")
+    
+    # 1. Verificar que la cotización existe
+    conn = _get_connection()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT numero, year, object_key, archivo_path FROM cotizaciones WHERE id = %s", (quote_id,))
+            existing = cur.fetchone()
+            if not existing:
+                raise HTTPException(status_code=404, detail="Quote not found")
+        
+        # 2. Leer contenido del archivo
+        content = await file.read()
+        xlsx_bytes = io.BytesIO(content)
+        
+        # 3. Determinar path de storage (usar el existente o generar uno nuevo sanitizado)
+        cloud_path = existing.get('object_key')
+        if not cloud_path:
+            # Si no tenía key (raro), generamos una nueva
+            year = existing['year']
+            numero = existing['numero']
+            cloud_path = f"{year}/COT-{year}-{numero}-REEMPLAZO.xlsx"
+        
+        # 4. Subir a Storage (el service ya usa x-upsert: true)
+        xlsx_bytes.seek(0)
+        from .service import _upload_to_supabase_storage # Ensure imported
+        uploaded_path = _upload_to_supabase_storage(xlsx_bytes, "cotizaciones", cloud_path)
+        
+        if not uploaded_path:
+            raise HTTPException(status_code=500, detail="Error uploading to storage")
+            
+        # 5. Opcional: Actualizar el archivo local si existe
+        if existing['archivo_path']:
+            local_path = Path(existing['archivo_path'])
+            try:
+                with open(local_path, "wb") as f:
+                    f.write(content)
+            except Exception as e:
+                print(f"Error updating local file copy: {e}")
+
+        # 6. Actualizar object_key en DB por si cambió
+        with conn.cursor() as cur:
+            cur.execute("UPDATE cotizaciones SET object_key = %s, updated_at = NOW() WHERE id = %s", (cloud_path, quote_id))
+            conn.commit()
+
+        return {"success": True, "message": "Quote file replaced successfully", "object_key": cloud_path}
+            
+    except Exception as e:
+        if 'conn' in locals() and conn:
+            conn.rollback()
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if 'conn' in locals() and conn:
+            conn.close()
