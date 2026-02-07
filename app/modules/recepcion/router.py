@@ -87,3 +87,45 @@ async def eliminar_recepcion(
     if not success:
         raise HTTPException(status_code=404, detail="Recepción no encontrada")
     return {"message": "Recepción eliminada correctamente"}
+
+# ===== ENDPOINTS PARA PLANTILLAS DE RECEPCIÓN =====
+from .schemas import RecepcionPlantillaCreate, RecepcionPlantillaResponse
+
+@router.get("/plantillas", response_model=List[RecepcionPlantillaResponse])
+async def listar_plantillas(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db_session)
+):
+    """Listar todas las plantillas disponibles"""
+    return recepcion_service.listar_plantillas(db, skip=skip, limit=limit)
+
+@router.get("/plantillas/buscar", response_model=List[RecepcionPlantillaResponse])
+async def buscar_plantillas(
+    q: str,
+    db: Session = Depends(get_db_session)
+):
+    """Buscar plantillas por nombre o proyecto"""
+    return recepcion_service.buscar_plantillas(db, query=q)
+
+@router.post("/plantillas", response_model=RecepcionPlantillaResponse)
+async def crear_plantilla(
+    plantilla_data: RecepcionPlantillaCreate,
+    db: Session = Depends(get_db_session)
+):
+    """Crear una nueva plantilla de recepción"""
+    try:
+        return recepcion_service.crear_plantilla(db, plantilla_data.dict())
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/plantillas/{plantilla_id}", response_model=RecepcionPlantillaResponse)
+async def obtener_plantilla(
+    plantilla_id: int,
+    db: Session = Depends(get_db_session)
+):
+    """Obtener una plantilla específica"""
+    plantilla = recepcion_service.obtener_plantilla(db, plantilla_id)
+    if not plantilla:
+        raise HTTPException(status_code=404, detail="Plantilla no encontrada")
+    return plantilla

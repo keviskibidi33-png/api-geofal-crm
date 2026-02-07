@@ -104,5 +104,29 @@ class MuestraConcreto(Base):
     fecha_creacion = Column(DateTime, nullable=False, default=func.now(), comment="Fecha de creación")
     fecha_actualizacion = Column(DateTime, nullable=True, onupdate=func.now(), comment="Fecha de última actualización")
     
-    # Relación con recepción
-    recepcion = relationship("RecepcionMuestra", back_populates="muestras")
+
+class RecepcionPlantilla(Base):
+    """
+    Modelo para plantillas de recepción (Quick Load)
+    """
+    __tablename__ = "recepcion_plantillas"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    nombre_plantilla = Column(String(255), unique=True, index=True, nullable=False)
+    
+    # Datos de cliente
+    cliente = Column(String(255), nullable=False)
+    ruc = Column(String(20), nullable=False)
+    domicilio_legal = Column(Text, nullable=False)
+    persona_contacto = Column(String(255), nullable=True)
+    email = Column(String(255), nullable=True)
+    telefono = Column(String(50), nullable=True)
+    
+    # Datos de proyecto/informe
+    solicitante = Column(String(255), nullable=False)
+    domicilio_solicitante = Column(Text, nullable=False)
+    proyecto = Column(String(255), nullable=False)
+    ubicacion = Column(Text, nullable=False)
+    
+    fecha_creacion = Column(DateTime, nullable=False, default=func.now())
+    fecha_actualizacion = Column(DateTime, nullable=True, onupdate=func.now())
