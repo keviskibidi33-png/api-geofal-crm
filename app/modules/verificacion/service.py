@@ -320,22 +320,22 @@ class VerificacionService:
                 # Crear nuevas muestras
                 for muestra_dict in data.muestras_verificadas:
                     # El microfrontend envía los datos ya calculados, pero podemos recalcular si es necesario
-                    # Para simplificar y mantener fidelidad con lo que el usuario ve, usamos lo que viene
+                    # Para mantener robustez, manejamos mapeo de campos legacy
                     
                     db_muestra = MuestraVerificada(
                         verificacion_id=verificacion_id,
                         item_numero=muestra_dict.get('item_numero'),
-                        codigo_lem=muestra_dict.get('codigo_lem', ''),
+                        codigo_lem=muestra_dict.get('codigo_lem') or muestra_dict.get('codigo_cliente') or "",
                         tipo_testigo=muestra_dict.get('tipo_testigo'),
                         diametro_1_mm=muestra_dict.get('diametro_1_mm'),
                         diametro_2_mm=muestra_dict.get('diametro_2_mm'),
                         tolerancia_porcentaje=muestra_dict.get('tolerancia_porcentaje'),
                         aceptacion_diametro=muestra_dict.get('aceptacion_diametro'),
-                        perpendicularidad_sup1=muestra_dict.get('perpendicularidad_sup1'),
-                        perpendicularidad_sup2=muestra_dict.get('perpendicularidad_sup2'),
-                        perpendicularidad_inf1=muestra_dict.get('perpendicularidad_inf1'),
-                        perpendicularidad_inf2=muestra_dict.get('perpendicularidad_inf2'),
-                        perpendicularidad_medida=muestra_dict.get('perpendicularidad_medida'),
+                        perpendicularidad_sup1=muestra_dict.get('perpendicularidad_sup1') if muestra_dict.get('perpendicularidad_sup1') is not None else muestra_dict.get('perpendicularidad_p1'),
+                        perpendicularidad_sup2=muestra_dict.get('perpendicularidad_sup2') if muestra_dict.get('perpendicularidad_sup2') is not None else muestra_dict.get('perpendicularidad_p2'),
+                        perpendicularidad_inf1=muestra_dict.get('perpendicularidad_inf1') if muestra_dict.get('perpendicularidad_inf1') is not None else muestra_dict.get('perpendicularidad_p3'),
+                        perpendicularidad_inf2=muestra_dict.get('perpendicularidad_inf2') if muestra_dict.get('perpendicularidad_inf2') is not None else muestra_dict.get('perpendicularidad_p4'),
+                        perpendicularidad_medida=muestra_dict.get('perpendicularidad_medida') if muestra_dict.get('perpendicularidad_medida') is not None else muestra_dict.get('perpendicularidad_cumple'),
                         planitud_medida=muestra_dict.get('planitud_medida'),
                         planitud_superior_aceptacion=muestra_dict.get('planitud_superior_aceptacion'),
                         planitud_inferior_aceptacion=muestra_dict.get('planitud_inferior_aceptacion'),
