@@ -13,16 +13,71 @@ from .schemas import (
     CalculoPatronRequest,
     CalculoPatronResponse
 )
-from datetime import datetime
 import logging
+import io
+import os
+import requests
+import re
+import unicodedata
+from pathlib import Path
+from .excel import ExcelLogic
 
 logger = logging.getLogger(__name__)
+
+# Directory for local verification storage
+ROOT_DIR = Path(__file__).resolve().parents[3]
+VERIF_FOLDER = ROOT_DIR / "verificaciones"
+VERIF_FOLDER.mkdir(exist_ok=True)
 
 class VerificacionService:
     """Servicio para manejo de verificación de muestras cilíndricas"""
     
     def __init__(self, db: Session):
         self.db = db
+        self.excel_logic = ExcelLogic()
+    
+    def _get_safe_filename(self, base_name: str, extension: str = "xlsx") -> str:
+        """Sanitized filename to avoid errors in Storage and file systems"""
+        if not base_name:
+            base_name = "SinNombre"
+        s = unicodedata.normalize('NFKD', base_name).encode('ascii', 'ignore').decode('ascii')
+        s = re.sub(r'[^\w\s-]', ' ', s)
+        s = re.sub(r'[-\s_]+', '_', s)
+        s = s.strip('_')
+        s = s[:60]
+        if extension:
+            return f"{s}.{extension}"
+        return s
+
+    def _upload_to_supabase_storage(self, file_data: io.BytesIO, bucket: str, path: str) -> Optional[str]:
+        url = os.getenv("SUPABASE_URL")
+        key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
+        
+        if not url or not key:
+            logger.warning("Supabase URL or Key missing. Skipping upload.")
+            return None
+            
+        storage_url = f"{url.rstrip('/')}/storage/v1/object/{bucket}/{path}"
+        
+        file_data.seek(0)
+        try:
+            resp = requests.post(
+                storage_url,
+                headers={
+                    "Authorization": f"Bearer {key}",
+                    "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    "x-upsert": "true"
+                },
+                data=file_data.read()
+            )
+            if resp.status_code == 200:
+                return f"{bucket}/{path}"
+            else:
+                logger.error(f"Storage upload failed: {resp.status_code} - {resp.text}")
+                return None
+        except Exception as e:
+            logger.error(f"Error uploading to storage: {e}")
+            return None
     
     def calcular_formula_diametros(self, request: CalculoFormulaRequest) -> CalculoFormulaResponse:
         """
@@ -72,15 +127,29 @@ class VerificacionService:
             planitud_depresiones = request.planitud_depresiones
             
             def calcular_patron_planitud(superior: bool, inferior: bool, depresiones: bool) -> str:
-                clave = f"{'C' if superior else 'N'}{'C' if inferior else 'N'}{'C' if depresiones else 'N'}"
+                # C = Cumple, N = No cumple
+                s = 'C' if superior else 'N'
+                i = 'C' if inferior else 'N'
+                d = 'C' if depresiones else 'N'
+                clave = f"{s}{i}{d}"
+                
+                # Mapeo lógico: 
+                # S=N e I=N -> SUPERIOR E INFERIOR
+                # S=N -> SUPERIOR
+                # I=N -> INFERIOR
+                # Depresiones=N -> CAPEO, Depresiones=C -> NEOPRENO
+                
                 patrones = {
-                    'NCC': 'NEOPRENO CARA INFERIOR',
-                    'CNC': 'NEOPRENO CARA SUPERIOR',
                     'CCC': '-',
-                    'NNC': 'NEOPRENO CARA INFERIOR E SUPERIOR',
-                    'NNN': 'CAPEO'
+                    'NCC': 'NEOPRENO SUPERIOR',
+                    'CNC': 'NEOPRENO INFERIOR',
+                    'NNC': 'NEOPRENO SUPERIOR E INFERIOR',
+                    'CCN': 'CAPEO SUPERIOR E INFERIOR',
+                    'NCN': 'CAPEO SUPERIOR',
+                    'CNN': 'CAPEO INFERIOR',
+                    'NNN': 'CAPEO SUPERIOR E INFERIOR'
                 }
-                return patrones.get(clave, f"ERROR: Patrón no reconocido ({clave})")
+                return patrones.get(clave, f"-")
             
             accion = calcular_patron_planitud(planitud_superior, planitud_inferior, planitud_depresiones)
             mensaje = f"Acción calculada según patrón: {accion}"
@@ -132,22 +201,28 @@ class VerificacionService:
                     cumple_tolerancia = formula_res.cumple_tolerancia
                 
                 accion_realizar = None
-                # Determinar booleanos de planitud para el cálculo de patrón
-                def to_bool(v):
-                    if isinstance(v, bool): return v
-                    if isinstance(v, str): return v.lower() in ['cumple', 'true', '1', 'si', 'sí', 'v']
-                    return False
+                # Si viene una acción manual no vacía y que no sea solo un guion, la respetamos.
+                # Pero si es '-' o está vacía, calculamos.
+                manual_action = (muestra_data.accion_realizar or "").strip()
+                if manual_action and manual_action != '-':
+                    accion_realizar = manual_action
+                else:
+                    # Determinar booleanos de planitud para el cálculo de patrón
+                    def to_bool(v):
+                        if isinstance(v, bool): return v
+                        if isinstance(v, str): return v.lower() in ['cumple', 'true', '1', 'si', 'sí', 'v']
+                        return False
 
-                ps = to_bool(muestra_data.planitud_superior_aceptacion or muestra_data.planitud_superior)
-                pi = to_bool(muestra_data.planitud_inferior_aceptacion or muestra_data.planitud_inferior)
-                pd = to_bool(muestra_data.planitud_depresiones_aceptacion or muestra_data.planitud_depresiones)
-                
-                patron_res = self.calcular_patron_accion(CalculoPatronRequest(
-                    planitud_superior=ps,
-                    planitud_inferior=pi,
-                    planitud_depresiones=pd
-                ))
-                accion_realizar = patron_res.accion_realizar
+                    ps = to_bool(muestra_data.planitud_superior_aceptacion or muestra_data.planitud_superior)
+                    pi = to_bool(muestra_data.planitud_inferior_aceptacion or muestra_data.planitud_inferior)
+                    pd = to_bool(muestra_data.planitud_depresiones_aceptacion or muestra_data.planitud_depresiones)
+                    
+                    patron_res = self.calcular_patron_accion(CalculoPatronRequest(
+                        planitud_superior=ps,
+                        planitud_inferior=pi,
+                        planitud_depresiones=pd
+                    ))
+                    accion_realizar = patron_res.accion_realizar
 
                 db_muestra = MuestraVerificada(
                     verificacion_id=db_verificacion.id,
@@ -179,6 +254,37 @@ class VerificacionService:
             
             self.db.commit()
             self.db.refresh(db_verificacion)
+            
+            # --- AUTO-GENERAR Y GUARDAR EXCEL ---
+            try:
+                excel_bytes = self.excel_logic.generar_excel_verificacion(db_verificacion)
+                
+                # 1. Guardar localmente
+                year = datetime.now().year
+                year_folder = VERIF_FOLDER / str(year)
+                year_folder.mkdir(exist_ok=True)
+                
+                safe_cliente = self._get_safe_filename(db_verificacion.cliente or "S-N", "")
+                filename = f"VER-{db_verificacion.numero_verificacion}_{safe_cliente}.xlsx"
+                local_path = year_folder / filename
+                
+                with open(local_path, "wb") as f:
+                    f.write(excel_bytes)
+                
+                # 2. Subir a Supabase
+                cloud_path = f"{year}/{filename}"
+                storage_path = self._upload_to_supabase_storage(io.BytesIO(excel_bytes), "verificacion_muestras", cloud_path)
+                
+                # 3. Actualizar DB con las rutas
+                db_verificacion.archivo_excel = str(local_path)
+                db_verificacion.object_key = storage_path
+                self.db.commit()
+                
+            except Exception as e:
+                logger.error(f"Error post-procesando Excel: {str(e)}")
+                # No fallamos la creación de la data si el Excel falla
+                pass
+
             return db_verificacion
             
         except Exception as e:

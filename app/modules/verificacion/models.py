@@ -38,6 +38,7 @@ class VerificacionMuestras(Base):
     fecha_creacion = Column(DateTime(timezone=True), server_default=func.now(), comment="Fecha de creación")
     fecha_actualizacion = Column(DateTime(timezone=True), onupdate=func.now(), comment="Fecha de actualización")
     archivo_excel = Column(String(500), nullable=True, comment="Ruta del archivo Excel generado")
+    object_key = Column(String(500), nullable=True, comment="Ruta del archivo en el Storage de Supabase")
     
     # Relación con muestras verificadas
     muestras_verificadas = relationship("MuestraVerificada", back_populates="verificacion", cascade="all, delete-orphan")
