@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from typing import List, Optional
 from datetime import datetime
-from .models import RecepcionMuestra, MuestraConcreto
+from .models import RecepcionMuestra, MuestraConcreto, RecepcionPlantilla
 from .schemas import RecepcionMuestraCreate, RecepcionMuestraResponse
 from .exceptions import DuplicateRecepcionError
 from .excel import ExcelLogic
@@ -186,17 +186,14 @@ class RecepcionService:
     # --- MÉTODOS PARA PLANTILLAS DE RECEPCIÓN ---
     def listar_plantillas(self, db: Session, skip: int = 0, limit: int = 100) -> List[RecepcionPlantilla]:
         """Listar plantillas de recepción"""
-        from .models import RecepcionPlantilla
         return db.query(RecepcionPlantilla).order_by(RecepcionPlantilla.nombre_plantilla).offset(skip).limit(limit).all()
 
     def obtener_plantilla(self, db: Session, plantilla_id: int) -> Optional[RecepcionPlantilla]:
         """Obtener plantilla por ID"""
-        from .models import RecepcionPlantilla
         return db.query(RecepcionPlantilla).filter(RecepcionPlantilla.id == plantilla_id).first()
 
     def crear_plantilla(self, db: Session, plantilla_data: dict) -> RecepcionPlantilla:
         """Crear una nueva plantilla"""
-        from .models import RecepcionPlantilla
         plantilla = RecepcionPlantilla(**plantilla_data)
         db.add(plantilla)
         db.commit()
@@ -205,7 +202,6 @@ class RecepcionService:
 
     def buscar_plantillas(self, db: Session, query: str, limit: int = 5) -> List[RecepcionPlantilla]:
         """Buscar plantillas por nombre o proyecto"""
-        from .models import RecepcionPlantilla
         from sqlalchemy import or_
         return db.query(RecepcionPlantilla).filter(
             or_(
