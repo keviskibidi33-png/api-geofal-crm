@@ -117,12 +117,16 @@ _origins = _get_cors_origins()
 # If origins are set specifically, allow credentials. If it's "*", we cannot.
 _allow_creds = "*" not in _origins and len(_origins) > 0
 
+# Regex to allow any geofal subdomain (prod)
+_origin_regex = r"https://.*\.geofal\.com\.pe"
+
 print(f"DEBUG: CORS Origins: {_origins}")
 print(f"DEBUG: Allow Credentials: {_allow_creds}")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins,
+    allow_origin_regex=_origin_regex,
     allow_credentials=_allow_creds,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
