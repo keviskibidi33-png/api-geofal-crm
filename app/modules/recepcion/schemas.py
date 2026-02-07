@@ -147,3 +147,31 @@ class RecepcionMuestraUpdate(BaseModel):
         if v and not re.match(r'^\d{2}/\d{2}/\d{4}$', v):
             raise ValueError('La fecha debe estar en formato DD/MM/YYYY')
         return v
+
+# ===== SCHEMAS PARA PLANTILLAS DE RECEPCIÓN =====
+class RecepcionPlantillaBase(BaseModel):
+    """Esquema base para plantillas de recepción"""
+    nombre_plantilla: str = Field(..., min_length=1, max_length=255, description="Nombre de la plantilla")
+    cliente: str = Field(..., max_length=255)
+    ruc: str = Field(..., max_length=20)
+    domicilio_legal: str = Field(..., max_length=300)
+    persona_contacto: Optional[str] = Field(None, max_length=255)
+    email: Optional[str] = Field(None)
+    telefono: Optional[str] = Field(None, max_length=50)
+    solicitante: str = Field(..., max_length=200)
+    domicilio_solicitante: str = Field(..., max_length=300)
+    proyecto: str = Field(..., max_length=200)
+    ubicacion: str = Field(..., max_length=200)
+
+class RecepcionPlantillaCreate(RecepcionPlantillaBase):
+    """Esquema para crear una plantilla"""
+    pass
+
+class RecepcionPlantillaResponse(RecepcionPlantillaBase):
+    """Esquema de respuesta para plantillas"""
+    id: int
+    fecha_creacion: datetime
+    fecha_actualizacion: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
