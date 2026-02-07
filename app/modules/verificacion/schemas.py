@@ -125,18 +125,27 @@ class VerificacionMuestrasResponse(VerificacionMuestrasBase):
 
 class VerificacionMuestrasUpdate(BaseModel):
     """Esquema para actualizar una verificación de muestras"""
+    numero_verificacion: Optional[str] = None
+    codigo_documento: Optional[str] = None
+    version: Optional[str] = None
+    fecha_documento: Optional[str] = None
+    pagina: Optional[str] = None
     verificado_por: Optional[str] = None
     fecha_verificacion: Optional[str] = None
     cliente: Optional[str] = None
+    equipo_bernier: Optional[str] = None
+    equipo_lainas_1: Optional[str] = None
+    equipo_lainas_2: Optional[str] = None
+    equipo_escuadra: Optional[str] = None
+    equipo_balanza: Optional[str] = None
+    nota: Optional[str] = None
     estado: Optional[str] = None
-    muestras_verificadas: Optional[List[Dict[str, Any]]] = None  # Permitir actualizar muestras
+    muestras_verificadas: Optional[List[Dict[str, Any]]] = None
 
-    @field_validator('fecha_verificacion')
+    @field_validator('fecha_verificacion', 'fecha_documento')
     @classmethod
     def validate_date_format(cls, v):
-        """Validar formato de fecha DD/MM/YYYY"""
-        if v and v.strip() and not re.match(r'^\d{2}/\d{2}/\d{4}$', v):
-            raise ValueError('La fecha debe estar en formato DD/MM/YYYY')
+        """Allow flexible date formats during update"""
         return v
 
 class CalculoFormulaRequest(BaseModel):

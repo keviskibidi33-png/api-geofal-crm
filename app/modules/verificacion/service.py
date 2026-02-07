@@ -11,9 +11,11 @@ from .schemas import (
     CalculoFormulaRequest,
     CalculoFormulaResponse,
     CalculoPatronRequest,
-    CalculoPatronResponse
+    CalculoPatronResponse,
+    VerificacionMuestrasUpdate
 )
 import logging
+from datetime import datetime
 import io
 import os
 import requests
@@ -298,9 +300,88 @@ class VerificacionService:
     def listar_verificaciones(self, skip: int = 0, limit: int = 100) -> List[VerificacionMuestras]:
         return self.db.query(VerificacionMuestras).offset(skip).limit(limit).all()
 
-    def eliminar_verificacion(self, verificacion_id: int) -> bool:
-        db_ver = self.obtener_verificacion(verificacion_id)
-        if not db_ver: return False
-        self.db.delete(db_ver)
-        self.db.commit()
-        return True
+    def actualizar_verificacion(self, verificacion_id: int, data: VerificacionMuestrasUpdate) -> Optional[VerificacionMuestras]:
+        """Actualiza una verificación existente"""
+        try:
+            db_verificacion = self.obtener_verificacion(verificacion_id)
+            if not db_verificacion:
+                return None
+            
+            # Actualizar campos de la cabecera
+            update_data = data.model_dump(exclude={"muestras_verificadas"}, exclude_unset=True)
+            for key, value in update_data.items():
+                setattr(db_verificacion, key, value)
+            
+            # Si se enviaron muestras, actualizar la lista (borrar y re-crear es más limpio para este caso)
+            if data.muestras_verificadas is not None:
+                # Borrar muestras existentes
+                self.db.query(MuestraVerificada).filter(MuestraVerificada.verificacion_id == verificacion_id).delete()
+                
+                # Crear nuevas muestras
+                for muestra_dict in data.muestras_verificadas:
+                    # El microfrontend envía los datos ya calculados, pero podemos recalcular si es necesario
+                    # Para simplificar y mantener fidelidad con lo que el usuario ve, usamos lo que viene
+                    
+                    db_muestra = MuestraVerificada(
+                        verificacion_id=verificacion_id,
+                        item_numero=muestra_dict.get('item_numero'),
+                        codigo_lem=muestra_dict.get('codigo_lem', ''),
+                        tipo_testigo=muestra_dict.get('tipo_testigo'),
+                        diametro_1_mm=muestra_dict.get('diametro_1_mm'),
+                        diametro_2_mm=muestra_dict.get('diametro_2_mm'),
+                        tolerancia_porcentaje=muestra_dict.get('tolerancia_porcentaje'),
+                        aceptacion_diametro=muestra_dict.get('aceptacion_diametro'),
+                        perpendicularidad_sup1=muestra_dict.get('perpendicularidad_sup1'),
+                        perpendicularidad_sup2=muestra_dict.get('perpendicularidad_sup2'),
+                        perpendicularidad_inf1=muestra_dict.get('perpendicularidad_inf1'),
+                        perpendicularidad_inf2=muestra_dict.get('perpendicularidad_inf2'),
+                        perpendicularidad_medida=muestra_dict.get('perpendicularidad_medida'),
+                        planitud_medida=muestra_dict.get('planitud_medida'),
+                        planitud_superior_aceptacion=muestra_dict.get('planitud_superior_aceptacion'),
+                        planitud_inferior_aceptacion=muestra_dict.get('planitud_inferior_aceptacion'),
+                        planitud_depresiones_aceptacion=muestra_dict.get('planitud_depresiones_aceptacion'),
+                        accion_realizar=muestra_dict.get('accion_realizar'),
+                        conformidad=muestra_dict.get('conformidad'),
+                        longitud_1_mm=muestra_dict.get('longitud_1_mm'),
+                        longitud_2_mm=muestra_dict.get('longitud_2_mm'),
+                        longitud_3_mm=muestra_dict.get('longitud_3_mm'),
+                        masa_muestra_aire_g=muestra_dict.get('masa_muestra_aire_g'),
+                        pesar=muestra_dict.get('pesar')
+                    )
+                    self.db.add(db_muestra)
+            
+            db_verificacion.fecha_actualizacion = datetime.now()
+            self.db.commit()
+            self.db.refresh(db_verificacion)
+            
+            # --- RE-GENERAR EXCEL ---
+            try:
+                excel_bytes = self.excel_logic.generar_excel_verificacion(db_verificacion)
+                
+                year = datetime.now().year
+                year_folder = VERIF_FOLDER / str(year)
+                year_folder.mkdir(exist_ok=True)
+                
+                safe_cliente = self._get_safe_filename(db_verificacion.cliente or "S-N", "")
+                filename = f"VER-{db_verificacion.numero_verificacion}_{safe_cliente}.xlsx"
+                local_path = year_folder / filename
+                
+                with open(local_path, "wb") as f:
+                    f.write(excel_bytes)
+                
+                cloud_path = f"{year}/{filename}"
+                storage_path = self._upload_to_supabase_storage(io.BytesIO(excel_bytes), "verificacion_muestras", cloud_path)
+                
+                db_verificacion.archivo_excel = str(local_path)
+                db_verificacion.object_key = storage_path
+                self.db.commit()
+                
+            except Exception as e:
+                logger.error(f"Error regenerando Excel en update: {str(e)}")
+            
+            return db_verificacion
+            
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error actualizando verificación: {str(e)}")
+            raise ValueError(f"Error actualizando verificación: {str(e)}")

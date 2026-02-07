@@ -51,6 +51,14 @@ def eliminar_verificacion(verificacion_id: int, db: Session = Depends(get_db_ses
         raise HTTPException(status_code=404, detail="Verificación no encontrada")
     return {"message": "Verificación eliminada correctamente"}
 
+@router.put("/{verificacion_id}", response_model=VerificacionMuestrasResponse)
+def actualizar_verificacion(verificacion_id: int, verificacion: VerificacionMuestrasUpdate, db: Session = Depends(get_db_session)):
+    service = VerificacionService(db)
+    ver = service.actualizar_verificacion(verificacion_id, verificacion)
+    if not ver:
+        raise HTTPException(status_code=404, detail="Verificación no encontrada")
+    return ver
+
 @router.get("/{verificacion_id}/exportar")
 def exportar_verificacion(verificacion_id: int, db: Session = Depends(get_db_session)):
     service = VerificacionService(db)
