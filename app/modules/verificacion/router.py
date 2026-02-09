@@ -29,12 +29,67 @@ def calcular_patron(request: CalculoPatronRequest, db: Session = Depends(get_db_
 @router.post("/", response_model=VerificacionMuestrasResponse)
 def crear_verificacion(verificacion: VerificacionMuestrasCreate, db: Session = Depends(get_db_session)):
     service = VerificacionService(db)
-    return service.crear_verificacion(verificacion)
+    new_verificacion = service.crear_verificacion(verificacion)
+    try:
+        from app.modules.tracing.service import TracingService
+        TracingService.actualizar_trazabilidad(db, new_verificacion.numero_verificacion)
+    except Exception as e:
+        print(f"Error sync trazabilidad: {e}")
+    return new_verificacion
 
 @router.get("/", response_model=List[VerificacionMuestrasResponse])
 def listar_verificaciones(skip: int = 0, limit: int = 100, db: Session = Depends(get_db_session)):
     service = VerificacionService(db)
     return service.listar_verificaciones(skip=skip, limit=limit)
+
+@router.get("/buscar-recepcion")
+async def buscar_recepcion(
+    numero: str,
+    db: Session = Depends(get_db_session)
+):
+    """
+    Buscar si una recepción existe y su estado en todos los módulos.
+    """
+    from app.modules.recepcion.models import RecepcionMuestra
+    from app.modules.verificacion.models import VerificacionMuestras
+    from app.modules.compresion.models import EnsayoCompresion
+    
+    recepcion = db.query(RecepcionMuestra).filter(RecepcionMuestra.numero_recepcion == numero).first()
+    verificacion = db.query(VerificacionMuestras).filter(VerificacionMuestras.numero_verificacion == numero).first()
+    compresion = db.query(EnsayoCompresion).filter(EnsayoCompresion.numero_recepcion == numero).first()
+    
+    formatos = {
+        "recepcion": recepcion is not None,
+        "verificacion": verificacion is not None,
+        "compresion": compresion is not None
+    }
+    
+    estado = "ocupado" if verificacion else "disponible"
+    
+    # Datos enriquecidos para auto-completado en frontend
+    datos_retorno = None
+    if recepcion:
+        datos_retorno = {
+            "id": recepcion.id,
+            "numero_recepcion": recepcion.numero_recepcion,
+            "cliente": recepcion.cliente,
+            "muestras": [m.codigo_muestra_lem for m in recepcion.muestras if m.codigo_muestra_lem]
+        }
+    elif verificacion:
+        datos_retorno = {
+            "id": verificacion.id,
+            "numero_verificacion": verificacion.numero_verificacion,
+            "cliente": verificacion.cliente
+        }
+
+    return {
+        "encontrado": recepcion is not None or verificacion is not None,
+        "estado": estado,
+        "formatos": formatos,
+        "mensaje": "Ya existe esta verificación" if verificacion else "Disponible",
+        "datos": datos_retorno
+    }
+
 
 @router.get("/{verificacion_id}", response_model=VerificacionMuestrasResponse)
 def obtener_verificacion(verificacion_id: int, db: Session = Depends(get_db_session)):

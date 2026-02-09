@@ -300,6 +300,25 @@ class VerificacionService:
     def listar_verificaciones(self, skip: int = 0, limit: int = 100) -> List[VerificacionMuestras]:
         return self.db.query(VerificacionMuestras).offset(skip).limit(limit).all()
 
+    def obtener_por_numero(self, numero: str) -> Optional[VerificacionMuestras]:
+        """Obtener verificación por su número (EJ: V-2024-001)"""
+        return self.db.query(VerificacionMuestras).filter(VerificacionMuestras.numero_verificacion == numero).first()
+
+    def eliminar_verificacion(self, verificacion_id: int) -> bool:
+        """Elimina una verificación y sus muestras asociadas (cascade delete)"""
+        try:
+            db_verificacion = self.obtener_verificacion(verificacion_id)
+            if not db_verificacion:
+                return False
+            
+            self.db.delete(db_verificacion)
+            self.db.commit()
+            return True
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error eliminando verificación {verificacion_id}: {str(e)}")
+            raise e
+
     def actualizar_verificacion(self, verificacion_id: int, data: VerificacionMuestrasUpdate) -> Optional[VerificacionMuestras]:
         """Actualiza una verificación existente"""
         try:

@@ -71,7 +71,7 @@ class RecepcionMuestra(Base):
     creado_por_id = Column(Integer, nullable=True, comment="Usuario que creó la recepción")
     
     # Relación con muestras
-    muestras = relationship("MuestraConcreto", back_populates="recepcion", cascade="all, delete-orphan")
+    muestras = relationship("MuestraConcreto", back_populates="recepcion_parent", cascade="all, delete-orphan")
 
 class MuestraConcreto(Base):
     """
@@ -99,6 +99,9 @@ class MuestraConcreto(Base):
     edad = Column(Integer, nullable=False, comment="Edad de la muestra en días")
     fecha_rotura = Column(String(20), nullable=False, comment="Fecha programada de rotura")
     requiere_densidad = Column(Boolean, nullable=False, default=False, comment="Requiere ensayo de densidad")
+    
+    # Relación inversa
+    recepcion_parent = relationship("RecepcionMuestra", back_populates="muestras")
     
     # Timestamps
     fecha_creacion = Column(DateTime, nullable=False, default=func.now(), comment="Fecha de creación")

@@ -30,13 +30,20 @@ from app.modules.recepcion.router import router as recepciones_router
 from app.modules.cotizacion.router import router as cotizacion_router
 from app.modules.programacion.router import router as programacion_router
 from app.modules.verificacion.router import router as verificacion_router
+from app.modules.compresion.router import router as compresion_router
+from app.modules.tracing.router import router as tracing_router
 from app.modules.recepcion.models import Base as RecepcionBase
 from app.modules.verificacion.models import Base as VerificacionBase
+from app.modules.tracing.models import Trazabilidad
+from app.modules.compresion.models import EnsayoCompresion, ItemCompresion
 from app.database import engine
 
 # Ensure tables are created
 RecepcionBase.metadata.create_all(bind=engine)
 VerificacionBase.metadata.create_all(bind=engine)
+# Compression tables will be created via migration or explicitly:
+from app.database import Base as MainBase
+MainBase.metadata.create_all(bind=engine)
 
 # --- Pydantic Models for Roles & Permissions ---
 
@@ -92,15 +99,23 @@ def _get_cors_origins() -> list[str]:
     origins = [
         "http://localhost:3000", 
         "http://localhost:3001", 
-        "http://localhost:5173", 
-        "http://127.0.0.1:3000", 
         "http://localhost:3002",
-        "http://localhost:3005",
+        "http://localhost:3003", # Compresión CRM
+        "http://localhost:3004", 
+        "http://localhost:3005", # Verificación CRM
         "http://localhost:3006",
+        "http://localhost:3007",
+        "http://localhost:5173", # Cotizador
+        "http://localhost:5174",
+        "http://localhost:5175", # Compresion (Vite)
+        "http://127.0.0.1:3000", 
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5174",
+        "http://127.0.0.1:5175",
         "https://crm.geofal.com.pe",
         "https://recepcion.geofal.com.pe",
         "https://cotizador.geofal.com.pe",
-        "https://programacion.geofal.com.pe"
+        "https://programacion.geofal.com.pe",
     ]
     raw = os.getenv("QUOTES_CORS_ORIGINS")
     if raw:
@@ -202,6 +217,8 @@ app.include_router(recepciones_router)
 app.include_router(cotizacion_router)
 app.include_router(programacion_router)
 app.include_router(verificacion_router)
+app.include_router(compresion_router)
+app.include_router(tracing_router)
 
 # Note: All legacy endpoints for Quotes and Programacion have been moved to their respective modules.
 # Check app/modules/cotizacion and app/modules/programacion.

@@ -159,6 +159,10 @@ class RecepcionService:
         """Obtener recepción por ID"""
         return db.query(RecepcionMuestra).filter(RecepcionMuestra.id == recepcion_id).first()
     
+    def obtener_por_numero(self, db: Session, numero: str) -> Optional[RecepcionMuestra]:
+        """Obtener recepción por número de recepción"""
+        return db.query(RecepcionMuestra).filter(RecepcionMuestra.numero_recepcion == numero).first()
+    
     def actualizar_recepcion(self, db: Session, recepcion_id: int, recepcion_data: dict) -> Optional[RecepcionMuestra]:
         """Actualizar recepción existente"""
         recepcion = db.query(RecepcionMuestra).filter(RecepcionMuestra.id == recepcion_id).first()
