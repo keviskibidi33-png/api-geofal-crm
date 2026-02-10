@@ -317,6 +317,39 @@ def _clear_merged_cell_range(sheet_data: etree._Element, start_cell: str, end_ce
             cell_ref = f'{col_letter}{row_num}'
             _set_cell_value(sheet_data, cell_ref, '', ns)
 
+
+def _shift_hyperlinks(root: etree._Element, from_row: int, shift: int, ns: str):
+    """Desplaza los hipervínculos cuando se insertan filas"""
+    if shift <= 0:
+        return
+    
+    # Buscar <hyperlinks> en el root de la hoja (worksheet -> hyperlinks)
+    hyperlinks = root.find(f'.//{{{ns}}}hyperlinks')
+    if hyperlinks is None:
+        return
+    
+    for hyperlink in hyperlinks.findall(f'{{{ns}}}hyperlink'):
+        ref = hyperlink.get('ref')
+        if not ref:
+            continue
+        
+        # Manejo de rango A1:B2 o celda A1
+        if ':' in ref:
+            start, end = ref.split(':')
+            start_col, start_row = _parse_cell_ref(start)
+            end_col, end_row = _parse_cell_ref(end)
+            
+            # Si la celda de inicio está en o debajo de la fila de inserción
+            if start_row >= from_row:
+                new_start = f"{start_col}{start_row + shift}"
+                new_end = f"{end_col}{end_row + shift}"
+                hyperlink.set('ref', f"{new_start}:{new_end}")
+        else:
+            col, row = _parse_cell_ref(ref)
+            if row >= from_row:
+                hyperlink.set('ref', f"{col}{row + shift}")
+
+
 def export_xlsx_direct(template_path: str, data: dict) -> io.BytesIO:
     """Exporta XLSX modificando el template directamente."""
     
@@ -397,9 +430,10 @@ def export_xlsx_direct(template_path: str, data: dict) -> io.BytesIO:
         extra_rows = max(0, len(items) - 1)
         
         if extra_rows > 0:
-            # Primero desplazar filas y merged cells
+            # Primero desplazar filas, merged cells y hipervínculos
             _shift_rows(sheet_data, 18, extra_rows, ns)
             _shift_merged_cells(root, 18, extra_rows, ns)
+            _shift_hyperlinks(root, 18, extra_rows, ns)
             
             # Lógica de salto de página:
             # El salto original está en fila 26, justo antes de CONTRAMUESTRA (fila 27)
