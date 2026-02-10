@@ -21,6 +21,7 @@ from openpyxl.worksheet.pagebreak import Break
 from openpyxl.utils.cell import get_column_letter, range_boundaries
 from pydantic import BaseModel, Field
 import psycopg2
+import psycopg2.errors # Explicitly import errors module
 from psycopg2.extras import RealDictCursor
 
 # Importar el nuevo exportador XML
@@ -347,6 +348,13 @@ async def create_cliente(data: dict):
                 'direccion': result.get('direccion', ''),
             }
             return {"data": mapped}
+    except psycopg2.errors.UniqueViolation as e:
+        if 'conn' in locals() and conn:
+            conn.rollback()
+        # Friendly error message
+        if 'clientes_ruc_key' in str(e) or 'ruc' in str(e):
+             raise HTTPException(status_code=409, detail="Ya existe un cliente registrado con este número de RUC. Por favor verifique.")
+        raise HTTPException(status_code=409, detail="Error de duplicidad: Ya existe un registro con estos datos.")
     except Exception as e:
         import traceback
         print(f"Error in create_cliente: {e}")

@@ -39,7 +39,8 @@ def obtener_seguimiento_flujo(numero_recepcion: str, db: Session = Depends(get_d
                 "Total Muestras": len(recepcion.muestras),
                 "Resistencia (f'c)": f"{recepcion.muestras[0].fc_kg_cm2} kg/cm²",
                 "Edad de Diseño": f"{recepcion.muestras[0].edad} días",
-                "Fecha Moldeo": recepcion.muestras[0].fecha_moldeo
+                "Fecha Moldeo": recepcion.muestras[0].fecha_moldeo,
+                "recepcion_id": recepcion.id
             })
 
     # Data detallada para Verificación
@@ -50,7 +51,8 @@ def obtener_seguimiento_flujo(numero_recepcion: str, db: Session = Depends(get_d
             data_verificacion.update({
                 "Código Doc": verificacion.codigo_documento,
                 "Muestras Verificadas": len(verificacion.muestras_verificadas),
-                "Equipo": verificacion.equipo_bernier or "No registrado"
+                "Equipo": verificacion.equipo_bernier or "No registrado",
+                "verificacion_id": verificacion.id
             })
 
     # Data detallada para Compresión
@@ -63,7 +65,8 @@ def obtener_seguimiento_flujo(numero_recepcion: str, db: Session = Depends(get_d
             data_compresion.update({
                 "Muestras Ensayadas": len(compresion.items),
                 "Carga Promedio": f"{promedio_carga:.1f} kN",
-                "Estado": compresion.estado
+                "Estado": compresion.estado,
+                "compresion_id": compresion.id
             })
 
     stages = [

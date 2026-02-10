@@ -487,9 +487,9 @@ async def delete_plantilla(plantilla_id: str):
     finally:
         conn.close()
 
-@router.post("/quotes/{quote_id}/upload")
+@router.post("/{quote_id}/manual-upload")
 async def manual_upload_quote(quote_id: str, file: UploadFile = File(...)):
-    """Permite subir un archivo Excel manualmente para reemplazar el existente"""
+    """Permite subir un archivo manual (PDF o Excel) para reemplazar el existente"""
     if not _has_database_url():
         raise HTTPException(status_code=400, detail="Database not configured")
     
@@ -502,17 +502,29 @@ async def manual_upload_quote(quote_id: str, file: UploadFile = File(...)):
             if not existing:
                 raise HTTPException(status_code=404, detail="Quote not found")
         
-        # 2. Leer contenido del archivo
+        # 2. Leer contenido del archivo y determinar extensión
         content = await file.read()
         xlsx_bytes = io.BytesIO(content)
         
-        # 3. Determinar path de storage (usar el existente o generar uno nuevo sanitizado)
-        cloud_path = existing.get('object_key')
-        if not cloud_path:
-            # Si no tenía key (raro), generamos una nueva
-            year = existing['year']
-            numero = existing['numero']
-            cloud_path = f"{year}/COT-{year}-{numero}-REEMPLAZO.xlsx"
+        filename = file.filename or ""
+        ext = Path(filename).suffix.lower()
+        if ext not in ['.xlsx', '.xls', '.pdf']:
+             raise HTTPException(status_code=400, detail="Solo se permiten archivos Excel (.xlsx) o PDF (.pdf)")
+
+        # 2b. Validar que el nombre del archivo contiene el código de la cotización
+        year = existing['year']
+        numero = existing['numero']
+        expected_code = f"COT-{year}-{numero}"
+        if expected_code not in filename.upper():
+             raise HTTPException(status_code=400, detail=f"El nombre del archivo debe contener el código {expected_code} para mantener el orden.")
+
+        # 3. Determinar path de storage (usar el existente pero con la extensión correcta)
+        year = existing['year']
+        numero = existing['numero']
+        
+        safe_cliente_cloud = "MANUAL-UPLOAD" # Fallback if client name is complex
+        # Construct new cloud path to ensure extension is correct
+        cloud_path = f"{year}/COT-{year}-{numero}{ext}"
         
         # 4. Subir a Storage (el service ya usa x-upsert: true)
         xlsx_bytes.seek(0)
@@ -522,22 +534,41 @@ async def manual_upload_quote(quote_id: str, file: UploadFile = File(...)):
         if not uploaded_path:
             raise HTTPException(status_code=500, detail="Error uploading to storage")
             
-        # 5. Opcional: Actualizar el archivo local si existe
-        if existing['archivo_path']:
-            local_path = Path(existing['archivo_path'])
+        # 5. Actualizar archivo local
+        current_local_path = existing.get('archivo_path')
+        new_local_path = None
+        
+        if current_local_path:
+            # Si existe, derivamos el nuevo path local con la extensión correcta
+            old_path = Path(current_local_path)
+            new_path = old_path.with_suffix(ext)
             try:
-                with open(local_path, "wb") as f:
+                # Remove old file if extension changed
+                if old_path.exists() and old_path != new_path:
+                    try: old_path.unlink()
+                    except: pass
+                
+                # Write new file
+                new_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(new_path, "wb") as f:
                     f.write(content)
+                new_local_path = str(new_path)
             except Exception as e:
                 print(f"Error updating local file copy: {e}")
+                new_local_path = current_local_path # Fallback
 
-        # 6. Actualizar object_key en DB por si cambió
+        # 6. Actualizar object_key y archivo_path en DB
         with conn.cursor() as cur:
-            cur.execute("UPDATE cotizaciones SET object_key = %s, updated_at = NOW() WHERE id = %s", (cloud_path, quote_id))
+            if new_local_path:
+                cur.execute("UPDATE cotizaciones SET object_key = %s, archivo_path = %s, updated_at = NOW() WHERE id = %s", (cloud_path, new_local_path, quote_id))
+            else:
+                cur.execute("UPDATE cotizaciones SET object_key = %s, updated_at = NOW() WHERE id = %s", (cloud_path, quote_id))
             conn.commit()
 
         return {"success": True, "message": "Quote file replaced successfully", "object_key": cloud_path}
             
+    except HTTPException:
+        raise
     except Exception as e:
         if 'conn' in locals() and conn:
             conn.rollback()
