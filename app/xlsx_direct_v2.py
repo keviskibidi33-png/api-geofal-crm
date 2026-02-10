@@ -103,6 +103,13 @@ def _set_cell_value(
             if txt_style == 'bold':
                 etree.SubElement(rPr, f'{{{ns}}}b')
             
+            # Match Template Font (Arial 13)
+            # Apply to ALL runs (bold or not) to ensure consistency
+            rFont = etree.SubElement(rPr, f'{{{ns}}}rFont')
+            rFont.set('val', 'Arial')
+            sz = etree.SubElement(rPr, f'{{{ns}}}sz')
+            sz.set('val', '13')
+             
             t_elem = etree.SubElement(r_elem, f'{{{ns}}}t')
             # Preserve spaces is critical for rich text runs
             t_elem.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
@@ -601,6 +608,61 @@ def export_xlsx_direct(template_path: str, data: dict) -> io.BytesIO:
             print(f"DEBUG: Escribiendo aceptación en B{row_aceptacion}: {aceptacion_text[:50]}...")
             _set_cell_value(sheet_data, f'B{row_aceptacion}', aceptacion_text, ns, get_string_idx=get_string_idx)
         # Si no hay correo, se mantiene el texto original del template
+        # ---------------------------------------------------------------------
+        # REFORZAR ESTILOS DE CABECERAS ESTÁTICAS (QUEJAS, ETC.)
+        # ---------------------------------------------------------------------
+        # Debido al desplazamiento, a veces pierden formato visual.
+        # Las re-escribimos explícitamente con Rich Text Arial 13 Negrita.
+        
+        if extra_rows > 0:
+            static_rows = {
+                27: ("CONTRAMUESTRA", "Al finalizar los ensayos, la muestra sobrante/contramuestra permanecerán en custodia por un tiempo de 10 dias calendario después de emitido el informe de ensayo. Siempre que se trate de una muestra dirimente, las  contramuestras serán devueltas a los clientes, previa coordinación y autorización, caso contrario, serán eliminadas si se trata de residuos del ensayo o contramuestras de ensayo."),
+                28: ("CONFIDENCIALIDAD:", "GEOFAL S.A.C mantiene acuerdos de confidencialidad entre el cliente y el laboratorio, la divulgación de la información sin la autorización de las partes, no es permitida. El laboratorio mantiene reserva de la información brindada por el cliente, salvo solicitud de la información por ley, o por entidades gubernamentales inmersos dentro del presente servicio de ensayo."),
+                29: ("QUEJAS Y SUGERENCIAS:", "El plazo máximo para la recepción de quejas relacionadas con un informe técnico es de diez (10) días calendarios, contados a partir de la fecha de emisión del documento correspondiente. Transcurrido dicho plazo, no se aceptarán quejas bajo ninguna circunstancia.\nEn caso de tener alguna queja o sugerencia, lo invitamos a conocer nuestro Proceso de Atención de Quejas, el cual dará inicio 24 horas después de la recepción formal de la queja."),
+                30: ("ENTREGA DE INFORME DE ENSAYO:", "- De acuerdo a los lineamientos de INACAL - DM, los informes de ensayo son emitidos de forma digital con firma electrónica y QR.\n- La entrega de los informes de ensayo será mediante la plataforma de Intranet de la pagina web www.geofal.com.pe, y se enviará un correo de confirmación al cliente con el usuario y clave para el acceso. Asi mismo el cliente puede ingresar a la gruía deusuario que es visible en la página web.\n- Geofal no declara conformidad de sus informes de ensayo.\n- En caso se requiera la modificación del informe de ensayo a consecuencia de los datos proporcionados por el cliente, esta se realizará mediante la emisión de un nuevo informe que tendrá un costo adicional de acuerdo a evaluación."),
+                31: ("HORARIO DE ATENCIÓN", "El horario para recepción de muestra y entrega de informes es de Lunes a Viernes de 8:30am a 1:00pm y 2:00pm a 5:30pm, y Sábado de 8:30am a 12:30pm"),
+                # Footer Rows (Razon Social, Cuentas)
+                # Row 35: RAZON SOCIAL: Geofal S.A.C. RUC: 20549356762
+                35: ("RAZON SOCIAL:", " Geofal S.A.C. RUC: 20549356762"),
+                # Row 36: Sírvase realizar el depósito... -> Todo normal, o Bold? Template parece normal.
+                # Let's check template style: Row 36 is likely Normal.
+                # Row 37: Cuenta de detraccion... -> Header Bold?
+                37: ("Cuenta de detraccion Banco de La Nación:", ""),
+                # Row 38: - Cuenta... -> Normal
+                38: ("", "- Cuenta de detraccion Banco de La Nación: Nº 00-074-045472"),
+                # Row 39: Cuenta corriente Interbank: -> Header Bold
+                39: ("Cuenta corriente Interbank:", ""),
+                # Row 40: - Cuenta... -> Normal
+                40: ("", "- Cuenta Corriente en Soles de Interbank:  Nº 200-3005201096"),
+                # Row 41: - Codigo -> Normal
+                41: ("", "- Código Interbancario (CCI) de Interbank: Nº 003-200- 003005201096-31"),
+                # Row 42: Cuenta corriente BCP: -> Header Bold
+                42: ("Cuenta corriente BCP:", ""),
+                # Row 43: - Cuenta... -> Normal
+                43: ("", "- Cuenta Corriente en Soles del Banco de Crédito del Perú (BCP): Nº 192 2024 3030 04"),
+                # Row 44: - Codigo -> Normal
+                44: ("", "- Código Interbancario (CCI) del Banco de Crédito del Perú (BCP): Nº 002-192-002 02430 3004-34"),
+                # Row 45: Cuenta corriente BBVA: -> Header Bold
+                45: ("Cuenta corriente BBVA:", "")
+                # Row 46, 47 for BBVA details if any? Extracted text stopped at 45 header.
+                # Just add up to 45.
+            }
+            
+            for orig_row, (title, body) in static_rows.items():
+                new_row = orig_row + extra_rows
+                print(f"DEBUG: Restaurando estilo en fila {new_row} ({title})")
+                
+                rich_parts = []
+                if title:
+                    rich_parts.append((title + ("\n" if body and orig_row not in [35] else ""), "bold")) # No newline for Razon Social line 35 (inline)
+                if body:
+                    rich_parts.append((body, "normal"))
+                
+                if not rich_parts:
+                     # Fallback if both empty?
+                     continue
+
+                _set_cell_value(sheet_data, f'B{new_row}', None, ns, rich_text=rich_parts)
     
     modified_sheet1 = etree.tostring(root, encoding='utf-8', xml_declaration=True)
     
