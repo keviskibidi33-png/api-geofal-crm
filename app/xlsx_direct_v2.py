@@ -73,7 +73,8 @@ def _set_cell_value(
     value: Any,
     ns: str,
     is_number: bool = False,
-    get_string_idx: Optional[Callable[[str], int]] = None
+    get_string_idx: Optional[Callable[[str], int]] = None,
+    rich_text: list = None
 ):
     """Establece el valor de una celda"""
     col, row_num = _parse_cell_ref(cell_ref)
@@ -88,11 +89,34 @@ def _set_cell_value(
     for child in list(cell):
         cell.remove(child)
     
+    if rich_text:
+        # Support for Rich Text (inlineStr with runs)
+        # rich_text is a list of tuples: [(text, 'bold'), (text, 'normal')]
+        cell.set('t', 'inlineStr')
+        is_elem = etree.SubElement(cell, f'{{{ns}}}is')
+        
+        for text_part, txt_style in rich_text:
+            r_elem = etree.SubElement(is_elem, f'{{{ns}}}r')
+            rPr = etree.SubElement(r_elem, f'{{{ns}}}rPr')
+            
+            # Apply Bold if requested
+            if txt_style == 'bold':
+                etree.SubElement(rPr, f'{{{ns}}}b')
+            
+            t_elem = etree.SubElement(r_elem, f'{{{ns}}}t')
+            # Preserve spaces is critical for rich text runs
+            t_elem.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
+            t_elem.text = text_part
+        
+        if style:
+             cell.set('s', style)
+        return
+
     if value is None or value == '':
         if 't' in cell.attrib:
             del cell.attrib['t']
         return
-    
+
     if is_number:
         if 't' in cell.attrib:
             del cell.attrib['t']
@@ -499,13 +523,13 @@ def export_xlsx_direct(template_path: str, data: dict) -> io.BytesIO:
             for col in ['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N']:
                 _set_cell_value(sheet_data, f'{col}{row_condiciones}', '', ns)
             
-            # Construir el texto con título y todas las condiciones
-            condiciones_text = "CONDICIONES ESPECÍFICAS:\n"
+            # Construir Rich Text: Título en Negrita, resto normal
+            rich_parts = [("CONDICIONES ESPECÍFICAS:\n", "bold")]
             for condicion in condiciones_textos:
-                condiciones_text += f"- {condicion}\n"
+                rich_parts.append((f"- {condicion}\n", "normal"))
             
-            print(f"DEBUG: Escribiendo condiciones en B{row_condiciones}: {condiciones_text[:100]}...")
-            _set_cell_value(sheet_data, f'B{row_condiciones}', condiciones_text, ns, get_string_idx=get_string_idx)
+            print(f"DEBUG: Escribiendo condiciones Rich Text en B{row_condiciones}")
+            _set_cell_value(sheet_data, f'B{row_condiciones}', None, ns, rich_text=rich_parts)
         # Si no hay condiciones, se mantiene el texto original del template
         
         # PLAZO ESTIMADO (fila 24 + extra_rows, celdas combinadas B24:N24)
@@ -519,25 +543,21 @@ def export_xlsx_direct(template_path: str, data: dict) -> io.BytesIO:
         
         if plazo_dias and plazo_dias > 0:
             # Texto con días específicos
-            plazo_text = (
-                f"PLAZO ESTIMADO DE EJECUCIÓN DE SERVICIO: "
-                f"- El plazo de entrega de los resultados se estima en {plazo_dias} días hábiles, "
-                f"este tiempo será evaluado de acuerdo a la cantidad de muestra recepcionada y está sujeto "
-                f"a la programacion enviada por el Laboratorio de Ensayos de Materiales. "
-                f"- El laboratorio enviará un correo de confirmación de recepción y fecha de entrega del informe."
-            )
+            rich_parts = [
+                ("PLAZO ESTIMADO DE EJECUCIÓN DE SERVICIO: ", "bold"),
+                (f"- El plazo de entrega de los resultados se estima en {plazo_dias} días hábiles, ", "normal"),
+                ("este tiempo será evaluado de acuerdo a la cantidad de muestra recepcionada y está sujeto a la programacion enviada por el Laboratorio de Ensayos de Materiales. - El laboratorio enviará un correo de confirmación de recepción y fecha de entrega del informe.", "normal")
+            ]
         else:
             # Texto sin días específicos
-            plazo_text = (
-                f"PLAZO ESTIMADO DE EJECUCIÓN DE SERVICIO: "
-                f"- El plazo de entrega de los resultados se estima de acuerdo a la programacion recepcion, "
-                f"este tiempo será evaluado de acuerdo a la cantidad de muestra recepcionada y está sujeto "
-                f"a la programacion enviada por el Laboratorio de Ensayos de Materiales. "
-                f"- El laboratorio enviará un correo de confirmación de recepción y fecha de entrega del informe."
-            )
+            rich_parts = [
+                ("PLAZO ESTIMADO DE EJECUCIÓN DE SERVICIO: ", "bold"),
+                ("- El plazo de entrega de los resultados se estima de acuerdo a la programacion recepcion, ", "normal"),
+                ("este tiempo será evaluado de acuerdo a la cantidad de muestra recepcionada y está sujeto a la programacion enviada por el Laboratorio de Ensayos de Materiales. - El laboratorio enviará un correo de confirmación de recepción y fecha de entrega del informe.", "normal")
+            ]
         
-        print(f"DEBUG: Escribiendo plazo en B{row_plazo}: {plazo_text[:50]}...")
-        _set_cell_value(sheet_data, f'B{row_plazo}', plazo_text, ns, get_string_idx=get_string_idx)
+        print(f"DEBUG: Escribiendo plazo Rich Text en B{row_plazo}")
+        _set_cell_value(sheet_data, f'B{row_plazo}', None, ns, rich_text=rich_parts)
         
         # CONDICIONES DE PAGO (fila 34 + extra_rows, SIN celdas combinadas)
         condicion_pago = data.get('condicion_pago', '')
@@ -552,9 +572,13 @@ def export_xlsx_direct(template_path: str, data: dict) -> io.BytesIO:
                 'credito_15': 'El pago del servicio Crédito a 15 días, previa orden de servicio.',
                 'credito_30': 'El pago del servicio Crédito a 30 días, previa orden de servicio.',
             }
-            condicion_text = f"CONDICIÓN: {condiciones.get(condicion_pago, '')}"
-            print(f"DEBUG: Escribiendo condición en B{row_condicion}: {condicion_text}")
-            _set_cell_value(sheet_data, f'B{row_condicion}', condicion_text, ns, get_string_idx=get_string_idx)
+            texto_condicion = condiciones.get(condicion_pago, '')
+            rich_parts = [
+                ("CONDICIÓN: ", "bold"),
+                (texto_condicion, "normal")
+            ]
+            print(f"DEBUG: Escribiendo condición Rich Text en B{row_condicion}")
+            _set_cell_value(sheet_data, f'B{row_condicion}', None, ns, rich_text=rich_parts)
         # Si no hay condicion_pago, se mantiene el texto original del template
         
         # CORREO DEL VENDEDOR (fila 51 + extra_rows, celdas combinadas B51:N51)
