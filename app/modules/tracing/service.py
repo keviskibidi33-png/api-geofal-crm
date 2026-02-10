@@ -7,35 +7,59 @@ from typing import Optional
 
 class TracingService:
     @staticmethod
+    def _extraer_numero_base(numero: str) -> str:
+        """
+        Extrae el número base sin prefijo REC- ni sufijo de año (-XX).
+        Ejemplos: 'REC-1111-26' -> '1111', '1111-26' -> '1111', '1111' -> '1111'
+        """
+        clean = numero.replace("REC-", "").replace("rec-", "").strip()
+        # Quitar sufijo de año si existe (formato: NNNN-YY donde YY son 2 dígitos)
+        import re
+        match = re.match(r'^(.+)-(\d{2})$', clean)
+        if match:
+            return match.group(1)
+        return clean
+
+    @staticmethod
     def _buscar_recepcion_flexible(db: Session, numero: str) -> Optional[tuple[Optional[RecepcionMuestra], str]]:
         """
         Busca una recepción permitiendo variaciones de formato.
+        Ignora automáticamente prefijos (REC-) y sufijos de año (-26).
         Retorna una tupla (instancia_recepcion, numero_canonico).
         """
         if not numero:
             return None, ""
-            
-        # 1. Búsqueda exacta
-        recepcion = db.query(RecepcionMuestra).filter(RecepcionMuestra.numero_recepcion == numero).first()
-        if recepcion:
-            return recepcion, numero
-
-        # 2. Búsqueda flexible (fuzzy)
-        clean_num = numero.replace("REC-", "").upper()
         
-        # A. Sin prefijo REC-
-        recepcion = db.query(RecepcionMuestra).filter(RecepcionMuestra.numero_recepcion == clean_num).first()
-        if recepcion:
-            return recepcion, clean_num
-            
-        # B. Intentar con prefijo de año (ej: 1111 -> 1111-26)
-        # Asumiendo año 26 por defecto si no tiene guión
-        if "-" not in clean_num:
-            recepcion = db.query(RecepcionMuestra).filter(RecepcionMuestra.numero_recepcion == f"{clean_num}-26").first()
+        # Extraer el número base limpio (sin REC- ni -YY)
+        base_num = TracingService._extraer_numero_base(numero)
+        
+        # Generar todas las variantes posibles del número
+        variantes = []
+        # Orden de prioridad: exacto, limpio, base, base con año
+        variantes.append(numero)                    # Exacto como viene
+        clean_num = numero.replace("REC-", "").replace("rec-", "").strip()
+        if clean_num != numero:
+            variantes.append(clean_num)             # Sin prefijo REC-
+        if base_num != clean_num:
+            variantes.append(base_num)              # Sin sufijo de año
+        
+        # Eliminar duplicados manteniendo orden
+        seen = set()
+        variantes_unicas = []
+        for v in variantes:
+            if v not in seen:
+                seen.add(v)
+                variantes_unicas.append(v)
+        
+        # Buscar en orden de prioridad
+        for variante in variantes_unicas:
+            recepcion = db.query(RecepcionMuestra).filter(
+                RecepcionMuestra.numero_recepcion == variante
+            ).first()
             if recepcion:
-                return recepcion, f"{clean_num}-26"
+                return recepcion, recepcion.numero_recepcion
 
-        return None, numero
+        return None, base_num
 
     @staticmethod
     def actualizar_trazabilidad(db: Session, numero_recepcion: str):
@@ -47,10 +71,19 @@ class TracingService:
 
         # 1. Obtener recepción con búsqueda inteligente
         recepcion, canonical_numero = TracingService._buscar_recepcion_flexible(db, numero_recepcion)
+        
+        # Extraer número base para búsquedas cruzadas entre módulos
+        base_num = TracingService._extraer_numero_base(numero_recepcion)
+        numeros_busqueda = list(set([canonical_numero, base_num, numero_recepcion]))
 
-        # 2. Buscar en otros módulos usando el número canónico
-        verificacion = db.query(VerificacionMuestras).filter(VerificacionMuestras.numero_verificacion == canonical_numero).first()
-        compresion = db.query(EnsayoCompresion).filter(EnsayoCompresion.numero_recepcion == canonical_numero).first()
+        # 2. Buscar en otros módulos usando todas las variantes del número
+        verificacion = None
+        compresion = None
+        for num in numeros_busqueda:
+            if not verificacion:
+                verificacion = db.query(VerificacionMuestras).filter(VerificacionMuestras.numero_verificacion == num).first()
+            if not compresion:
+                compresion = db.query(EnsayoCompresion).filter(EnsayoCompresion.numero_recepcion == num).first()
         
         # Si NO EXISTE NADA, abortar
         if not recepcion and not verificacion and not compresion:
@@ -95,10 +128,6 @@ class TracingService:
             "compresion_id": compresion.id if compresion else None,
             "compresion_estado": compresion.estado if compresion else None
         }
-        
-        db.commit()
-        db.refresh(traza)
-        return traza
         
         db.commit()
         db.refresh(traza)
