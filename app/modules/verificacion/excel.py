@@ -73,130 +73,118 @@ class ExcelLogic:
                     logger.warning(f"No se pudo copiar estilo en celda {target_cell.coordinate}: {e}")
 
     def generar_excel_verificacion(self, verificacion: VerificacionMuestras) -> bytes:
+        logger.info(f"Iniciando generación Excel Verificación {verificacion.numero_verificacion}")
+        import traceback
+        
         if not os.path.exists(self.template_path):
             raise FileNotFoundError(f"Template no encontrado en {self.template_path}")
 
-        # Cargar directamente desde el template
-        wb = load_workbook(self.template_path)
-        ws = wb.active
-        
-        # Mejorar la inserción de filas con replicación de estilos + GAP row
-        num_muestras = len(verificacion.muestras_verificadas)
-        
-        # Calcular cuántas filas extra de datos necesitamos (más allá de las 8 base)
-        rows_needed_for_data = max(0, num_muestras - 8)
-        
-        # Siempre insertamos al menos 1 fila extra para usarla como separador (GAP)
-        # o las necesarias para los datos + el separador.
-        # "los codigo de equipos deberia tener una linea vacia de diferencia"
-        extra_rows_to_insert = rows_needed_for_data + 1
-        
-        if extra_rows_to_insert > 0:
-            # CRITICAL FIX: OpenPyXL bug
-            # Detected that merge A21:Q21 DOES NOT start shifting when inserting at row 18.
-            # We must manually unmerge any range below row 18 to avoid collisions with new data.
-            ranges_to_remove = []
-            for merge in ws.merged_cells.ranges:
-                if merge.min_row >= 18:
-                    ranges_to_remove.append(merge)
-            
-            for m in ranges_to_remove:
-                ws.unmerge_cells(str(m))
-
-            # Insertar filas (Datos extra + Gap)
-            ws.insert_rows(18, amount=extra_rows_to_insert)
-            
-            # Replicar estilos y ALTURA de la fila 10 (referencia)
-            # Solo a las filas de DATOS, no a la fila GAP (última insertada)
-            source_row_height = ws.row_dimensions[10].height
-            
-            # Rango de filas de datos nuevas: desde 18 hasta (18 + rows_needed_for_data - 1)
-            # Si rows_needed_for_data es 0 (<= 8 items), este loop no corre, y solo queda el gap limpio.
-            # FIX: El usuario reportó que el Item 8 (Fila 17) no tenía bordes.
-            # Para asegurar consistencia, aplicamos el estilo a TODAS las filas de datos (10 hasta N),
-            # no solo a las insertadas.
-            last_data_row = 10 + num_muestras - 1
-            for r in range(11, last_data_row + 1): # Empezamos en 11 porque 10 es el source
-                # Copiar altura (si es insertada o si queremos forzar)
-                if source_row_height:
-                    ws.row_dimensions[r].height = source_row_height
-                
-                # Copiar estilos de celda (Bordes, etc.)
-                for c in range(1, 23): # Columnas A a V
-                    source = ws.cell(row=10, column=c)
-                    target = ws.cell(row=r, column=c)
-                    self._copy_style(source, target)
-        
-        # LLenar datos
-        self._llenar_datos(ws, verificacion, offset_rows=extra_rows_to_insert)
-
-        # FIX: Limpiar encabezado Masa/Pesar (Mantener fusionado U8:V9)
-        # Asegurar que esté fusionado (reparar si el unmerge anterior rompió algo)
         try:
-            ws.merge_cells("U8:V9")
-        except:
-            pass # Ya está fusionado
-        
-        header_masa_pesar = ws.cell(row=8, column=21)
-        header_masa_pesar.value = "Masa muestra aire (g)"
-        header_masa_pesar.alignment = self.align_center
-        header_masa_pesar.font = ws.cell(row=8, column=1).font if ws.cell(row=8, column=1).font else header_masa_pesar.font
+            # Cargar directamente desde el template
+            wb = load_workbook(self.template_path)
+            ws = wb.active
+            
+            # Mejorar la inserción de filas con replicación de estilos + GAP row
+            num_muestras = len(verificacion.muestras_verificadas)
+            
+            # Calcular cuántas filas extra de datos necesitamos (más allá de las 8 base)
+            rows_needed_for_data = max(0, num_muestras - 8)
+            
+            # Siempre insertamos al menos 1 fila extra para usarla como separador (GAP)
+            extra_rows_to_insert = rows_needed_for_data + 1
+            
+            if extra_rows_to_insert > 0:
+                # CRITICAL FIX: OpenPyXL bug
+                ranges_to_remove = []
+                for merge in ws.merged_cells.ranges:
+                    if merge.min_row >= 18:
+                        ranges_to_remove.append(merge)
+                
+                for m in ranges_to_remove:
+                    ws.unmerge_cells(str(m))
 
-        for r in range(8, 10):
-            for c in range(1, 23): # A a V
-                cell = ws.cell(row=r, column=c)
-                cell.border = self.border_thin
-                # No forzamos alignment general aquí para respetar fusiones específicas
-                if not cell.alignment:
-                    cell.alignment = self.align_center
+                # Insertar filas (Datos extra + Gap)
+                ws.insert_rows(18, amount=extra_rows_to_insert)
+                
+                # Replicar estilos y ALTURA de la fila 10 (referencia)
+                source_row_height = ws.row_dimensions[10].height
+                
+                last_data_row = 10 + num_muestras - 1
+                for r in range(11, last_data_row + 1): 
+                    if source_row_height:
+                        ws.row_dimensions[r].height = source_row_height
+                    
+                    for c in range(1, 23): # Columnas A a V
+                        try:
+                            source = ws.cell(row=10, column=c)
+                            target = ws.cell(row=r, column=c)
+                            self._copy_style(source, target)
+                        except Exception as e:
+                            logger.error(f"Error copiando estilo en fila {r} col {c}: {e}")
+            
+            # LLenar datos
+            self._llenar_datos(ws, verificacion, offset_rows=extra_rows_to_insert)
 
-        # FIX: Mover el footer (Web...) a Columna J y descombinar
-        # "agrega el de web y todo ello en columna J sin fusiones"
-        # Buscamos la fila del footer. Originalmente es 28, pero se desplaza.
-        # Buscamos en las ultimas filas. A veces max_row es engañoso si hay estilos vacios.
-        # Buscamos en un rango seguro de 50 filas desde el final (o desde row 20 si es corto)
-        max_r = ws.max_row
-        start_search = max(20, max_r - 50)
-        
-        found_footer = False
-        for r in range(max_r, start_search, -1): # Buscar desde abajo hacia arriba
-            for c in range(1, 15): # Buscar en primeras columnas (A..N)
-                cell = ws.cell(row=r, column=c)
-                val = str(cell.value) if cell.value else ""
-                # "Web: www.geofal.com.pe" o direccion "Av. Marañon"
-                if "geofal.com.pe" in val or "Web:" in val or "Marañon" in val:
-                    # Encontrado.
-                    found_footer = True
-                    # 1. Descombinar toda la fila si es necesario (o el rango detectado)
-                    ranges_to_remove = []
-                    for merge in ws.merged_cells.ranges:
-                        if merge.min_row <= r <= merge.max_row:
-                            ranges_to_remove.append(merge)
-                    for m in ranges_to_remove:
-                        ws.unmerge_cells(str(m))
-                    
-                    # 2. Mover contenido a Columna J (10)
-                    # Primero limpiamos donde estaba
-                    original_value = val
-                    cell.value = None
-                    
-                    # Escribimos en J
-                    target = ws.cell(row=r, column=10)
-                    target.value = original_value
-                    # Alineación izquierda para que se extienda hacia la derecha si es necesario
-                    target.alignment = Alignment(horizontal='left', vertical='center')
-                    
-                    # Romper loops una vez encontrado y movido
+            # FIX: Limpiar encabezado Masa/Pesar
+            try:
+                ws.merge_cells("U8:V9")
+            except:
+                pass 
+            
+            header_masa_pesar = ws.cell(row=8, column=21)
+            header_masa_pesar.value = "Masa muestra aire (g)"
+            try:
+                header_masa_pesar.alignment = self.align_center
+            except: pass
+
+            for r in range(8, 10):
+                for c in range(1, 23): # A a V
+                    cell = ws.cell(row=r, column=c)
+                    try:
+                        cell.border = self.border_thin
+                        if not cell.alignment:
+                            cell.alignment = self.align_center
+                    except: pass
+
+            # FIX: Mover el footer
+            max_r = ws.max_row
+            start_search = max(20, max_r - 50)
+            
+            found_footer = False
+            for r in range(max_r, start_search, -1): 
+                for c in range(1, 15): 
+                    cell = ws.cell(row=r, column=c)
+                    val = str(cell.value) if cell.value else ""
+                    if "geofal.com.pe" in val or "Web:" in val or "Marañon" in val:
+                        found_footer = True
+                        ranges_to_remove = []
+                        for merge in ws.merged_cells.ranges:
+                            if merge.min_row <= r <= merge.max_row:
+                                ranges_to_remove.append(merge)
+                        for m in ranges_to_remove:
+                            ws.unmerge_cells(str(m))
+                        
+                        original_value = val
+                        cell.value = None
+                        
+                        target = ws.cell(row=r, column=10)
+                        target.value = original_value
+                        target.alignment = Alignment(horizontal='left', vertical='center')
+                        break
+                if found_footer:
                     break
-            if found_footer:
-                break
-        
-        # Guardar en memoria
-        output = io.BytesIO()
-        wb.save(output)
-        wb.close()
-        
-        return output.getvalue()
+            
+            # Guardar en memoria
+            output = io.BytesIO()
+            wb.save(output)
+            wb.close()
+            
+            return output.getvalue()
+
+        except Exception as e:
+            logger.error(f"CRITICAL ERROR generating Excel: {str(e)}")
+            traceback.print_exc()
+            raise e
 
     def _llenar_datos(self, ws, verificacion: VerificacionMuestras, offset_rows: int = 0):
         # Info General
