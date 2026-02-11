@@ -114,30 +114,25 @@ class ExcelLogic:
         # LLenar datos
         self._llenar_datos(ws, verificacion, offset_rows=extra_rows_to_insert)
 
-        # FIX: Forzar bordes y arreglar encabezado Masa/Pesar
-        # Unmerge the combined Masa/Pesar header if it exists
+        # FIX: Limpiar encabezado Masa/Pesar (Mantener fusionado U8:V9)
+        # Asegurar que esté fusionado (reparar si el unmerge anterior rompió algo)
         try:
-            ws.unmerge_cells("U8:V9")
+            ws.merge_cells("U8:V9")
         except:
-            pass
+            pass # Ya está fusionado
         
-        # Create separate headers
-        ws.merge_cells("U8:U9")
-        ws.merge_cells("V8:V9")
-        
-        header_masa = ws.cell(row=8, column=21)
-        header_masa.value = "Masa muestra aire (g)"
-        
-        header_pesar = ws.cell(row=8, column=22)
-        header_pesar.value = "¿Pesar?"
+        header_masa_pesar = ws.cell(row=8, column=21)
+        header_masa_pesar.value = "Masa muestra aire (g)"
+        header_masa_pesar.alignment = self.align_center
+        header_masa_pesar.font = ws.cell(row=8, column=1).font if ws.cell(row=8, column=1).font else header_masa_pesar.font
 
         for r in range(8, 10):
             for c in range(1, 23): # A a V
                 cell = ws.cell(row=r, column=c)
                 cell.border = self.border_thin
-                cell.alignment = self.align_center
-                # Inherit font from A8 if possible
-                cell.font = ws.cell(row=8, column=1).font if ws.cell(row=8, column=1).font else cell.font
+                # No forzamos alignment general aquí para respetar fusiones específicas
+                if not cell.alignment:
+                    cell.alignment = self.align_center
 
         # FIX: Mover el footer (Web...) a Columna J y descombinar
         # "agrega el de web y todo ello en columna J sin fusiones"
