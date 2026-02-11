@@ -317,6 +317,27 @@ class VerificacionService:
                 return False
             
             numero_backup = db_verificacion.numero_verificacion
+            
+            # Safe cleanup of storage (Supabase or Local)
+            try:
+                from app.utils.storage_utils import StorageUtils
+                # Extraer bucket si está en el object_key
+                bucket = "verificaciones"
+                obj_key = db_verificacion.object_key
+                if obj_key and '/' in obj_key:
+                    parts = obj_key.split('/')
+                    bucket = parts[0]
+                    obj_key = "/".join(parts[1:])
+                
+                StorageUtils.safe_cleanup_storage(
+                    self.db, 
+                    bucket=bucket, 
+                    object_key=obj_key, 
+                    local_path=db_verificacion.archivo_excel
+                )
+            except Exception as st_e:
+                logger.error(f"Error cleaning storage on delete: {st_e}")
+
             self.db.delete(db_verificacion)
             self.db.commit()
             

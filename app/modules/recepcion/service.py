@@ -182,6 +182,9 @@ class RecepcionService:
         recepcion = db.query(RecepcionMuestra).filter(RecepcionMuestra.id == recepcion_id).first()
         if not recepcion:
             return False
+            
+        from app.utils.storage_utils import StorageUtils
+        StorageUtils.safe_cleanup_storage(db, recepcion.bucket, recepcion.object_key)
         
         numero_backup = recepcion.numero_recepcion
         db.delete(recepcion)

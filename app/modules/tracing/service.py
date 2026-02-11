@@ -118,12 +118,49 @@ class TracingService:
             traza.cliente = "Cargado desde Compresión"
             traza.proyecto = "Proyecto no identificado"
         
-        # 5. Calcular estados
-        traza.estado_recepcion = "completado" if recepcion else "pendiente"
-        traza.estado_verificacion = "completado" if verificacion else "pendiente"
+        # 5. Calcular estados con verificación de almacenamiento
+        from app.utils.storage_utils import StorageUtils
         
+        # Recepción
+        if recepcion:
+            has_file = True
+            if recepcion.object_key:
+                has_file = StorageUtils.verify_supabase_file(recepcion.bucket, recepcion.object_key)
+            traza.estado_recepcion = "completado" if has_file else "en_proceso"
+        else:
+            traza.estado_recepcion = "pendiente"
+
+        # Verificación
+        if verificacion:
+            has_file = False
+            # Verificar en Supabase
+            if verificacion.object_key:
+                # El object_key en verificación a veces incluye el bucket: "verificaciones/file.xlsx"
+                parts = verificacion.object_key.split('/')
+                if len(parts) > 1:
+                    has_file = StorageUtils.verify_supabase_file(parts[0], "/".join(parts[1:]))
+                else:
+                    has_file = StorageUtils.verify_supabase_file("verificaciones", verificacion.object_key)
+            
+            # Si no está en Supabase, verificar localmente (archivo_excel)
+            if not has_file and verificacion.archivo_excel:
+                if os.path.exists(verificacion.archivo_excel):
+                    has_file = True
+            
+            traza.estado_verificacion = "completado" if has_file else "en_proceso"
+        else:
+            traza.estado_verificacion = "pendiente"
+        
+        # Compresión
         if compresion:
-            traza.estado_compresion = "completado" if compresion.estado == "COMPLETADO" else "en_proceso"
+            has_file = True
+            if compresion.object_key:
+                has_file = StorageUtils.verify_supabase_file(compresion.bucket, compresion.object_key)
+            
+            if has_file and compresion.estado == "COMPLETADO":
+                traza.estado_compresion = "completado"
+            else:
+                traza.estado_compresion = "en_proceso"
         else:
             traza.estado_compresion = "pendiente"
             
@@ -136,9 +173,11 @@ class TracingService:
             "proyecto": traza.proyecto,
             "verificacion_id": verificacion.id if verificacion else None,
             "compresion_id": compresion.id if compresion else None,
-            "compresion_estado": compresion.estado if compresion else None
+            "compresion_estado": compresion.estado if compresion else None,
+            "storage_verified": True
         }
         
+        import os # Asegurar que os esté disponible para la verificación local
         db.commit()
         db.refresh(traza)
         return traza
