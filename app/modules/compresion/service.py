@@ -31,7 +31,7 @@ class CompresionService:
         """Upload file to Supabase Storage and return object_key"""
         supabase_url = os.getenv("SUPABASE_URL")
         supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-        bucket_name = os.getenv("SUPABASE_BUCKET", "compresiones")
+        bucket_name = os.getenv("SUPABASE_BUCKET", "informe")
         
         if not supabase_url or not supabase_key:
             print("WARN: Supabase credentials not configured, skipping upload")
@@ -60,71 +60,77 @@ class CompresionService:
     
     def crear_ensayo(self, db: Session, ensayo_data: EnsayoCompresionCreate) -> EnsayoCompresion:
         """Create new compression test"""
-        
-        # Create main ensayo
-        ensayo = EnsayoCompresion(
-            numero_ot=ensayo_data.numero_ot,
-            numero_recepcion=ensayo_data.numero_recepcion,
-            recepcion_id=ensayo_data.recepcion_id,
-            codigo_equipo=ensayo_data.codigo_equipo,
-            otros=ensayo_data.otros,
-            nota=ensayo_data.nota,
-            realizado_por=ensayo_data.realizado_por,
-            revisado_por=ensayo_data.revisado_por,
-            aprobado_por=ensayo_data.aprobado_por,
-            estado="PENDIENTE"
-        )
-        
-        db.add(ensayo)
-        db.flush()  # Get the ID
-        
-        # Create items
-        for item_data in ensayo_data.items:
-            item = ItemCompresion(
-                ensayo_id=ensayo.id,
-                item=item_data.item,
-                codigo_lem=item_data.codigo_lem,
-                fecha_ensayo=item_data.fecha_ensayo,
-                hora_ensayo=item_data.hora_ensayo,
-                carga_maxima=item_data.carga_maxima,
-                tipo_fractura=item_data.tipo_fractura,
-                defectos=item_data.defectos,
-                realizado=item_data.realizado,
-                revisado=item_data.revisado,
-                fecha_revisado=item_data.fecha_revisado,
-                aprobado=item_data.aprobado,
-                fecha_aprobado=item_data.fecha_aprobado
-            )
-            db.add(item)
-        
-        # Generate Excel and upload
         try:
-            export_request = CompressionExportRequest(
-                recepcion_numero=ensayo_data.numero_recepcion,
-                ot_numero=ensayo_data.numero_ot,
-                items=[CompressionItem(**item.dict()) for item in ensayo_data.items],
+            # Create main ensayo
+            ensayo = EnsayoCompresion(
+                numero_ot=ensayo_data.numero_ot,
+                numero_recepcion=ensayo_data.numero_recepcion,
+                recepcion_id=ensayo_data.recepcion_id,
                 codigo_equipo=ensayo_data.codigo_equipo,
                 otros=ensayo_data.otros,
-                nota=ensayo_data.nota
+                nota=ensayo_data.nota,
+                realizado_por=ensayo_data.realizado_por,
+                revisado_por=ensayo_data.revisado_por,
+                aprobado_por=ensayo_data.aprobado_por,
+                estado="PENDIENTE"
             )
             
-            excel_buffer = generate_compression_excel(export_request)
-            excel_content = excel_buffer.getvalue()
+            db.add(ensayo)
+            db.flush()  # Get the ID
             
-            filename = _get_safe_filename(f"Compresion_{ensayo_data.numero_ot}")
-            object_key = self._upload_to_supabase(excel_content, filename)
+            # Create items
+            for item_data in ensayo_data.items:
+                item = ItemCompresion(
+                    ensayo_id=ensayo.id,
+                    item=item_data.item,
+                    codigo_lem=item_data.codigo_lem,
+                    fecha_ensayo=item_data.fecha_ensayo,
+                    hora_ensayo=item_data.hora_ensayo,
+                    carga_maxima=item_data.carga_maxima,
+                    tipo_fractura=item_data.tipo_fractura,
+                    defectos=item_data.defectos,
+                    realizado=item_data.realizado,
+                    revisado=item_data.revisado,
+                    fecha_revisado=item_data.fecha_revisado,
+                    aprobado=item_data.aprobado,
+                    fecha_aprobado=item_data.fecha_aprobado
+                )
+                db.add(item)
             
-            if object_key:
-                ensayo.bucket = "compresiones"
-                ensayo.object_key = object_key
+            # Generate Excel and upload
+            try:
+                export_request = CompressionExportRequest(
+                    recepcion_numero=ensayo_data.numero_recepcion,
+                    ot_numero=ensayo_data.numero_ot,
+                    items=[CompressionItem(**item.dict()) for item in ensayo_data.items],
+                    codigo_equipo=ensayo_data.codigo_equipo,
+                    otros=ensayo_data.otros,
+                    nota=ensayo_data.nota
+                )
                 
+                excel_buffer = generate_compression_excel(export_request)
+                excel_content = excel_buffer.getvalue()
+                
+                filename = _get_safe_filename(f"Compresion_{ensayo_data.numero_ot}")
+                object_key = self._upload_to_supabase(excel_content, filename)
+                
+                if object_key:
+                    ensayo.bucket = "informe"
+                    ensayo.object_key = object_key
+                    
+            except Exception as e:
+                print(f"Excel generation/upload error: {e}")
+            
+            db.commit()
+            db.refresh(ensayo)
+            
+            return ensayo
         except Exception as e:
-            print(f"Excel generation/upload error: {e}")
-        
-        db.commit()
-        db.refresh(ensayo)
-        
-        return ensayo
+            db.rollback()
+            err_msg = str(e)
+            if "unique constraint" in err_msg.lower():
+                raise ValueError(f"Ya existe un informe de ensayo para la recepción {ensayo_data.numero_recepcion}")
+            raise e
     
     def listar_ensayos(self, db: Session, skip: int = 0, limit: int = 100) -> List[EnsayoCompresion]:
         """List compression tests with pagination"""

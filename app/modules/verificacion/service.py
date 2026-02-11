@@ -291,6 +291,11 @@ class VerificacionService:
             
         except Exception as e:
             self.db.rollback()
+            # Check for duplicate key
+            err_msg = str(e)
+            if "ix_verificacion_muestras_numero_verificacion" in err_msg or "unique constraint" in err_msg.lower():
+                raise ValueError(f"Ya existe una verificación con el número {verificacion_data.numero_verificacion}")
+            
             logger.error(f"Error creando verificación: {str(e)}")
             raise ValueError(f"Error creando verificación: {str(e)}")
     
