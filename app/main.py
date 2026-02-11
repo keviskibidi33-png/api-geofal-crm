@@ -275,16 +275,22 @@ async def get_clientes(search: str = ""):
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             if search:
                 cur.execute("""
-                    SELECT id, nombre, email, telefono, empresa, estado, sector, ruc, direccion
-                    FROM clientes 
-                    WHERE (nombre ILIKE %s OR empresa ILIKE %s OR email ILIKE %s)
-                    AND deleted_at IS NULL
-                    ORDER BY nombre
+                    SELECT DISTINCT ON (c.id)
+                        c.id, c.empresa, c.ruc, c.direccion,
+                        COALESCE(con.nombre, c.nombre) as col_contacto,
+                        COALESCE(con.email, c.email) as col_email,
+                        COALESCE(con.telefono, c.telefono) as col_telefono
+                    FROM clientes c
+                    LEFT JOIN contactos con ON c.id = con.cliente_id
+                    WHERE (c.nombre ILIKE %s OR c.empresa ILIKE %s OR c.email ILIKE %s OR con.nombre ILIKE %s)
+                    AND c.deleted_at IS NULL
+                    ORDER BY c.id, con.es_principal DESC
                     LIMIT 20
-                """, (f"%{search}%", f"%{search}%", f"%{search}%"))
+                """, (f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%"))
             else:
                 cur.execute("""
-                    SELECT id, nombre, email, telefono, empresa, estado, sector, ruc, direccion
+                    SELECT id, nombre as col_contacto, email as col_email, telefono as col_telefono, 
+                           empresa, ruc, direccion
                     FROM clientes 
                     WHERE deleted_at IS NULL
                     ORDER BY nombre LIMIT 50
@@ -294,10 +300,10 @@ async def get_clientes(search: str = ""):
             # empresa = company name (primary), nombre = contact person (secondary)
             mapped = [{
                 'id': str(r['id']),
-                'nombre': r.get('empresa') or r.get('nombre', ''),  # empresa as main client name
-                'contacto': r.get('nombre', ''),  # nombre as contact person
-                'email': r.get('email', ''),
-                'telefono': r.get('telefono', ''),
+                'nombre': r.get('empresa') or r.get('col_contacto', ''),  # empresa as main client name
+                'contacto': r.get('col_contacto', ''),  # matched contact or main contact
+                'email': r.get('col_email', ''),
+                'telefono': r.get('col_telefono', ''),
                 'ruc': r.get('ruc', ''),
                 'direccion': r.get('direccion', ''),
             } for r in results]
