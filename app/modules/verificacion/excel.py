@@ -33,7 +33,7 @@ class ExcelLogic:
     
     def __init__(self):
         # Usamos el nuevo nombre del template oficial migrado del backend
-        filename = "F-LEM-P-01.12 V03 VERIFICACIÓN CONCRETO.xlsx"
+        filename = "Template_Verificacion.xlsx"
         from pathlib import Path
         current_dir = Path(__file__).resolve().parent
         app_dir = current_dir.parents[1]
