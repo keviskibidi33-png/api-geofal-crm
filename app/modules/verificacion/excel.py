@@ -239,7 +239,7 @@ class ExcelLogic:
         self._set_cell_value(ws, row, self.COLUMNS['tipo_testigo'], muestra.tipo_testigo or "")
         self._set_cell_value(ws, row, self.COLUMNS['diametro_1'], muestra.diametro_1_mm)
         self._set_cell_value(ws, row, self.COLUMNS['diametro_2'], muestra.diametro_2_mm)
-        self._set_cell_value(ws, row, self.COLUMNS['tolerancia_porcentaje'], muestra.tolerancia_porcentaje)
+        self._set_cell_value(ws, row, self.COLUMNS['tolerancia_porcentaje'], (muestra.tolerancia_porcentaje / 100.0) if muestra.tolerancia_porcentaje is not None else 0)
         self._set_cell_value(ws, row, self.COLUMNS['aceptacion_diametro'], _fmt(muestra.aceptacion_diametro))
         
         self._set_cell_value(ws, row, self.COLUMNS['perpendicularidad_sup1'], _fmt(muestra.perpendicularidad_sup1))
