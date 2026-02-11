@@ -94,13 +94,12 @@ class TracingService:
         # 3. Buscar si ya existe en trazabilidad
         traza = db.query(Trazabilidad).filter(Trazabilidad.numero_recepcion == canonical_numero).first()
 
-        # --- GHOST RECORDS FIX ---
-        # Si NO EXISTE NADA en los módulos origen, y existe en traza, BORRAMOS
+        # --- PERSISTENCE FIX ---
+        # Si NO EXISTE NADA en los módulos origen, MANTENEMOS la fila como histórico (gris)
+        # pero ya no la borramos automáticamente. El usuario la borrará manualmente si desea.
         if not recepcion and not verificacion and not compresion:
-            if traza:
-                db.delete(traza)
-                db.commit()
-            return None
+            if not traza:
+                return None # No crear trazas vacías de la nada, pero si ya existe se queda
         
         if not traza:
             traza = Trazabilidad(numero_recepcion=canonical_numero)

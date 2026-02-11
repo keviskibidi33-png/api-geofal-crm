@@ -174,3 +174,19 @@ def migrar_trazabilidad(db: Session = Depends(get_db_session)):
     """
     count = TracingService.migrar_datos(db)
     return {"mensaje": f"Sincronización completada: {count} registros procesados"}
+
+@router.delete("/{numero_recepcion}")
+def eliminar_trazabilidad(numero_recepcion: str, db: Session = Depends(get_db_session)):
+    """
+    Elimina manualmente un registro de la tabla maestra de trazabilidad.
+    """
+    # Usar búsqueda flexible para encontrar el registro correcto
+    _, canonical_numero = TracingService._buscar_recepcion_flexible(db, numero_recepcion)
+    
+    traza = db.query(Trazabilidad).filter(Trazabilidad.numero_recepcion == canonical_numero).first()
+    if not traza:
+        raise HTTPException(status_code=404, detail="Registro de trazabilidad no encontrado")
+    
+    db.delete(traza)
+    db.commit()
+    return {"mensaje": f"Registro {canonical_numero} eliminado del historial de seguimiento"}
