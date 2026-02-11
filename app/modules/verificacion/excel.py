@@ -48,13 +48,15 @@ class ExcelLogic:
     def _copy_style(self, source_cell, target_cell):
         """Copia bordes, fuente y alineación de una celda a otra."""
         if source_cell.has_style:
-            from copy import copy
-            target_cell.font = copy(source_cell.font)
-            target_cell.border = copy(source_cell.border)
-            target_cell.fill = copy(source_cell.fill)
+            # FIX: No usar copy() en objetos que pueden ser StyleProxy (unhashable)
+            # Los estilos de openpyxl son inmutables, así que la asignación directa es segura
+            # si no planeamos modificarlos después.
+            target_cell.font = source_cell.font
+            target_cell.border = source_cell.border
+            target_cell.fill = source_cell.fill
             target_cell.number_format = source_cell.number_format
-            target_cell.protection = copy(source_cell.protection)
-            target_cell.alignment = copy(source_cell.alignment)
+            target_cell.protection = source_cell.protection
+            target_cell.alignment = source_cell.alignment
 
     def generar_excel_verificacion(self, verificacion: VerificacionMuestras) -> bytes:
         if not os.path.exists(self.template_path):
