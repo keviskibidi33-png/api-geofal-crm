@@ -91,12 +91,16 @@ class TracingService:
             if not compresion:
                 compresion = db.query(EnsayoCompresion).filter(EnsayoCompresion.numero_recepcion == num).first()
         
-        # Si NO EXISTE NADA, abortar
-        if not recepcion and not verificacion and not compresion:
-            return None
-        
         # 3. Buscar si ya existe en trazabilidad
         traza = db.query(Trazabilidad).filter(Trazabilidad.numero_recepcion == canonical_numero).first()
+
+        # --- GHOST RECORDS FIX ---
+        # Si NO EXISTE NADA en los módulos origen, y existe en traza, BORRAMOS
+        if not recepcion and not verificacion and not compresion:
+            if traza:
+                db.delete(traza)
+                db.commit()
+            return None
         
         if not traza:
             traza = Trazabilidad(numero_recepcion=canonical_numero)

@@ -183,8 +183,17 @@ class RecepcionService:
         if not recepcion:
             return False
         
+        numero_backup = recepcion.numero_recepcion
         db.delete(recepcion)
         db.commit()
+
+        # Sync Trazabilidad
+        try:
+            from app.modules.tracing.service import TracingService
+            TracingService.actualizar_trazabilidad(db, numero_backup)
+        except Exception as tr_e:
+            print(f"Error syncing trazabilidad on delete reception: {tr_e}")
+
         return True
 
     # --- MÉTODOS PARA PLANTILLAS DE RECEPCIÓN ---

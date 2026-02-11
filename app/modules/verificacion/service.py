@@ -316,8 +316,17 @@ class VerificacionService:
             if not db_verificacion:
                 return False
             
+            numero_backup = db_verificacion.numero_verificacion
             self.db.delete(db_verificacion)
             self.db.commit()
+            
+            # Sync Trazabilidad
+            try:
+                from app.modules.tracing.service import TracingService
+                TracingService.actualizar_trazabilidad(self.db, numero_backup)
+            except Exception as tr_e:
+                logger.error(f"Error syncing trazabilidad on delete: {tr_e}")
+
             return True
         except Exception as e:
             self.db.rollback()
