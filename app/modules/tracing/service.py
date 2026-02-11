@@ -9,12 +9,18 @@ class TracingService:
     @staticmethod
     def _extraer_numero_base(numero: str) -> str:
         """
-        Extrae el número base sin prefijo REC- ni sufijo de año (-XX).
-        Ejemplos: 'REC-1111-26' -> '1111', '1111-26' -> '1111', '1111' -> '1111'
+        Extrae el número base sin prefijo REC- ni sufijos como -REC o año (-XX).
+        Ejemplos: 'REC-1111-26' -> '1111', '1111-REC' -> '1111', '1111-REC-26' -> '1111'
         """
+        # Quitar prefijos y limpiar
         clean = numero.replace("REC-", "").replace("rec-", "").strip()
-        # Quitar sufijo de año si existe (formato: NNNN-YY donde YY son 2 dígitos)
+        
+        # Quitar sufijo -REC (frecuente en verificación)
         import re
+        clean = re.sub(r'-REC$', '', clean, flags=re.IGNORECASE)
+        clean = re.sub(r'-REC-(\d{2})$', r'-\1', clean, flags=re.IGNORECASE)
+
+        # Quitar sufijo de año si existe (formato: NNNN-YY donde YY son 2 dígitos)
         match = re.match(r'^(.+)-(\d{2})$', clean)
         if match:
             return match.group(1)
