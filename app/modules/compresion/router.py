@@ -102,7 +102,14 @@ async def buscar_recepcion(
             "proyecto": recepcion.proyecto,
             "ubicacion": recepcion.ubicacion,
             "solicitante": recepcion.solicitante,
-            "domicilio_legal": recepcion.domicilio_legal
+            "domicilio_legal": recepcion.domicilio_legal,
+            "muestras": [
+                {
+                    "item_numero": m.item_numero,
+                    "codigo_lem": m.codigo_muestra_lem or m.codigo_muestra
+                }
+                for m in recepcion.muestras
+            ]
         } if recepcion else None
     }
 

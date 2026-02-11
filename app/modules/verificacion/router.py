@@ -73,13 +73,22 @@ async def buscar_recepcion(
             "id": recepcion.id,
             "numero_recepcion": recepcion.numero_recepcion,
             "cliente": recepcion.cliente,
-            "muestras": [m.codigo_muestra_lem for m in recepcion.muestras if m.codigo_muestra_lem]
+            "numero_ot": recepcion.numero_ot,
+            "muestras": [
+                {
+                    "item_numero": m.item_numero,
+                    "codigo_lem": m.codigo_muestra_lem or m.codigo_muestra,
+                    "tipo_testigo": m.estructura, # Mapping structure to testigo type if possible, or just defaults
+                } 
+                for m in recepcion.muestras
+            ]
         }
     elif verificacion:
         datos_retorno = {
             "id": verificacion.id,
             "numero_verificacion": verificacion.numero_verificacion,
-            "cliente": verificacion.cliente
+            "cliente": verificacion.cliente,
+            "numero_ot": verificacion.numero_ot
         }
 
     return {
