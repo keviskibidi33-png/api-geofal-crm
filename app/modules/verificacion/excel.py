@@ -114,12 +114,30 @@ class ExcelLogic:
         # LLenar datos
         self._llenar_datos(ws, verificacion, offset_rows=extra_rows_to_insert)
 
-        # FIX: Forzar bordes en el encabezado (Fila 8 y 9) por si el template los pierde
-        # "la fila 8 sigue sin sus cuadros"
+        # FIX: Forzar bordes y arreglar encabezado Masa/Pesar
+        # Unmerge the combined Masa/Pesar header if it exists
+        try:
+            ws.unmerge_cells("U8:V9")
+        except:
+            pass
+        
+        # Create separate headers
+        ws.merge_cells("U8:U9")
+        ws.merge_cells("V8:V9")
+        
+        header_masa = ws.cell(row=8, column=21)
+        header_masa.value = "Masa muestra aire (g)"
+        
+        header_pesar = ws.cell(row=8, column=22)
+        header_pesar.value = "¿Pesar?"
+
         for r in range(8, 10):
             for c in range(1, 23): # A a V
                 cell = ws.cell(row=r, column=c)
                 cell.border = self.border_thin
+                cell.alignment = self.align_center
+                # Inherit font from A8 if possible
+                cell.font = ws.cell(row=8, column=1).font if ws.cell(row=8, column=1).font else cell.font
 
         # FIX: Mover el footer (Web...) a Columna J y descombinar
         # "agrega el de web y todo ello en columna J sin fusiones"
