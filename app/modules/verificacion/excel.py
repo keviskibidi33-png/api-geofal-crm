@@ -46,17 +46,31 @@ class ExcelLogic:
                                  top=Side(style='thin'), bottom=Side(style='thin'))
 
     def _copy_style(self, source_cell, target_cell):
-        """Copia bordes, fuente y alineación de una celda a otra."""
+        """Copia bordes, fuente y alineación de una celda a otra de forma segura."""
         if source_cell.has_style:
-            # FIX: No usar copy() en objetos que pueden ser StyleProxy (unhashable)
-            # Los estilos de openpyxl son inmutables, así que la asignación directa es segura
-            # si no planeamos modificarlos después.
-            target_cell.font = source_cell.font
-            target_cell.border = source_cell.border
-            target_cell.fill = source_cell.fill
-            target_cell.number_format = source_cell.number_format
-            target_cell.protection = source_cell.protection
-            target_cell.alignment = source_cell.alignment
+            # FIX: Robust copy avoiding StyleProxy issues
+            try:
+                # Intento 1: Asignación directa (rápida)
+                target_cell.font = source_cell.font
+                target_cell.border = source_cell.border
+                target_cell.fill = source_cell.fill
+                target_cell.number_format = source_cell.number_format
+                target_cell.protection = source_cell.protection
+                target_cell.alignment = source_cell.alignment
+            except Exception:
+                # Intento 2: Copia profunda explicita si falla la asignación directa
+                # Esto es lento pero seguro
+                from copy import copy
+                try:
+                    target_cell.font = copy(source_cell.font)
+                    target_cell.border = copy(source_cell.border)
+                    target_cell.fill = copy(source_cell.fill)
+                    target_cell.number_format = source_cell.number_format # String/Format is safe
+                    target_cell.protection = copy(source_cell.protection)
+                    target_cell.alignment = copy(source_cell.alignment)
+                except Exception as e:
+                    # Fallback final: Loguear y continuar sin estilos para no romper el flujo
+                    logger.warning(f"No se pudo copiar estilo en celda {target_cell.coordinate}: {e}")
 
     def generar_excel_verificacion(self, verificacion: VerificacionMuestras) -> bytes:
         if not os.path.exists(self.template_path):
