@@ -172,7 +172,7 @@ async def value_error_handler(request, exc):
     """Catch-all for simple validation logic errors in service layer"""
     return JSONResponse(
         status_code=400,
-        content={"message": str(exc)},
+        content={"detail": str(exc)},
     )
 
  
