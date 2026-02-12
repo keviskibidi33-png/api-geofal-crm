@@ -134,7 +134,9 @@ def validar_estado(numero_recepcion: str, db: Session = Depends(get_db_session))
     recepcion_db = None
     muestras_data = []
     
-    recepcion_id = traza.data_consolidada.get("recepcion_id") if traza.data_consolidada else None
+    data_consolidada = traza.data_consolidada or {}
+    recepcion_id = data_consolidada.get("recepcion_id")
+    numero_ot = getattr(traza, 'numero_ot', "") or data_consolidada.get("numero_ot") or ""
     
     if recepcion_id:
         recepcion_db = db.query(RecepcionMuestra).filter(RecepcionMuestra.id == recepcion_id).first()
@@ -154,7 +156,7 @@ def validar_estado(numero_recepcion: str, db: Session = Depends(get_db_session))
         "encontrado": True, # Alias for consistency
         "recepcion": {
             "status": traza.estado_recepcion,
-            "numero_ot": getattr(traza, 'numero_ot', "") or (traza.data_consolidada.get("numero_ot") if traza.data_consolidada else ""),
+            "numero_ot": numero_ot,
             "id": recepcion_id
         },
         "verificacion": {"status": traza.estado_verificacion},
@@ -163,7 +165,7 @@ def validar_estado(numero_recepcion: str, db: Session = Depends(get_db_session))
         # Added for Autocomplete
         "datos": {
             "id": recepcion_id,
-            "numero_ot": getattr(traza, 'numero_ot', "") or (traza.data_consolidada.get("numero_ot") if traza.data_consolidada else ""),
+            "numero_ot": numero_ot,
             "cliente": traza.cliente,
             "muestras": muestras_data
         }
