@@ -4,6 +4,7 @@ from app.modules.recepcion.models import RecepcionMuestra
 from app.modules.verificacion.models import VerificacionMuestras
 from app.modules.compresion.models import EnsayoCompresion
 from typing import Optional
+import os
 
 class TracingService:
     @staticmethod
