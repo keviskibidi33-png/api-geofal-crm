@@ -220,9 +220,11 @@ class TracingService:
             "numero_ot": getattr(recepcion, 'numero_ot', None) if recepcion else (compresion.numero_ot if compresion else None),
             "cliente": traza.cliente,
             "proyecto": traza.proyecto,
+            "muestras_count": len(recepcion.muestras) if recepcion and recepcion.muestras else 0,
+            "fecha_recepcion": recepcion.fecha_recepcion.isoformat() if recepcion and recepcion.fecha_recepcion else None,
             "verificacion_id": verificacion.id if verificacion else None,
             "compresion_id": compresion.id if compresion else None,
-            "compresion_estado": compresion.estado if compresion else None,
+            "compresion_status": compresion.estado if compresion else None,
             "storage_verified": True
         }
         

@@ -126,6 +126,8 @@ def sugerir_recepciones(q: str = "", db: Session = Depends(get_db_session)):
             "numero_recepcion": t.numero_recepcion,
             "cliente": t.cliente,
             "proyecto": t.proyecto,
+            "muestras_count": (t.data_consolidada or {}).get("muestras_count", 0),
+            "fecha_recepcion": (t.data_consolidada or {}).get("fecha_recepcion"),
             "estados": {
                 "recepcion": t.estado_recepcion,
                 "verificacion": t.estado_verificacion,
