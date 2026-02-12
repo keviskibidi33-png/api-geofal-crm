@@ -5,6 +5,7 @@ from app.modules.verificacion.models import VerificacionMuestras
 from app.modules.compresion.models import EnsayoCompresion
 from typing import Optional
 import os
+import re
 
 class TracingService:
     @staticmethod
@@ -212,7 +213,6 @@ class TracingService:
             "storage_verified": True
         }
         
-        import os # Asegurar que os esté disponible para la verificación local
         db.commit()
         db.refresh(traza)
         return traza
