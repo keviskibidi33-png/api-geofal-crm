@@ -117,6 +117,8 @@ def _get_cors_origins() -> list[str]:
         "https://recepcion.geofal.com.pe",
         "https://cotizador.geofal.com.pe",
         "https://programacion.geofal.com.pe",
+        "https://compresion.geofal.com.pe",
+        "https://laboratorio.geofal.com.pe", # Added just in case
     ]
     raw = os.getenv("QUOTES_CORS_ORIGINS")
     if raw:
