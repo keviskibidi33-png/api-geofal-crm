@@ -275,7 +275,7 @@ class VerificacionService:
                 
                 # 2. Subir a Supabase
                 cloud_path = f"{year}/{filename}"
-                storage_path = self._upload_to_supabase_storage(io.BytesIO(excel_bytes), "verificacion_muestras", cloud_path)
+                storage_path = self._upload_to_supabase_storage(io.BytesIO(excel_bytes), "verificacion", cloud_path)
                 
                 # 3. Actualizar DB con las rutas
                 db_verificacion.archivo_excel = str(local_path)

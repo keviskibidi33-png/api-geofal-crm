@@ -160,7 +160,7 @@ class TracingService:
                 if len(parts) > 1:
                     has_file = StorageUtils.verify_supabase_file(parts[0], "/".join(parts[1:]))
                 else:
-                    has_file = StorageUtils.verify_supabase_file("verificaciones", verificacion.object_key)
+                    has_file = StorageUtils.verify_supabase_file("verificacion", verificacion.object_key)
             
             # Si no está en Supabase, verificar localmente (archivo_excel)
             if not has_file and verificacion.archivo_excel:
