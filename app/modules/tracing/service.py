@@ -83,34 +83,48 @@ class TracingService:
         numeros_busqueda = list(set([canonical_numero, base_num, numero_recepcion]))
 
         # 2. Buscar en otros módulos usando todas las variantes del número
+        # 2. Buscar en otros módulos usando todas las variantes del número
         verificacion = None
         compresion = None
+        
+        # Ensure we have a valid list to search
+        search_candidates = []
+        if canonical_numero: search_candidates.append(canonical_numero)
+        if base_num: search_candidates.append(base_num)
+        if numero_recepcion: search_candidates.append(numero_recepcion)
+        
+        # Deduplicate preserving order
+        numeros_busqueda = list(dict.fromkeys(search_candidates))
+
         for num in numeros_busqueda:
             if not verificacion:
-                # Try specific Verification formats as well
-                # Common formats: "1111", "REC-1111-26", "1111-REC", "1111-REC-26"
+                # Primary search by number
+                verificacion = db.query(VerificacionMuestras).filter(VerificacionMuestras.numero_verificacion == num).first()
                 
-                # Additional variants specific to Verification
-                extra_variants = []
-                if base_num:
-                     extra_variants.append(f"{base_num}-REC") # 1111-REC
-                     # Try to guess year suffix from canonical or original
-                     import re
-                     year_match = re.search(r'-(\d{2})$', canonical_numero or numero_recepcion)
-                     if year_match:
-                         year_suffix = year_match.group(1)
-                         extra_variants.append(f"{base_num}-REC-{year_suffix}") # 1111-REC-26
-                
-                # Combine all search numbers
-                full_search_list = list(set([num] + extra_variants))
-                
-                for search_num in full_search_list:
-                    if not verificacion:
-                        verificacion = db.query(VerificacionMuestras).filter(VerificacionMuestras.numero_verificacion == search_num).first()
-                    if verificacion: break
+                # If not found, try smart verification formats
+                if not verificacion and base_num:
+                    # Common formats: "1111", "REC-1111-26", "1111-REC", "1111-REC-26"
+                    extra_variants = [f"{base_num}-REC"]
+                    
+                    # Try to guess year suffix from canonical or original
+                    # Safely handle None for canonical_numero
+                    source_str = canonical_numero or numero_recepcion or ""
+                    import re
+                    year_match = re.search(r'-(\d{2})$', source_str)
+                    if year_match:
+                        year_suffix = year_match.group(1)
+                        extra_variants.append(f"{base_num}-REC-{year_suffix}") 
+                    
+                    for variant in extra_variants:
+                        verificacion = db.query(VerificacionMuestras).filter(VerificacionMuestras.numero_verificacion == variant).first()
+                        if verificacion: break
             
             if not compresion:
                 compresion = db.query(EnsayoCompresion).filter(EnsayoCompresion.numero_recepcion == num).first()
+            
+            # If we found both, stop searching
+            if verificacion and compresion:
+                break
         
         # 3. Buscar si ya existe en trazabilidad
         traza = db.query(Trazabilidad).filter(Trazabilidad.numero_recepcion == canonical_numero).first()
