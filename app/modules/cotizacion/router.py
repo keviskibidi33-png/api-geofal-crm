@@ -140,6 +140,58 @@ async def export_quote_xlsx(payload: QuoteExportRequest) -> Response:
     """Alias para /export"""
     return await export_quote(payload)
 
+@router.get("/by-token/{token}")
+async def get_quote_by_token(token: str):
+    """
+    Get quote by token (e.g., '123-26' -> Number 123, Year 2026)
+    """
+    if not _has_database_url():
+        raise HTTPException(status_code=400, detail="Database not configured")
+
+    # Parse token
+    try:
+        parts = token.split('-')
+        if len(parts) != 2:
+            raise ValueError("Invalid token format")
+        
+        number = parts[0].zfill(3) # Ensure 3 digits for querying
+        year_suffix = parts[1]
+        
+        # Validate parts
+        if not number.isdigit() or not year_suffix.isdigit():
+             raise ValueError("Token parts must be numeric")
+
+        # Assume 20xx
+        year = int(f"20{year_suffix}")
+        
+    except ValueError:
+         raise HTTPException(status_code=400, detail="Invalid token format (Expected NNN-YY)")
+
+    conn = _get_connection()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT id, numero, year, cliente_nombre as cliente, cliente_ruc as ruc, 
+                       cliente_contacto as contacto, cliente_telefono as telefono, 
+                       cliente_email as email,
+                       proyecto, ubicacion, items_json
+                FROM cotizaciones
+                WHERE numero = %s AND year = %s
+                LIMIT 1
+            """, (number, year))
+            
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Quote not found")
+            
+            return {"data": dict(row), "success": True}
+    except Exception as e:
+        print(f"Error fetching quote by token: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
 @router.get("/quotes")
 async def list_quotes(year: int = None, limit: int = 50):
     """Lista las cotizaciones guardadas"""
