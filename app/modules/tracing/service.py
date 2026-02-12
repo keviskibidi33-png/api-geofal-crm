@@ -6,6 +6,7 @@ from app.modules.compresion.models import EnsayoCompresion
 from typing import Optional
 import os
 import re
+from app.utils.storage_utils import StorageUtils
 
 class TracingService:
     @staticmethod
@@ -18,7 +19,6 @@ class TracingService:
         clean = numero.replace("REC-", "").replace("rec-", "").strip()
         
         # Quitar sufijo -REC (frecuente en verificación)
-        import re
         clean = re.sub(r'-REC$', '', clean, flags=re.IGNORECASE)
         clean = re.sub(r'-REC-(\d{2})$', r'-\1', clean, flags=re.IGNORECASE)
 
@@ -111,7 +111,6 @@ class TracingService:
                     # Try to guess year suffix from canonical or original
                     # Safely handle None for canonical_numero
                     source_str = canonical_numero or numero_recepcion or ""
-                    import re
                     year_match = re.search(r'-(\d{2})$', source_str)
                     if year_match:
                         year_suffix = year_match.group(1)
@@ -155,7 +154,6 @@ class TracingService:
             traza.proyecto = "Proyecto no identificado"
         
         # 5. Calcular estados con verificación de almacenamiento
-        from app.utils.storage_utils import StorageUtils
         
         # Recepción
         if recepcion:
