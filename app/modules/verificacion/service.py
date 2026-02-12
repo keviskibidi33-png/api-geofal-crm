@@ -322,7 +322,7 @@ class VerificacionService:
             try:
                 from app.utils.storage_utils import StorageUtils
                 # Extraer bucket si está en el object_key
-                bucket = "verificaciones"
+                bucket = "verificacion"
                 obj_key = db_verificacion.object_key
                 if obj_key and '/' in obj_key:
                     parts = obj_key.split('/')

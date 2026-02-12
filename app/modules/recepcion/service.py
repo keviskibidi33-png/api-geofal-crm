@@ -43,7 +43,7 @@ class RecepcionService:
         headers = {
             "Authorization": f"Bearer {supabase_key}",
             "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "upsert": "true"
+            "x-upsert": "true"
         }
 
         try:

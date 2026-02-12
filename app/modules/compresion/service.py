@@ -31,7 +31,7 @@ class CompresionService:
         """Upload file to Supabase Storage and return object_key"""
         supabase_url = os.getenv("SUPABASE_URL")
         supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-        bucket_name = os.getenv("SUPABASE_BUCKET", "informe")
+        bucket_name = os.getenv("SUPABASE_BUCKET", "compresiones")
         
         if not supabase_url or not supabase_key:
             print("WARN: Supabase credentials not configured, skipping upload")
@@ -40,7 +40,8 @@ class CompresionService:
         try:
             headers = {
                 "Authorization": f"Bearer {supabase_key}",
-                "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "x-upsert": "true"
             }
             
             object_path = f"ensayos/{filename}"

@@ -67,7 +67,9 @@ class TracingService:
             if recepcion:
                 return recepcion, recepcion.numero_recepcion
 
-        return None, base_num
+        # Si no se encuentra, retornamos el original como candidato canónico
+        # para que la búsqueda en la tabla de trazabilidad sea coherente
+        return None, numero
 
     @staticmethod
     def actualizar_trazabilidad(db: Session, numero_recepcion: str):
@@ -129,13 +131,23 @@ class TracingService:
         
         # 3. Buscar si ya existe en trazabilidad
         traza = db.query(Trazabilidad).filter(Trazabilidad.numero_recepcion == canonical_numero).first()
+        
+        # Búsqueda secundaria flexible en trazabilidad si no se encuentra por el canónico actual
+        if not traza:
+            for num in numeros_busqueda:
+                traza = db.query(Trazabilidad).filter(Trazabilidad.numero_recepcion == num).first()
+                if traza: break
 
-        # --- PERSISTENCE FIX ---
-        # Si NO EXISTE NADA en los módulos origen, MANTENEMOS la fila como histórico (gris)
-        # pero ya no la borramos automáticamente. El usuario la borrará manualmente si desea.
+        # --- PERSISTENCE & CLEANUP FIX ---
+        # Si NO EXISTE NADA en los módulos origen:
         if not recepcion and not verificacion and not compresion:
-            if not traza:
-                return None # No crear trazas vacías de la nada, pero si ya existe se queda
+            if traza:
+                # Si el usuario borró todo, borramos la trazabilidad para no tener registros fantasma
+                # A menos que queramos mantener historial (pero el usuario reportó esto como bug)
+                db.delete(traza)
+                db.commit()
+                return None
+            return None # No crear nada si no hay nada
         
         if not traza:
             traza = Trazabilidad(numero_recepcion=canonical_numero)
@@ -185,7 +197,7 @@ class TracingService:
         else:
             traza.estado_verificacion = "pendiente"
         
-        # Compresión
+        # Compresión e Informe
         if compresion:
             has_file = True
             if compresion.object_key:
@@ -193,10 +205,13 @@ class TracingService:
             
             if has_file and compresion.estado == "COMPLETADO":
                 traza.estado_compresion = "completado"
+                traza.estado_informe = "completado" # Si hay Excel y está completado, el informe está listo
             else:
                 traza.estado_compresion = "en_proceso"
+                traza.estado_informe = "en_proceso"
         else:
             traza.estado_compresion = "pendiente"
+            traza.estado_informe = "pendiente"
             
         # 6. Guardar metadata extra en JSON
         traza.data_consolidada = {
