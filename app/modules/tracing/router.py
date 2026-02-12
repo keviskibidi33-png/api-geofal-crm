@@ -115,6 +115,26 @@ def obtener_seguimiento_flujo(numero_recepcion: str, db: Session = Depends(get_d
         last_update=traza.fecha_actualizacion
     )
 
+@router.get("/suggest")
+def sugerir_recepciones(q: str = "", db: Session = Depends(get_db_session)):
+    """
+    Endpoint para autocompletado de números de recepción.
+    """
+    results = TracingService.buscar_sugerencias(db, q)
+    return [
+        {
+            "numero_recepcion": t.numero_recepcion,
+            "cliente": t.cliente,
+            "proyecto": t.proyecto,
+            "estados": {
+                "recepcion": t.estado_recepcion,
+                "verificacion": t.estado_verificacion,
+                "compresion": t.estado_compresion,
+            }
+        }
+        for t in results
+    ]
+
 @router.get("/validate/{numero_recepcion}")
 def validar_estado(numero_recepcion: str, db: Session = Depends(get_db_session)):
     """
@@ -167,6 +187,7 @@ def validar_estado(numero_recepcion: str, db: Session = Depends(get_db_session))
             "id": recepcion_id,
             "numero_ot": numero_ot,
             "cliente": traza.cliente,
+            "fecha_recepcion": recepcion_db.fecha_recepcion.isoformat() if recepcion_db and recepcion_db.fecha_recepcion else None,
             "muestras": muestras_data
         }
     }

@@ -231,6 +231,22 @@ class TracingService:
         return traza
 
     @staticmethod
+    def buscar_sugerencias(db: Session, q: str, limit: int = 10):
+        """
+        Busca sugerencias de números de recepción en la tabla de trazabilidad.
+        """
+        query = db.query(Trazabilidad)
+        
+        if q:
+            # Búsqueda por número de recepción o cliente
+            query = query.filter(
+                (Trazabilidad.numero_recepcion.ilike(f"%{q}%")) |
+                (Trazabilidad.cliente.ilike(f"%{q}%"))
+            )
+            
+        return query.order_by(Trazabilidad.fecha_creacion.desc()).limit(limit).all()
+
+    @staticmethod
     def migrar_datos(db: Session):
         """
         Puebla la tabla de trazabilidad con todas las recepciones existentes.
