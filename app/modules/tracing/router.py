@@ -130,16 +130,43 @@ def validar_estado(numero_recepcion: str, db: Session = Depends(get_db_session))
             "message": "Disponible para registro"
         }
     
+    # Fetch detailed reception data for autocomplete
+    recepcion_db = None
+    muestras_data = []
+    
+    recepcion_id = traza.data_consolidada.get("recepcion_id") if traza.data_consolidada else None
+    
+    if recepcion_id:
+        recepcion_db = db.query(RecepcionMuestra).filter(RecepcionMuestra.id == recepcion_id).first()
+        if recepcion_db and recepcion_db.muestras:
+            muestras_data = [
+                {
+                    "item_numero": m.item_numero,
+                    "codigo_lem": m.codigo_muestra_lem or m.codigo_muestra,
+                    "tipo_testigo": m.estructura
+                }
+                for m in recepcion_db.muestras
+            ]
+
+    # Standardized response
     return {
         "exists": True,
+        "encontrado": True, # Alias for consistency
         "recepcion": {
             "status": traza.estado_recepcion,
             "numero_ot": getattr(traza, 'numero_ot', "") or (traza.data_consolidada.get("numero_ot") if traza.data_consolidada else ""),
-            "id": traza.data_consolidada.get("recepcion_id") if traza.data_consolidada else None
+            "id": recepcion_id
         },
         "verificacion": {"status": traza.estado_verificacion},
         "compresion": {"status": traza.estado_compresion},
-        "cliente": traza.cliente
+        "cliente": traza.cliente,
+        # Added for Autocomplete
+        "datos": {
+            "id": recepcion_id,
+            "numero_ot": getattr(traza, 'numero_ot', "") or (traza.data_consolidada.get("numero_ot") if traza.data_consolidada else ""),
+            "cliente": traza.cliente,
+            "muestras": muestras_data
+        }
     }
 
 @router.get("/listar", response_model=List[TracingSummary])
