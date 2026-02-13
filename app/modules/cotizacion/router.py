@@ -575,16 +575,211 @@ async def delete_plantilla(plantilla_id: str):
     finally:
         conn.close()
 
+def _parse_excel_for_import(content: bytes) -> dict:
+    """
+    Parsea un archivo Excel (.xlsx) para extraer todos los datos de cotización.
+    Retorna un dict con cliente, items, condiciones, plazo, condicion_pago, etc.
+    """
+    import openpyxl
+    import re as _re
+    
+    wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True, read_only=True)
+    
+    # Buscar la hoja de cotización
+    ws = None
+    for sheet_name in wb.sheetnames:
+        if sheet_name.upper() in ("MORT2", "COTIZACION", "COTIZACIÓN"):
+            ws = wb[sheet_name]
+            break
+    if ws is None:
+        ws = wb.active or wb[wb.sheetnames[0]]
+    
+    def safe_cell(cell_ref: str) -> str:
+        try:
+            val = ws[cell_ref].value
+            return str(val).strip() if val is not None else ""
+        except Exception:
+            return ""
+    
+    def safe_number(cell_ref: str) -> float:
+        try:
+            val = ws[cell_ref].value
+            if val is None:
+                return 0.0
+            return float(val)
+        except (ValueError, TypeError):
+            return 0.0
+    
+    # --- Datos del cliente ---
+    cliente = safe_cell("D5")
+    ruc = safe_cell("D6")
+    contacto = safe_cell("D7")
+    telefono = safe_cell("E8")
+    email = safe_cell("D9")
+    proyecto = safe_cell("L5")
+    ubicacion = safe_cell("L7")
+    personal_comercial = safe_cell("L8")
+    telefono_comercial = safe_cell("L9")
+    titulo = safe_cell("G3")
+    
+    # --- Items (empiezan en fila 17) ---
+    items = []
+    row = 17
+    max_empty_rows = 5
+    empty_count = 0
+    
+    while empty_count < max_empty_rows and row < 200:
+        desc = safe_cell(f"C{row}")
+        codigo = safe_cell(f"B{row}")
+        norma = safe_cell(f"J{row}")
+        acreditado = safe_cell(f"K{row}")
+        costo = safe_number(f"L{row}")
+        cantidad = safe_number(f"M{row}")
+        
+        if not desc and costo == 0:
+            empty_count += 1
+            row += 1
+            continue
+        
+        empty_count = 0
+        items.append({
+            "codigo": codigo,
+            "descripcion": desc,
+            "norma": norma,
+            "acreditado": acreditado,
+            "costo_unitario": costo,
+            "cantidad": cantidad if cantidad > 0 else 1,
+        })
+        row += 1
+    
+    # --- Calcular extra_rows para localizar filas dinámicas ---
+    extra_rows = max(0, len(items) - 1)
+    
+    # --- Condiciones Específicas (fila 23 + extra_rows, celda B) ---
+    condiciones_especificas_texto = ""
+    condiciones_especificas_lista = []
+    row_condiciones = 23 + extra_rows
+    condiciones_raw = safe_cell(f"B{row_condiciones}")
+    if condiciones_raw and "CONDICIONES" in condiciones_raw.upper():
+        condiciones_especificas_texto = condiciones_raw
+        # Extraer items individuales (líneas que empiezan con -)
+        for line in condiciones_raw.split("\n"):
+            line = line.strip()
+            if line.startswith("-"):
+                condiciones_especificas_lista.append(line.lstrip("- ").strip())
+    
+    # --- Plazo Estimado (fila 24 + extra_rows, celda B) ---
+    plazo_dias = 0
+    plazo_texto = ""
+    row_plazo = 24 + extra_rows
+    plazo_raw = safe_cell(f"B{row_plazo}")
+    if plazo_raw and "PLAZO" in plazo_raw.upper():
+        plazo_texto = plazo_raw
+        # Intentar extraer número de días
+        match = _re.search(r'(\d+)\s*d[ií]as?\s*h[aá]biles', plazo_raw, _re.IGNORECASE)
+        if match:
+            plazo_dias = int(match.group(1))
+    
+    # --- Condición de Pago (fila 34 + extra_rows, celda B) ---
+    condicion_pago_key = ""
+    condicion_pago_texto = ""
+    row_condicion = 34 + extra_rows
+    condicion_raw = safe_cell(f"B{row_condicion}")
+    if condicion_raw and "CONDICI" in condicion_raw.upper():
+        condicion_pago_texto = condicion_raw
+        # Detectar el tipo de condición de pago por texto
+        texto_lower = condicion_raw.lower()
+        if "valorización" in texto_lower or "valorizacion" in texto_lower:
+            condicion_pago_key = "valorizacion"
+        elif "50%" in condicion_raw:
+            condicion_pago_key = "50_adelanto"
+        elif "adelantado" in texto_lower:
+            condicion_pago_key = "adelantado"
+        elif "30 días" in texto_lower or "30 dias" in texto_lower:
+            condicion_pago_key = "credito_30"
+        elif "15 días" in texto_lower or "15 dias" in texto_lower:
+            condicion_pago_key = "credito_15"
+        elif "7 días" in texto_lower or "7 dias" in texto_lower:
+            condicion_pago_key = "credito_7"
+    
+    sheet_names = list(wb.sheetnames) if hasattr(wb, 'sheetnames') else []
+    wb.close()
+    
+    # --- Calcular totales ---
+    subtotal = sum(it["costo_unitario"] * it["cantidad"] for it in items)
+    igv = subtotal * 0.18
+    total = subtotal + igv
+    
+    return {
+        "cliente": cliente,
+        "ruc": ruc,
+        "contacto": contacto,
+        "telefono": telefono,
+        "email": email,
+        "proyecto": proyecto,
+        "ubicacion": ubicacion,
+        "personal_comercial": personal_comercial,
+        "telefono_comercial": telefono_comercial,
+        "titulo_original": titulo,
+        "items": items,
+        "items_count": len(items),
+        "subtotal": round(subtotal, 2),
+        "igv": round(igv, 2),
+        "total": round(total, 2),
+        "plazo_dias": plazo_dias,
+        "plazo_texto": plazo_texto,
+        "condicion_pago_key": condicion_pago_key,
+        "condicion_pago_texto": condicion_pago_texto,
+        "condiciones_especificas_texto": condiciones_especificas_texto,
+        "condiciones_especificas_lista": condiciones_especificas_lista,
+        "hojas_disponibles": sheet_names,
+    }
+
+
+@router.post("/import-excel/check-number")
+async def check_quote_number(numero: str = Query(...), year: Optional[int] = Query(None)):
+    """Verifica si un número de cotización ya existe para el año dado."""
+    if not _has_database_url():
+        raise HTTPException(status_code=400, detail="Database not configured")
+    
+    check_year = year or date.today().year
+    conn = _get_connection()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT id, numero, year, cliente_nombre, total, estado FROM cotizaciones WHERE numero = %s AND year = %s AND visibilidad = 'visible'",
+                (numero, check_year)
+            )
+            existing = cur.fetchone()
+            if existing:
+                return {
+                    "exists": True,
+                    "quote": {
+                        "id": existing["id"],
+                        "numero": existing["numero"],
+                        "year": existing["year"],
+                        "cliente": existing["cliente_nombre"],
+                        "total": float(existing["total"]) if existing["total"] else 0,
+                        "estado": existing["estado"],
+                    }
+                }
+            return {"exists": False}
+    finally:
+        conn.close()
+
+
 @router.post("/import-excel")
 async def import_excel_quote(
     file: UploadFile = File(...),
     user_id: Optional[str] = Query(None),
-    user_name: Optional[str] = Query(None)
+    user_name: Optional[str] = Query(None),
+    custom_numero: Optional[str] = Query(None)
 ):
     """
     Importa un archivo Excel existente como nueva cotización.
     Parsea el contenido para detectar cliente, items y totales automáticamente,
     asigna un nuevo número de cotización y lo registra en el sistema.
+    Si custom_numero se proporciona, usa ese número en lugar de generar uno nuevo.
     """
     if not _has_database_url():
         raise HTTPException(status_code=400, detail="Database not configured")
@@ -597,87 +792,12 @@ async def import_excel_quote(
     content = await file.read()
     
     try:
-        import openpyxl
-        wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True, read_only=True)
+        parsed = _parse_excel_for_import(content)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"No se pudo leer el archivo Excel: {str(e)}")
     
-    # Intentar encontrar la hoja de cotización
-    # Buscar por nombre "MORT2" (template Geofal) o usar la primera hoja
-    ws = None
-    for sheet_name in wb.sheetnames:
-        if sheet_name.upper() in ("MORT2", "COTIZACION", "COTIZACIÓN"):
-            ws = wb[sheet_name]
-            break
-    if ws is None:
-        # Fallback: usar la primera hoja
-        ws = wb.active or wb[wb.sheetnames[0]]
-    
-    def safe_cell(cell_ref: str) -> str:
-        """Lee un valor de celda de forma segura, retornando string vacío si no existe"""
-        try:
-            val = ws[cell_ref].value
-            return str(val).strip() if val is not None else ""
-        except Exception:
-            return ""
-    
-    def safe_number(cell_ref: str) -> float:
-        """Lee un valor numérico de celda de forma segura"""
-        try:
-            val = ws[cell_ref].value
-            if val is None:
-                return 0.0
-            return float(val)
-        except (ValueError, TypeError):
-            return 0.0
-    
-    # --- Extraer datos del cliente (mapeo de celdas del template Geofal) ---
-    cliente = safe_cell("D5")
-    ruc = safe_cell("D6")
-    contacto = safe_cell("D7")
-    telefono = safe_cell("E8")
-    email = safe_cell("D9")
-    proyecto = safe_cell("L5")
-    ubicacion = safe_cell("L7")
-    personal_comercial = safe_cell("L8")
-    telefono_comercial = safe_cell("L9")
-    
-    # Extraer título para verificar si tiene número de cotización original
-    titulo = safe_cell("G3")
-    
-    # --- Extraer items (empiezan en fila 17) ---
-    items = []
-    row = 17
-    max_empty_rows = 5  # Detener después de 5 filas vacías consecutivas
-    empty_count = 0
-    
-    while empty_count < max_empty_rows and row < 200:
-        desc = safe_cell(f"C{row}")
-        codigo = safe_cell(f"B{row}")
-        norma = safe_cell(f"J{row}")
-        acreditado = safe_cell(f"K{row}")
-        costo = safe_number(f"L{row}")
-        cantidad = safe_number(f"M{row}")
-        
-        # Si la descripción está vacía y no hay costo, es fila vacía
-        if not desc and costo == 0:
-            empty_count += 1
-            row += 1
-            continue
-        
-        empty_count = 0  # Reset counter
-        
-        items.append({
-            "codigo": codigo,
-            "descripcion": desc,
-            "norma": norma,
-            "acreditado": acreditado,
-            "costo_unitario": costo,
-            "cantidad": cantidad if cantidad > 0 else 1,
-        })
-        row += 1
-    
-    wb.close()
+    items = parsed["items"]
+    cliente = parsed["cliente"]
     
     if not items and not cliente:
         raise HTTPException(
@@ -685,17 +805,17 @@ async def import_excel_quote(
             detail="No se pudieron detectar datos en el Excel. Verifique que el formato sea compatible con el template de Geofal."
         )
     
-    # --- Generar nuevo número de cotización ---
+    # --- Determinar número de cotización ---
     _ensure_sequence_table()
     year = date.today().year
-    sequential = _next_quote_sequential(year)
-    cotizacion_numero = f"{sequential:03d}"
     year_suffix = str(year)[-2:]
     
-    # --- Calcular totales ---
-    subtotal = sum(it["costo_unitario"] * it["cantidad"] for it in items)
-    igv = subtotal * 0.18
-    total = subtotal + igv
+    if custom_numero and custom_numero.strip():
+        cotizacion_numero = custom_numero.strip()
+        # Verificar si ya existe para advertir (no bloquear, se hace UPSERT)
+    else:
+        sequential = _next_quote_sequential(year)
+        cotizacion_numero = f"{sequential:03d}"
     
     # --- Preparar nombre de archivo para storage ---
     safe_cliente = _get_safe_filename(cliente or "IMPORTADO", "").rstrip('.')
@@ -733,18 +853,25 @@ async def import_excel_quote(
                     personal_comercial, telefono_comercial, fecha_emision,
                     subtotal, igv, total, include_igv, estado, moneda,
                     archivo_path, items_json, items_count, object_key,
-                    vendedor_nombre, user_created, visibilidad
+                    vendedor_nombre, user_created, visibilidad,
+                    plazo_dias, condicion_pago
                 ) VALUES (
                     %s, %s, %s, %s, %s,
                     %s, %s, %s, %s,
                     %s, %s, %s,
                     %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s,
-                    %s, %s, %s
+                    %s, %s, %s,
+                    %s, %s
                 )
                 ON CONFLICT (year, numero) DO UPDATE SET
                     cliente_nombre = EXCLUDED.cliente_nombre,
                     cliente_ruc = EXCLUDED.cliente_ruc,
+                    cliente_contacto = EXCLUDED.cliente_contacto,
+                    cliente_telefono = EXCLUDED.cliente_telefono,
+                    cliente_email = EXCLUDED.cliente_email,
+                    proyecto = EXCLUDED.proyecto,
+                    ubicacion = EXCLUDED.ubicacion,
                     archivo_path = EXCLUDED.archivo_path,
                     object_key = EXCLUDED.object_key,
                     items_json = EXCLUDED.items_json,
@@ -752,16 +879,19 @@ async def import_excel_quote(
                     total = EXCLUDED.total,
                     subtotal = EXCLUDED.subtotal,
                     igv = EXCLUDED.igv,
+                    plazo_dias = EXCLUDED.plazo_dias,
+                    condicion_pago = EXCLUDED.condicion_pago,
                     visibilidad = 'visible',
                     updated_at = CURRENT_TIMESTAMP
                 RETURNING id
             """, (
-                cotizacion_numero, year, cliente, ruc, contacto,
-                telefono, email, proyecto, ubicacion,
-                personal_comercial, telefono_comercial, date.today(),
-                subtotal, igv, total, True, 'borrador', 'PEN',
+                cotizacion_numero, year, cliente, parsed["ruc"], parsed["contacto"],
+                parsed["telefono"], parsed["email"], parsed["proyecto"], parsed["ubicacion"],
+                parsed["personal_comercial"], parsed["telefono_comercial"], date.today(),
+                parsed["subtotal"], parsed["igv"], parsed["total"], True, 'borrador', 'PEN',
                 local_path, items_json, len(items), cloud_path,
-                user_name or personal_comercial or '', user_id, 'visible'
+                user_name or parsed["personal_comercial"] or '', user_id, 'visible',
+                parsed["plazo_dias"], parsed["condicion_pago_key"]
             ))
             
             result = cur.fetchone()
@@ -782,18 +912,7 @@ async def import_excel_quote(
         "year": year,
         "token": f"{cotizacion_numero}-{year_suffix}",
         "cloud_path": cloud_path,
-        "parsed_data": {
-            "cliente": cliente,
-            "ruc": ruc,
-            "contacto": contacto,
-            "proyecto": proyecto,
-            "items_count": len(items),
-            "subtotal": subtotal,
-            "igv": igv,
-            "total": total,
-            "items": items,
-            "titulo_original": titulo,
-        }
+        "parsed_data": parsed
     }
 
 
@@ -811,100 +930,35 @@ async def preview_import_excel(file: UploadFile = File(...)):
     content = await file.read()
     
     try:
-        import openpyxl
-        wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True, read_only=True)
+        parsed = _parse_excel_for_import(content)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"No se pudo leer el archivo Excel: {str(e)}")
     
-    ws = None
-    for sheet_name in wb.sheetnames:
-        if sheet_name.upper() in ("MORT2", "COTIZACION", "COTIZACIÓN"):
-            ws = wb[sheet_name]
-            break
-    if ws is None:
-        ws = wb.active or wb[wb.sheetnames[0]]
+    # Obtener el próximo número sugerido
+    suggested_numero = ""
+    try:
+        if _has_database_url():
+            _ensure_sequence_table()
+            year = date.today().year
+            # Peek at next number without consuming it
+            conn = _get_connection()
+            try:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute("SELECT last_value FROM quote_sequences WHERE year = %s", (year,))
+                    row = cur.fetchone()
+                    next_val = (int(row["last_value"]) + 1) if row else 1
+                    suggested_numero = f"{next_val:03d}"
+            finally:
+                conn.close()
+    except Exception:
+        suggested_numero = "001"
     
-    def safe_cell(cell_ref: str) -> str:
-        try:
-            val = ws[cell_ref].value
-            return str(val).strip() if val is not None else ""
-        except Exception:
-            return ""
-    
-    def safe_number(cell_ref: str) -> float:
-        try:
-            val = ws[cell_ref].value
-            if val is None:
-                return 0.0
-            return float(val)
-        except (ValueError, TypeError):
-            return 0.0
-    
-    cliente = safe_cell("D5")
-    ruc = safe_cell("D6")
-    contacto = safe_cell("D7")
-    telefono = safe_cell("E8")
-    email = safe_cell("D9")
-    proyecto = safe_cell("L5")
-    ubicacion = safe_cell("L7")
-    personal_comercial = safe_cell("L8")
-    titulo = safe_cell("G3")
-    
-    items = []
-    row_num = 17
-    max_empty = 5
-    empty_count = 0
-    
-    while empty_count < max_empty and row_num < 200:
-        desc = safe_cell(f"C{row_num}")
-        codigo = safe_cell(f"B{row_num}")
-        norma = safe_cell(f"J{row_num}")
-        acreditado = safe_cell(f"K{row_num}")
-        costo = safe_number(f"L{row_num}")
-        cantidad = safe_number(f"M{row_num}")
-        
-        if not desc and costo == 0:
-            empty_count += 1
-            row_num += 1
-            continue
-        
-        empty_count = 0
-        items.append({
-            "codigo": codigo,
-            "descripcion": desc,
-            "norma": norma,
-            "acreditado": acreditado,
-            "costo_unitario": costo,
-            "cantidad": cantidad if cantidad > 0 else 1,
-        })
-        row_num += 1
-    
-    sheet_names = list(wb.sheetnames) if hasattr(wb, 'sheetnames') else []
-    wb.close()
-    
-    subtotal = sum(it["costo_unitario"] * it["cantidad"] for it in items)
-    igv = subtotal * 0.18
-    total = subtotal + igv
+    parsed["suggested_numero"] = suggested_numero
+    parsed["suggested_year"] = date.today().year
     
     return {
         "success": True,
-        "preview": {
-            "cliente": cliente,
-            "ruc": ruc,
-            "contacto": contacto,
-            "telefono": telefono,
-            "email": email,
-            "proyecto": proyecto,
-            "ubicacion": ubicacion,
-            "personal_comercial": personal_comercial,
-            "titulo_original": titulo,
-            "items": items,
-            "items_count": len(items),
-            "subtotal": round(subtotal, 2),
-            "igv": round(igv, 2),
-            "total": round(total, 2),
-            "hojas_disponibles": sheet_names,
-        }
+        "preview": parsed
     }
 
 
