@@ -117,11 +117,11 @@ def obtener_seguimiento_flujo(numero_recepcion: str, db: Session = Depends(get_d
             download_url=f"/api/compresion/{compresion_id}/excel" if compresion_id else None
         ),
         StageStatus(
-            name="Formato",
+            name="Informe",
             key="informe",
             status=traza.estado_informe,
             message=(
-                "Resumen de Ensayo disponible para descarga"
+                "Informe disponible para descarga"
                 if traza.estado_informe == "completado"
                 else _mensaje_informe_pendiente(traza)
             ),
