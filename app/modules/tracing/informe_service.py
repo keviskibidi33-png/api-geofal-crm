@@ -131,7 +131,7 @@ class InformeService:
             item = {
                 # Recepción
                 "codigo_lem": mc.codigo_muestra_lem or mc.codigo_muestra or "",
-                "codigo_cliente": mc.codigo_muestra or "",
+                "codigo_cliente": mc.identificacion_muestra or mc.codigo_muestra or "",
                 # Verificación (diámetros, longitudes, masa)
                 "diametro_1": mv.diametro_1_mm if mv else None,
                 "diametro_2": mv.diametro_2_mm if mv else None,
