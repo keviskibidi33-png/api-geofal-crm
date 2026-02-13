@@ -197,16 +197,15 @@ class TracingService:
         else:
             traza.estado_verificacion = "pendiente"
         
-        # Compresión
+        # Compresión — usa el estado calculado automáticamente por el servicio
         if compresion:
-            has_file = True
-            if compresion.object_key:
-                has_file = StorageUtils.verify_supabase_file(compresion.bucket, compresion.object_key)
-            
-            if has_file and compresion.estado == "COMPLETADO":
+            estado_com = (compresion.estado or "PENDIENTE").upper()
+            if estado_com == "COMPLETADO":
                 traza.estado_compresion = "completado"
-            else:
+            elif estado_com == "EN_PROCESO":
                 traza.estado_compresion = "en_proceso"
+            else:
+                traza.estado_compresion = "en_proceso"  # Existe pero aún pendiente
         else:
             traza.estado_compresion = "pendiente"
 

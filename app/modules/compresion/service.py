@@ -59,9 +59,47 @@ class CompresionService:
             print(f"Upload error: {e}")
             return None
     
+    @staticmethod
+    def _calcular_estado(items_data) -> str:
+        """
+        Calcula automáticamente el estado del ensayo según los datos de los items.
+        - COMPLETADO: Todos los items tienen carga_maxima y tipo_fractura
+        - EN_PROCESO: Al menos un item tiene datos parciales
+        - PENDIENTE: Ningún item tiene datos de ensayo
+        """
+        if not items_data:
+            return "PENDIENTE"
+        
+        items_con_datos = 0
+        items_completos = 0
+        
+        for item in items_data:
+            # Soportar tanto dicts como objetos con atributos
+            carga = item.get("carga_maxima") if isinstance(item, dict) else getattr(item, "carga_maxima", None)
+            fractura = item.get("tipo_fractura") if isinstance(item, dict) else getattr(item, "tipo_fractura", None)
+            
+            tiene_carga = carga is not None and carga != "" and carga != 0
+            tiene_fractura = fractura is not None and fractura != ""
+            
+            if tiene_carga and tiene_fractura:
+                items_completos += 1
+            if tiene_carga or tiene_fractura:
+                items_con_datos += 1
+        
+        if items_completos == len(items_data):
+            return "COMPLETADO"
+        elif items_con_datos > 0:
+            return "EN_PROCESO"
+        return "PENDIENTE"
+
     def crear_ensayo(self, db: Session, ensayo_data: EnsayoCompresionCreate) -> EnsayoCompresion:
         """Create new compression test"""
         try:
+            # Auto-calculate state from items data
+            estado_calculado = self._calcular_estado(
+                [item.dict() if hasattr(item, 'dict') else item for item in ensayo_data.items]
+            )
+
             # Create main ensayo
             ensayo = EnsayoCompresion(
                 numero_ot=ensayo_data.numero_ot,
@@ -73,7 +111,7 @@ class CompresionService:
                 realizado_por=ensayo_data.realizado_por,
                 revisado_por=ensayo_data.revisado_por,
                 aprobado_por=ensayo_data.aprobado_por,
-                estado="PENDIENTE"
+                estado=estado_calculado
             )
             
             db.add(ensayo)
@@ -176,6 +214,13 @@ class CompresionService:
                 )
                 db.add(item)
         
+        # Recalculate estado based on current items
+        db.flush()  # Ensure items are written
+        estado_nuevo = self._calcular_estado(
+            [{"carga_maxima": i.carga_maxima, "tipo_fractura": i.tipo_fractura} for i in ensayo.items]
+        )
+        ensayo.estado = estado_nuevo
+
         db.commit()
         db.refresh(ensayo)
         return ensayo
