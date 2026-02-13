@@ -773,7 +773,8 @@ async def import_excel_quote(
     file: UploadFile = File(...),
     user_id: Optional[str] = Query(None),
     user_name: Optional[str] = Query(None),
-    custom_numero: Optional[str] = Query(None)
+    custom_numero: Optional[str] = Query(None),
+    condiciones_ids: Optional[str] = Query(None)
 ):
     """
     Importa un archivo Excel existente como nueva cotización.
@@ -846,6 +847,11 @@ async def import_excel_quote(
         with conn.cursor() as cur:
             items_json = json.dumps(items, ensure_ascii=False)
             
+            # Parsear condiciones_ids (viene como string separado por comas)
+            condiciones_uuid_list = []
+            if condiciones_ids:
+                condiciones_uuid_list = [c.strip() for c in condiciones_ids.split(",") if c.strip()]
+            
             cur.execute("""
                 INSERT INTO cotizaciones (
                     numero, year, cliente_nombre, cliente_ruc, cliente_contacto,
@@ -854,7 +860,7 @@ async def import_excel_quote(
                     subtotal, igv, total, include_igv, estado, moneda,
                     archivo_path, items_json, items_count, object_key,
                     vendedor_nombre, user_created, visibilidad,
-                    plazo_dias, condicion_pago
+                    plazo_dias, condicion_pago, condiciones_ids
                 ) VALUES (
                     %s, %s, %s, %s, %s,
                     %s, %s, %s, %s,
@@ -862,7 +868,7 @@ async def import_excel_quote(
                     %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s,
                     %s, %s, %s,
-                    %s, %s
+                    %s, %s, %s::uuid[]
                 )
                 ON CONFLICT (year, numero) DO UPDATE SET
                     cliente_nombre = EXCLUDED.cliente_nombre,
@@ -881,6 +887,7 @@ async def import_excel_quote(
                     igv = EXCLUDED.igv,
                     plazo_dias = EXCLUDED.plazo_dias,
                     condicion_pago = EXCLUDED.condicion_pago,
+                    condiciones_ids = EXCLUDED.condiciones_ids,
                     visibilidad = 'visible',
                     updated_at = CURRENT_TIMESTAMP
                 RETURNING id
@@ -891,7 +898,8 @@ async def import_excel_quote(
                 parsed["subtotal"], parsed["igv"], parsed["total"], True, 'borrador', 'PEN',
                 local_path, items_json, len(items), cloud_path,
                 user_name or parsed["personal_comercial"] or '', user_id, 'visible',
-                parsed["plazo_dias"], parsed["condicion_pago_key"]
+                parsed["plazo_dias"], parsed["condicion_pago_key"],
+                condiciones_uuid_list if condiciones_uuid_list else None
             ))
             
             result = cur.fetchone()
@@ -955,6 +963,54 @@ async def preview_import_excel(file: UploadFile = File(...)):
     
     parsed["suggested_numero"] = suggested_numero
     parsed["suggested_year"] = date.today().year
+    
+    # --- Cargar condiciones_especificas de la DB y hacer matching ---
+    all_condiciones = []
+    matched_condiciones_ids = []
+    try:
+        if _has_database_url():
+            conn2 = _get_connection()
+            try:
+                with conn2.cursor(cursor_factory=RealDictCursor) as cur2:
+                    cur2.execute(
+                        "SELECT id, texto, categoria, orden FROM condiciones_especificas WHERE activo = true ORDER BY orden ASC"
+                    )
+                    all_condiciones = [
+                        {"id": str(r["id"]), "texto": r["texto"], "categoria": r.get("categoria", ""), "orden": r.get("orden", 0)}
+                        for r in cur2.fetchall()
+                    ]
+            finally:
+                conn2.close()
+            
+            # Matching: comparar texto extraído del Excel con texto de DB
+            if parsed.get("condiciones_especificas_lista") and all_condiciones:
+                import re as _re2
+                def _normalize(t: str) -> str:
+                    """Normaliza texto para comparación flexible"""
+                    t = t.lower().strip()
+                    t = t.replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u")
+                    t = _re2.sub(r'[^\w\s]', '', t)
+                    t = _re2.sub(r'\s+', ' ', t)
+                    return t
+                
+                db_map = {_normalize(c["texto"]): c["id"] for c in all_condiciones}
+                for extracted in parsed["condiciones_especificas_lista"]:
+                    norm_extracted = _normalize(extracted)
+                    # Coincidencia exacta normalizada
+                    if norm_extracted in db_map:
+                        matched_condiciones_ids.append(db_map[norm_extracted])
+                        continue
+                    # Coincidencia parcial: si el texto de DB contiene al extraído o viceversa
+                    for db_norm, db_id in db_map.items():
+                        if norm_extracted in db_norm or db_norm in norm_extracted:
+                            if db_id not in matched_condiciones_ids:
+                                matched_condiciones_ids.append(db_id)
+                            break
+    except Exception as e:
+        print(f"Warning: No se pudieron cargar condiciones_especificas: {e}")
+    
+    parsed["all_condiciones"] = all_condiciones
+    parsed["matched_condiciones_ids"] = matched_condiciones_ids
     
     return {
         "success": True,
