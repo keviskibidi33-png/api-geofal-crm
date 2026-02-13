@@ -186,8 +186,11 @@ def generate_informe_excel(data: dict) -> bytes:
     ws["J9"] = _format_date(data.get("fecha_recepcion"))
     # Fecha Moldeo (J10)
     ws["J10"] = _format_date(data.get("fecha_moldeo"))
-    # Fecha Rotura (J11)
-    ws["J11"] = _format_date(data.get("fecha_rotura"))
+    # Fecha Rotura (J11) — usa la fecha_ensayo del primer item de compresión si existe
+    fecha_rotura = data.get("fecha_rotura")
+    if not fecha_rotura and items:
+        fecha_rotura = items[0].get("fecha_ensayo")
+    ws["J11"] = _format_date(fecha_rotura)
     # Densidad (J13)
     densidad = data.get("densidad")
     if isinstance(densidad, bool):

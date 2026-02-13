@@ -90,16 +90,20 @@ def _build_item(ic: ItemCompresion, ver_list: list, rec_list: list, item_idx: in
     mc = rec_list[item_idx] if item_idx < len(rec_list) else (rec_list[0] if rec_list else None)
 
     return {
+        # Identificación
         "codigo_lem": ic.codigo_lem or "",
         "codigo_cliente": (mc.identificacion_muestra if mc else "") or "",
+        # Verificación — directo de DB
         "diametro_1": mv.diametro_1_mm if mv else None,
         "diametro_2": mv.diametro_2_mm if mv else None,
         "longitud_1": mv.longitud_1_mm if mv else None,
         "longitud_2": mv.longitud_2_mm if mv else None,
         "longitud_3": mv.longitud_3_mm if mv else None,
         "masa_muestra_aire": mv.masa_muestra_aire_g if mv else None,
+        # Compresión — directo de DB, cada item tiene sus propios valores
         "carga_maxima": ic.carga_maxima,
         "tipo_fractura": ic.tipo_fractura,
+        "fecha_ensayo": ic.fecha_ensayo,
     }
 
 
