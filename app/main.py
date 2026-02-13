@@ -38,6 +38,7 @@ from app.modules.verificacion.models import Base as VerificacionBase
 from app.modules.tracing.models import Trazabilidad
 from app.modules.compresion.models import EnsayoCompresion, ItemCompresion
 from app.database import engine
+from app.auth import JWTAuthMiddleware
 
 # Ensure tables are created
 RecepcionBase.metadata.create_all(bind=engine)
@@ -151,6 +152,9 @@ app.add_middleware(
     expose_headers=["Content-Disposition"],
     max_age=3600,
 )
+
+# JWT Auth Middleware (runs AFTER CORS — order is reversed in Starlette)
+app.add_middleware(JWTAuthMiddleware)
  
  
 def _get_database_url() -> str:
