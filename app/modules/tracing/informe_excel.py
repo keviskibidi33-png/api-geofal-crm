@@ -17,8 +17,26 @@ from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 
 logger = logging.getLogger(__name__)
 
-# Ruta del template
-TEMPLATE_PATH = str(Path(__file__).resolve().parents[2] / "templates" / "Template_Informe.xlsx")
+# Ruta del template — multi-path search como los demás módulos
+def _find_template():
+    filename = "Template_Informe.xlsx"
+    current_dir = Path(__file__).resolve().parent
+    app_dir = current_dir.parents[1]  # app/
+
+    possible_paths = [
+        app_dir / "templates" / filename,                      # Standard: app/templates/
+        Path("/app/templates") / filename,                     # Docker absolute fallback
+        current_dir.parents[2] / "app" / "templates" / filename,  # Root/app/templates/
+    ]
+
+    for p in possible_paths:
+        if p.exists():
+            return str(p)
+
+    # Fallback to standard
+    return str(app_dir / "templates" / filename)
+
+TEMPLATE_PATH = _find_template()
 
 # Yellow fill for data cells
 YELLOW_FILL = PatternFill(start_color="FFFFFF00", end_color="FFFFFF00", fill_type="solid")
