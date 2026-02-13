@@ -103,6 +103,34 @@ def _upload_to_supabase_storage(file_data: io.BytesIO, bucket: str, path: str) -
         print(f"Error uploading to storage: {e}")
         return None
 
+def _delete_from_supabase_storage(bucket: str, path: str) -> bool:
+    """Elimina un archivo del storage de Supabase. Retorna True si se eliminó correctamente."""
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    
+    if not url or not key:
+        return False
+        
+    storage_url = f"{url.rstrip('/')}/storage/v1/object/{bucket}/{path}"
+    
+    try:
+        resp = requests.delete(
+            storage_url,
+            headers={
+                "Authorization": f"Bearer {key}",
+            },
+        )
+        if resp.status_code in (200, 204):
+            print(f"Storage delete OK: {bucket}/{path}")
+            return True
+        else:
+            print(f"Storage delete failed: {resp.status_code} - {resp.text}")
+            return False
+    except Exception as e:
+        print(f"Error deleting from storage: {e}")
+        return False
+
+
 def _get_safe_filename(base_name: str, extension: str = "xlsx") -> str:
     """Sanitiza nombres de archivo para evitar errores en Storage y sistemas de archivos"""
     if not base_name:

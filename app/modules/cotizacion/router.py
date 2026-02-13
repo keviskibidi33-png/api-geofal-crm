@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Response, UploadFile, File
+from fastapi import APIRouter, HTTPException, Response, UploadFile, File, Query
 from psycopg2.extras import RealDictCursor
 from datetime import date, datetime
 from typing import List, Optional
@@ -11,7 +11,8 @@ from .schemas import QuoteExportRequest, NextNumberResponse
 from .service import (
     _has_database_url, _get_connection, _ensure_sequence_table, 
     _next_quote_sequential, _save_quote_to_folder, register_quote_in_db, 
-    _upload_to_supabase_storage, QUOTES_FOLDER, get_condiciones_textos,
+    _upload_to_supabase_storage, _delete_from_supabase_storage,
+    QUOTES_FOLDER, get_condiciones_textos,
     update_quote_db, _get_safe_filename
 )
 from .excel import _get_template_path, generate_quote_excel
@@ -574,6 +575,339 @@ async def delete_plantilla(plantilla_id: str):
     finally:
         conn.close()
 
+@router.post("/import-excel")
+async def import_excel_quote(
+    file: UploadFile = File(...),
+    user_id: Optional[str] = Query(None),
+    user_name: Optional[str] = Query(None)
+):
+    """
+    Importa un archivo Excel existente como nueva cotización.
+    Parsea el contenido para detectar cliente, items y totales automáticamente,
+    asigna un nuevo número de cotización y lo registra en el sistema.
+    """
+    if not _has_database_url():
+        raise HTTPException(status_code=400, detail="Database not configured")
+    
+    filename = file.filename or ""
+    ext = Path(filename).suffix.lower()
+    if ext not in ['.xlsx']:
+        raise HTTPException(status_code=400, detail="Solo se permiten archivos Excel (.xlsx) para importación")
+    
+    content = await file.read()
+    
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True, read_only=True)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"No se pudo leer el archivo Excel: {str(e)}")
+    
+    # Intentar encontrar la hoja de cotización
+    # Buscar por nombre "MORT2" (template Geofal) o usar la primera hoja
+    ws = None
+    for sheet_name in wb.sheetnames:
+        if sheet_name.upper() in ("MORT2", "COTIZACION", "COTIZACIÓN"):
+            ws = wb[sheet_name]
+            break
+    if ws is None:
+        # Fallback: usar la primera hoja
+        ws = wb.active or wb[wb.sheetnames[0]]
+    
+    def safe_cell(cell_ref: str) -> str:
+        """Lee un valor de celda de forma segura, retornando string vacío si no existe"""
+        try:
+            val = ws[cell_ref].value
+            return str(val).strip() if val is not None else ""
+        except Exception:
+            return ""
+    
+    def safe_number(cell_ref: str) -> float:
+        """Lee un valor numérico de celda de forma segura"""
+        try:
+            val = ws[cell_ref].value
+            if val is None:
+                return 0.0
+            return float(val)
+        except (ValueError, TypeError):
+            return 0.0
+    
+    # --- Extraer datos del cliente (mapeo de celdas del template Geofal) ---
+    cliente = safe_cell("D5")
+    ruc = safe_cell("D6")
+    contacto = safe_cell("D7")
+    telefono = safe_cell("E8")
+    email = safe_cell("D9")
+    proyecto = safe_cell("L5")
+    ubicacion = safe_cell("L7")
+    personal_comercial = safe_cell("L8")
+    telefono_comercial = safe_cell("L9")
+    
+    # Extraer título para verificar si tiene número de cotización original
+    titulo = safe_cell("G3")
+    
+    # --- Extraer items (empiezan en fila 17) ---
+    items = []
+    row = 17
+    max_empty_rows = 5  # Detener después de 5 filas vacías consecutivas
+    empty_count = 0
+    
+    while empty_count < max_empty_rows and row < 200:
+        desc = safe_cell(f"C{row}")
+        codigo = safe_cell(f"B{row}")
+        norma = safe_cell(f"J{row}")
+        acreditado = safe_cell(f"K{row}")
+        costo = safe_number(f"L{row}")
+        cantidad = safe_number(f"M{row}")
+        
+        # Si la descripción está vacía y no hay costo, es fila vacía
+        if not desc and costo == 0:
+            empty_count += 1
+            row += 1
+            continue
+        
+        empty_count = 0  # Reset counter
+        
+        items.append({
+            "codigo": codigo,
+            "descripcion": desc,
+            "norma": norma,
+            "acreditado": acreditado,
+            "costo_unitario": costo,
+            "cantidad": cantidad if cantidad > 0 else 1,
+        })
+        row += 1
+    
+    wb.close()
+    
+    if not items and not cliente:
+        raise HTTPException(
+            status_code=400, 
+            detail="No se pudieron detectar datos en el Excel. Verifique que el formato sea compatible con el template de Geofal."
+        )
+    
+    # --- Generar nuevo número de cotización ---
+    _ensure_sequence_table()
+    year = date.today().year
+    sequential = _next_quote_sequential(year)
+    cotizacion_numero = f"{sequential:03d}"
+    year_suffix = str(year)[-2:]
+    
+    # --- Calcular totales ---
+    subtotal = sum(it["costo_unitario"] * it["cantidad"] for it in items)
+    igv = subtotal * 0.18
+    total = subtotal + igv
+    
+    # --- Preparar nombre de archivo para storage ---
+    safe_cliente = _get_safe_filename(cliente or "IMPORTADO", "").rstrip('.')
+    cloud_path = f"{year}/COT-{year}-{cotizacion_numero}_{safe_cliente}.xlsx"
+    
+    # --- Subir el Excel original a Supabase Storage ---
+    file_bytes = io.BytesIO(content)
+    uploaded_path = await asyncio.to_thread(
+        _upload_to_supabase_storage, file_bytes, "cotizaciones", cloud_path
+    )
+    
+    # --- Guardar copia local ---
+    local_path = ""
+    try:
+        year_folder = QUOTES_FOLDER / str(year)
+        year_folder.mkdir(exist_ok=True)
+        local_filename = f"COT-{year}-{cotizacion_numero}_{safe_cliente}.xlsx"
+        local_filepath = year_folder / local_filename
+        with open(local_filepath, "wb") as f:
+            f.write(content)
+        local_path = str(local_filepath)
+    except Exception as e:
+        print(f"Warning: No se pudo guardar copia local: {e}")
+    
+    # --- Registrar en DB ---
+    conn = _get_connection()
+    try:
+        with conn.cursor() as cur:
+            items_json = json.dumps(items, ensure_ascii=False)
+            
+            cur.execute("""
+                INSERT INTO cotizaciones (
+                    numero, year, cliente_nombre, cliente_ruc, cliente_contacto,
+                    cliente_telefono, cliente_email, proyecto, ubicacion,
+                    personal_comercial, telefono_comercial, fecha_emision,
+                    subtotal, igv, total, include_igv, estado, moneda,
+                    archivo_path, items_json, items_count, object_key,
+                    vendedor_nombre, user_created, visibilidad
+                ) VALUES (
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s
+                )
+                ON CONFLICT (year, numero) DO UPDATE SET
+                    cliente_nombre = EXCLUDED.cliente_nombre,
+                    cliente_ruc = EXCLUDED.cliente_ruc,
+                    archivo_path = EXCLUDED.archivo_path,
+                    object_key = EXCLUDED.object_key,
+                    items_json = EXCLUDED.items_json,
+                    items_count = EXCLUDED.items_count,
+                    total = EXCLUDED.total,
+                    subtotal = EXCLUDED.subtotal,
+                    igv = EXCLUDED.igv,
+                    visibilidad = 'visible',
+                    updated_at = CURRENT_TIMESTAMP
+                RETURNING id
+            """, (
+                cotizacion_numero, year, cliente, ruc, contacto,
+                telefono, email, proyecto, ubicacion,
+                personal_comercial, telefono_comercial, date.today(),
+                subtotal, igv, total, True, 'borrador', 'PEN',
+                local_path, items_json, len(items), cloud_path,
+                user_name or personal_comercial or '', user_id, 'visible'
+            ))
+            
+            result = cur.fetchone()
+            conn.commit()
+            quote_id = result[0] if result else None
+    except Exception as e:
+        conn.rollback()
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error registrando cotización: {str(e)}")
+    finally:
+        conn.close()
+    
+    return {
+        "success": True,
+        "quote_id": quote_id,
+        "numero": cotizacion_numero,
+        "year": year,
+        "token": f"{cotizacion_numero}-{year_suffix}",
+        "cloud_path": cloud_path,
+        "parsed_data": {
+            "cliente": cliente,
+            "ruc": ruc,
+            "contacto": contacto,
+            "proyecto": proyecto,
+            "items_count": len(items),
+            "subtotal": subtotal,
+            "igv": igv,
+            "total": total,
+            "items": items,
+            "titulo_original": titulo,
+        }
+    }
+
+
+@router.post("/import-excel/preview")
+async def preview_import_excel(file: UploadFile = File(...)):
+    """
+    Pre-visualiza los datos que se extraerían de un Excel sin crear la cotización.
+    Permite al usuario verificar antes de confirmar la importación.
+    """
+    filename = file.filename or ""
+    ext = Path(filename).suffix.lower()
+    if ext not in ['.xlsx']:
+        raise HTTPException(status_code=400, detail="Solo se permiten archivos Excel (.xlsx)")
+    
+    content = await file.read()
+    
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True, read_only=True)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"No se pudo leer el archivo Excel: {str(e)}")
+    
+    ws = None
+    for sheet_name in wb.sheetnames:
+        if sheet_name.upper() in ("MORT2", "COTIZACION", "COTIZACIÓN"):
+            ws = wb[sheet_name]
+            break
+    if ws is None:
+        ws = wb.active or wb[wb.sheetnames[0]]
+    
+    def safe_cell(cell_ref: str) -> str:
+        try:
+            val = ws[cell_ref].value
+            return str(val).strip() if val is not None else ""
+        except Exception:
+            return ""
+    
+    def safe_number(cell_ref: str) -> float:
+        try:
+            val = ws[cell_ref].value
+            if val is None:
+                return 0.0
+            return float(val)
+        except (ValueError, TypeError):
+            return 0.0
+    
+    cliente = safe_cell("D5")
+    ruc = safe_cell("D6")
+    contacto = safe_cell("D7")
+    telefono = safe_cell("E8")
+    email = safe_cell("D9")
+    proyecto = safe_cell("L5")
+    ubicacion = safe_cell("L7")
+    personal_comercial = safe_cell("L8")
+    titulo = safe_cell("G3")
+    
+    items = []
+    row_num = 17
+    max_empty = 5
+    empty_count = 0
+    
+    while empty_count < max_empty and row_num < 200:
+        desc = safe_cell(f"C{row_num}")
+        codigo = safe_cell(f"B{row_num}")
+        norma = safe_cell(f"J{row_num}")
+        acreditado = safe_cell(f"K{row_num}")
+        costo = safe_number(f"L{row_num}")
+        cantidad = safe_number(f"M{row_num}")
+        
+        if not desc and costo == 0:
+            empty_count += 1
+            row_num += 1
+            continue
+        
+        empty_count = 0
+        items.append({
+            "codigo": codigo,
+            "descripcion": desc,
+            "norma": norma,
+            "acreditado": acreditado,
+            "costo_unitario": costo,
+            "cantidad": cantidad if cantidad > 0 else 1,
+        })
+        row_num += 1
+    
+    sheet_names = list(wb.sheetnames) if hasattr(wb, 'sheetnames') else []
+    wb.close()
+    
+    subtotal = sum(it["costo_unitario"] * it["cantidad"] for it in items)
+    igv = subtotal * 0.18
+    total = subtotal + igv
+    
+    return {
+        "success": True,
+        "preview": {
+            "cliente": cliente,
+            "ruc": ruc,
+            "contacto": contacto,
+            "telefono": telefono,
+            "email": email,
+            "proyecto": proyecto,
+            "ubicacion": ubicacion,
+            "personal_comercial": personal_comercial,
+            "titulo_original": titulo,
+            "items": items,
+            "items_count": len(items),
+            "subtotal": round(subtotal, 2),
+            "igv": round(igv, 2),
+            "total": round(total, 2),
+            "hojas_disponibles": sheet_names,
+        }
+    }
+
+
 @router.post("/{quote_id}/manual-upload")
 async def manual_upload_quote(quote_id: str, file: UploadFile = File(...)):
     """Permite subir un archivo manual (PDF o Excel) para reemplazar el existente"""
@@ -612,6 +946,12 @@ async def manual_upload_quote(quote_id: str, file: UploadFile = File(...)):
         safe_cliente_cloud = "MANUAL-UPLOAD" # Fallback if client name is complex
         # Construct new cloud path to ensure extension is correct
         cloud_path = f"{year}/COT-{year}-{numero}{ext}"
+        
+        # 3b. Eliminar archivo anterior de Storage si la extensión cambió (evitar archivos huérfanos)
+        old_object_key = existing.get('object_key')
+        if old_object_key and old_object_key != cloud_path:
+            print(f"Manual upload: Eliminando archivo antiguo de Storage: {old_object_key}")
+            await asyncio.to_thread(_delete_from_supabase_storage, "cotizaciones", old_object_key)
         
         # 4. Subir a Storage (el service ya usa x-upsert: true)
         xlsx_bytes.seek(0)
