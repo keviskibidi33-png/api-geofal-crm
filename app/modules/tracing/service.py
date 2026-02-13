@@ -197,7 +197,7 @@ class TracingService:
         else:
             traza.estado_verificacion = "pendiente"
         
-        # Compresión e Informe
+        # Compresión
         if compresion:
             has_file = True
             if compresion.object_key:
@@ -205,13 +205,29 @@ class TracingService:
             
             if has_file and compresion.estado == "COMPLETADO":
                 traza.estado_compresion = "completado"
-                traza.estado_informe = "completado" # Si hay Excel y está completado, el informe está listo
             else:
                 traza.estado_compresion = "en_proceso"
-                traza.estado_informe = "en_proceso"
         else:
             traza.estado_compresion = "pendiente"
-            traza.estado_informe = "pendiente"
+
+        # Informe / Resumen de Ensayo
+        # REQUIERE los 3 módulos completados para poder generar
+        all_three_done = (
+            traza.estado_recepcion == "completado" and
+            traza.estado_verificacion == "completado" and
+            traza.estado_compresion == "completado"
+        )
+        any_progress = (
+            traza.estado_verificacion != "pendiente" or
+            traza.estado_compresion != "pendiente"
+        )
+        
+        if all_three_done:
+            traza.estado_informe = "completado"  # Los 3 listos → se puede generar
+        elif any_progress:
+            traza.estado_informe = "en_proceso"  # Avance parcial, faltan módulos
+        else:
+            traza.estado_informe = "pendiente"   # Solo recepción, nada más
             
         # 6. Guardar metadata extra en JSON
         traza.data_consolidada = {

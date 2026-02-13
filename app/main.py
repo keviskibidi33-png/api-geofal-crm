@@ -811,41 +811,47 @@ async def force_logout_user(user_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _sync_heartbeat(user_id: str) -> dict:
+    """Synchronous heartbeat logic — runs in a thread pool to avoid blocking the event loop."""
+    headers = _get_supabase_headers()
+    base_url = _get_supabase_url()
+
+    # Check if user is active
+    response = requests.get(
+        f"{base_url}/perfiles?id=eq.{user_id}&select=activo",
+        headers=headers, timeout=5
+    )
+    if response.status_code != 200:
+        return {"success": False, "error": "User not found"}
+
+    data = response.json()
+    if not data:
+        return {"success": False, "error": "User not found"}
+
+    if data[0].get("activo", True) is False:
+        return {"success": False, "status": "inactive"}
+
+    # Update last_seen_at
+    update_response = requests.patch(
+        f"{base_url}/perfiles?id=eq.{user_id}",
+        headers=headers,
+        json={"last_seen_at": datetime.utcnow().isoformat()},
+        timeout=5
+    )
+    if update_response.status_code not in [200, 204]:
+        return {"success": False, "error": "Failed to update heartbeat"}
+
+    return {"success": True, "status": "active"}
+
+
 @app.post("/users/heartbeat")
 async def user_heartbeat(payload: HeartbeatRequest):
-    """Update user heartbeat using Supabase REST API"""
+    """Update user heartbeat using Supabase REST API (non-blocking)."""
     try:
-        # First check if user is active
-        url = f"{_get_supabase_url()}/perfiles?id=eq.{payload.user_id}&select=activo"
-        response = requests.get(url, headers=_get_supabase_headers())
-        
-        if response.status_code != 200:
-            return {"success": False, "error": "User not found"}
-        
-        data = response.json()
-        if not data:
-            return {"success": False, "error": "User not found"}
-        
-        is_active = data[0].get("activo", True)
-        if is_active is False:
-            return {"success": False, "status": "inactive"}
-        
-        # Update last_seen_at
-        update_url = f"{_get_supabase_url()}/perfiles?id=eq.{payload.user_id}"
-        update_data = {"last_seen_at": datetime.utcnow().isoformat()}
-        
-        update_response = requests.patch(update_url, headers=_get_supabase_headers(), json=update_data)
-        
-        if update_response.status_code not in [200, 204]:
-            return {"success": False, "error": "Failed to update heartbeat"}
-        
-        return {"success": True, "status": "active"}
+        return await asyncio.to_thread(_sync_heartbeat, payload.user_id)
     except requests.RequestException as e:
         print(f"Heartbeat error: {e}")
         return {"success": False, "error": str(e)}
-
-
-app.include_router(recepciones_router)
 
 
 if __name__ == "__main__":

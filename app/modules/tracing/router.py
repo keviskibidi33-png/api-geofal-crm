@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import List
@@ -6,12 +7,30 @@ from app.database import get_db_session
 from .schemas import TracingResponse, StageStatus, TracingSummary, StageSummary
 from .models import Trazabilidad
 from .service import TracingService
+from .informe_service import InformeService
+from .informe_excel import generate_informe_excel
 from sqlalchemy import desc
 from app.modules.recepcion.models import RecepcionMuestra, MuestraConcreto
 from app.modules.verificacion.models import VerificacionMuestras
 from app.modules.compresion.models import EnsayoCompresion
 
 router = APIRouter(prefix="/api/tracing", tags=["Seguimiento (Tracing)"])
+
+
+def _mensaje_informe_pendiente(traza) -> str:
+    """Genera un mensaje descriptivo de qué módulos faltan para el informe."""
+    faltantes = []
+    if traza.estado_recepcion != "completado":
+        faltantes.append("Recepción")
+    if traza.estado_verificacion != "completado":
+        faltantes.append("Verificación")
+    if traza.estado_compresion != "completado":
+        faltantes.append("Compresión")
+    
+    if faltantes:
+        return f"Pendiente: requiere {', '.join(faltantes)} completada(s)"
+    return "Procesando..."
+
 
 @router.get("/flujo/{numero_recepcion}", response_model=TracingResponse)
 def obtener_seguimiento_flujo(numero_recepcion: str, db: Session = Depends(get_db_session)):
@@ -98,12 +117,21 @@ def obtener_seguimiento_flujo(numero_recepcion: str, db: Session = Depends(get_d
             download_url=f"/api/compresion/{compresion_id}/excel" if compresion_id else None
         ),
         StageStatus(
-            name="Informe Final",
+            name="Formato",
             key="informe",
             status=traza.estado_informe,
-            message="Etapa final de generación de reportes",
-            date=None,
-            download_url=None # Pendiente de definir endpoint de informe final
+            message=(
+                "Resumen de Ensayo disponible para descarga"
+                if traza.estado_informe == "completado"
+                else _mensaje_informe_pendiente(traza)
+            ),
+            date=traza.fecha_actualizacion if traza.estado_informe == "completado" else None,
+            download_url=(
+                f"/api/tracing/informe/{traza.numero_recepcion}/excel"
+                if traza.estado_informe == "completado"
+                else None
+            ),
+            data={"tipo": "resumen_ensayo"} if traza.estado_informe == "completado" else None
         )
     ]
     
@@ -242,3 +270,57 @@ def eliminar_trazabilidad(numero_recepcion: str, db: Session = Depends(get_db_se
     db.delete(traza)
     db.commit()
     return {"mensaje": f"Registro {canonical_numero} eliminado del historial de seguimiento"}
+
+
+# ============================================================
+# INFORME / RESUMEN DE ENSAYO
+# ============================================================
+
+@router.get("/informe/{numero_recepcion}/preview")
+def preview_informe(numero_recepcion: str, db: Session = Depends(get_db_session)):
+    """
+    Vista previa de los datos consolidados para el Resumen de Ensayo.
+    Retorna los datos de Recepción + Verificación + Compresión
+    sin generar el Excel, para que el frontend pueda mostrar qué se incluirá.
+    """
+    result = InformeService.preview_datos(db, numero_recepcion)
+    if not result["success"]:
+        raise HTTPException(status_code=404, detail=result["error"])
+    return result
+
+
+@router.get("/informe/{numero_recepcion}/excel")
+def generar_informe_excel(numero_recepcion: str, db: Session = Depends(get_db_session)):
+    """
+    Genera y descarga el Excel de Resumen de Ensayo.
+    Consolida datos de los 3 módulos (Recepción, Verificación, Compresión)
+    en el template RESUMEN ENSAYO.xlsx.
+    
+    Se puede llamar múltiples veces — cada vez regenera con los datos actuales.
+    """
+    try:
+        # 1. Consolidar datos de los 3 módulos
+        data = InformeService.consolidar_datos(db, numero_recepcion)
+        
+        # 2. Generar Excel
+        excel_bytes = generate_informe_excel(data)
+        
+        # 3. Build filename
+        rec_num = data.get("recepcion_numero", numero_recepcion)
+        filename = f"Resumen_Ensayo_{rec_num}.xlsx"
+        
+        return Response(
+            content=excel_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+            },
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=500, detail=f"Template no encontrado: {e}")
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error generando informe: {str(e)}")

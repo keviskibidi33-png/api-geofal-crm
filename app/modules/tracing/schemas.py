@@ -27,4 +27,4 @@ class TracingResponse(BaseModel):
     cliente: Optional[str] = None
     proyecto: Optional[str] = None
     stages: List[StageStatus]
-    last_update: datetime
+    last_update: Optional[datetime] = None

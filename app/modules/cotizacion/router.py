@@ -4,6 +4,7 @@ from datetime import date, datetime
 from typing import List, Optional
 import io
 import json
+import asyncio
 from pathlib import Path
 
 from .schemas import QuoteExportRequest, NextNumberResponse
@@ -115,20 +116,52 @@ async def export_quote(payload: QuoteExportRequest) -> Response:
         # Register in DB and Upload (Sanitized path for cloud)
         safe_cliente_cloud = _get_safe_filename(payload.cliente or "S-N", None)
         cloud_path = f"{year}/COT-{year}-{cotizacion_numero}-{safe_cliente_cloud}.xlsx"
+        db_registered = False
+        
+        # --- Step 1: DB Registration (critical) ---
         try:
-            register_quote_in_db(cotizacion_numero, year, payload.cliente, str(filepath), payload, object_key=cloud_path)
-            
-            xlsx_bytes.seek(0)
-            _upload_to_supabase_storage(xlsx_bytes, "cotizaciones", cloud_path)
+            await asyncio.to_thread(
+                register_quote_in_db,
+                cotizacion_numero, year, payload.cliente, str(filepath), payload,
+                cloud_path,  # object_key kwarg
+            )
+            db_registered = True
         except Exception as e:
-            print(f"DB/Storage Error: {e}")
+            import traceback
+            print(f"[COT-{year}-{cotizacion_numero}] DB Registration FAILED: {e}")
+            traceback.print_exc()
+            # Retry once
+            try:
+                print(f"[COT-{year}-{cotizacion_numero}] RETRY DB registration...")
+                await asyncio.to_thread(
+                    register_quote_in_db,
+                    cotizacion_numero, year, payload.cliente, str(filepath), payload,
+                    cloud_path,
+                )
+                db_registered = True
+                print(f"[COT-{year}-{cotizacion_numero}] RETRY DB registration OK")
+            except Exception as retry_err:
+                print(f"[COT-{year}-{cotizacion_numero}] RETRY FAILED: {retry_err}")
+        
+        # --- Step 2: Storage Upload (non-critical, best-effort) ---
+        try:
+            xlsx_bytes.seek(0)
+            await asyncio.to_thread(
+                _upload_to_supabase_storage, xlsx_bytes, "cotizaciones", cloud_path
+            )
+        except Exception as e:
+            print(f"[COT-{year}-{cotizacion_numero}] Storage upload error (non-critical): {e}")
 
-        # Return Response
+        # Return Response with registration status header
         xlsx_bytes.seek(0)
+        headers = {
+            "Content-Disposition": f'attachment; filename="COT-{year}-{cotizacion_numero}.xlsx"',
+            "X-DB-Registered": str(db_registered).lower(),
+        }
         return Response(
             content=xlsx_bytes.read(),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f'attachment; filename="COT-{year}-{cotizacion_numero}.xlsx"'},
+            headers=headers,
         )
     except Exception as e:
         import traceback
@@ -404,12 +437,14 @@ async def update_quote(quote_id: str, payload: QuoteExportRequest):
         safe_cliente_cloud = _get_safe_filename(payload.cliente or "S-N", None)
         cloud_path = f"{year}/COT-{year}-{existing['numero']}-{safe_cliente_cloud}.xlsx"
         
-        update_quote_db(quote_id, payload, str(filepath), object_key=cloud_path)
+        await asyncio.to_thread(update_quote_db, quote_id, payload, str(filepath), cloud_path)
         
-        # 6. Storage Update
+        # 6. Storage Update (best-effort)
         try:
             xlsx_bytes.seek(0)
-            _upload_to_supabase_storage(xlsx_bytes, "cotizaciones", cloud_path)
+            await asyncio.to_thread(
+                _upload_to_supabase_storage, xlsx_bytes, "cotizaciones", cloud_path
+            )
         except Exception as e:
             print(f"Error updating storage: {e}")
                 
@@ -581,7 +616,9 @@ async def manual_upload_quote(quote_id: str, file: UploadFile = File(...)):
         # 4. Subir a Storage (el service ya usa x-upsert: true)
         xlsx_bytes.seek(0)
         from .service import _upload_to_supabase_storage # Ensure imported
-        uploaded_path = _upload_to_supabase_storage(xlsx_bytes, "cotizaciones", cloud_path)
+        uploaded_path = await asyncio.to_thread(
+            _upload_to_supabase_storage, xlsx_bytes, "cotizaciones", cloud_path
+        )
         
         if not uploaded_path:
             raise HTTPException(status_code=500, detail="Error uploading to storage")

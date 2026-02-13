@@ -130,7 +130,7 @@ class CompresionService:
             db.rollback()
             err_msg = str(e)
             if "unique constraint" in err_msg.lower():
-                raise ValueError(f"Ya existe un informe de ensayo para la recepción {ensayo_data.numero_recepcion}")
+                raise ValueError(f"Ya existe un formato de ensayo para la recepción {ensayo_data.numero_recepcion}")
             raise e
     
     def listar_ensayos(self, db: Session, skip: int = 0, limit: int = 100) -> List[EnsayoCompresion]:

@@ -88,7 +88,6 @@ async def buscar_recepcion(
             "id": verificacion.id,
             "numero_verificacion": verificacion.numero_verificacion,
             "cliente": verificacion.cliente,
-            "numero_ot": verificacion.numero_ot
         }
 
     return {

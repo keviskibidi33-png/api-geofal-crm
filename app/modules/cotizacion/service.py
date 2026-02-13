@@ -34,7 +34,7 @@ def _has_database_url() -> bool:
 
 def _get_connection():
     dsn = _get_database_url()
-    conn = psycopg2.connect(dsn)
+    conn = psycopg2.connect(dsn, connect_timeout=10)
     psycopg2.extras.register_uuid(conn_or_curs=conn)
     return conn
 
