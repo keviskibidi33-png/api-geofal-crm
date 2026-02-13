@@ -8,7 +8,7 @@ Cross-reference: Verificación y Recepción por codigo_lem + item_numero.
 
 import re
 import logging
-from typing import Optional, List, Dict
+from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.modules.recepcion.models import RecepcionMuestra, MuestraConcreto
@@ -24,17 +24,13 @@ def _norm_lem(code: str) -> str:
     return (code or "").strip().upper()
 
 
-def _index_by_lem_and_item(records, lem_attr: str, item_attr: str = "item_numero") -> Dict[str, list]:
+def _index_by_item_numero(records, item_attr: str = "item_numero") -> dict:
     """
-    Indexa registros por codigo_lem.
-    Retorna {LEM_UPPER: [record, ...]} — lista para manejar duplicados.
+    Indexa registros por su número de item (1, 2, 3...).
+    Cada item es único — no hay duplicados por número de item.
+    Retorna {item_numero: record}.
     """
-    index: Dict[str, list] = {}
-    for r in records:
-        key = _norm_lem(getattr(r, lem_attr, ""))
-        if key:
-            index.setdefault(key, []).append(r)
-    return index
+    return {getattr(r, item_attr): r for r in records if getattr(r, item_attr, None) is not None}
 
 
 def _buscar_modulos(db: Session, numero_recepcion: str, canonical: str):
@@ -78,29 +74,26 @@ def _extraer_fecha_rotura(compresion: EnsayoCompresion, primera_muestra) -> str:
     return ""
 
 
-def _build_item(ic: ItemCompresion, ver_list: list, rec_list: list, item_idx: int) -> dict:
+def _build_item(ic: ItemCompresion, mv: Optional[MuestraVerificada], mc: Optional[MuestraConcreto]) -> dict:
     """
     Construye un item consolidado para el informe.
+    Cada campo viene directo de su tabla DB — sin reutilizar datos de otro item.
     
-    Para códigos LEM duplicados (ej: 15314-CO-26 aparece 2 veces),
-    usa item_idx para seleccionar el registro correcto de verificación/recepción.
+    Match por item_numero (posición), NO por codigo_lem.
+    Compresión.item = Verificación.item_numero = Recepción.item_numero
     """
-    # Seleccionar el registro que corresponde por posición en la lista de duplicados
-    mv = ver_list[item_idx] if item_idx < len(ver_list) else (ver_list[0] if ver_list else None)
-    mc = rec_list[item_idx] if item_idx < len(rec_list) else (rec_list[0] if rec_list else None)
-
     return {
         # Identificación
         "codigo_lem": ic.codigo_lem or "",
         "codigo_cliente": (mc.identificacion_muestra if mc else "") or "",
-        # Verificación — directo de DB
+        # Verificación — directo de DB, datos únicos de ESTE item
         "diametro_1": mv.diametro_1_mm if mv else None,
         "diametro_2": mv.diametro_2_mm if mv else None,
         "longitud_1": mv.longitud_1_mm if mv else None,
         "longitud_2": mv.longitud_2_mm if mv else None,
         "longitud_3": mv.longitud_3_mm if mv else None,
         "masa_muestra_aire": mv.masa_muestra_aire_g if mv else None,
-        # Compresión — directo de DB, cada item tiene sus propios valores
+        # Compresión — directo de DB, datos únicos de ESTE item
         "carga_maxima": ic.carga_maxima,
         "tipo_fractura": ic.tipo_fractura,
         "fecha_ensayo": ic.fecha_ensayo,
@@ -161,32 +154,27 @@ class InformeService:
             "densidad": m0.requiere_densidad if m0 else False,
         }
 
-        # ── 5. Indexar verificación y recepción por codigo_lem (listas para duplicados) ──
-        ver_index = _index_by_lem_and_item(
+        # ── 5. Indexar verificación y recepción por item_numero (1:1 match) ──
+        # Cada item tiene datos ÚNICOS — no se reutilizan entre items
+        ver_by_item = _index_by_item_numero(
             verificacion.muestras_verificadas if verificacion else [],
-            lem_attr="codigo_lem"
+            item_attr="item_numero"
         )
-        rec_index = _index_by_lem_and_item(
+        rec_by_item = _index_by_item_numero(
             muestras_rec,
-            lem_attr="codigo_muestra_lem"
+            item_attr="item_numero"
         )
 
         # ── 6. Construir items desde COMPRESIÓN (fuente de verdad) ──
-        # Contador por LEM para manejar duplicados (ej: 15314-CO-26 aparece 2 veces)
-        lem_counter: Dict[str, int] = {}
+        # Match 1:1 por item_numero: Compresión.item == Verificación.item_numero == Recepción.item_numero
         items = []
-
         sorted_comp = sorted(compresion.items, key=lambda x: x.item or 0)
         for ic in sorted_comp:
-            lem = _norm_lem(ic.codigo_lem)
-            idx = lem_counter.get(lem, 0)
-            lem_counter[lem] = idx + 1
-
+            item_num = ic.item  # Número de item en compresión
             items.append(_build_item(
                 ic,
-                ver_list=ver_index.get(lem, []),
-                rec_list=rec_index.get(lem, []),
-                item_idx=idx,
+                mv=ver_by_item.get(item_num),  # Verificación del MISMO item
+                mc=rec_by_item.get(item_num),   # Recepción del MISMO item
             ))
 
         header["items"] = items
