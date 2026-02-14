@@ -33,6 +33,7 @@ from app.modules.programacion.router import router as programacion_router
 from app.modules.verificacion.router import router as verificacion_router
 from app.modules.compresion.router import router as compresion_router
 from app.modules.tracing.router import router as tracing_router
+from app.modules.humedad.router import router as humedad_router
 from app.modules.recepcion.models import Base as RecepcionBase
 from app.modules.verificacion.models import Base as VerificacionBase
 from app.modules.tracing.models import Trazabilidad
@@ -226,6 +227,7 @@ app.include_router(programacion_router)
 app.include_router(verificacion_router)
 app.include_router(compresion_router)
 app.include_router(tracing_router)
+app.include_router(humedad_router)
 
 # Note: All legacy endpoints for Quotes and Programacion have been moved to their respective modules.
 # Check app/modules/cotizacion and app/modules/programacion.
