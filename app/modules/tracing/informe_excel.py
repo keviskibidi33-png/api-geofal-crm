@@ -118,7 +118,8 @@ def generate_informe_excel(data: dict) -> bytes:
                 "fc_kg_cm2": float,
                 "fecha_recepcion": str,
                 "fecha_moldeo": str,
-                "fecha_rotura": str,
+                "fecha_ensayo_programado": str,
+                "fecha_ensayo_real": str,
                 "densidad": str/bool,
                 "items": [
                     {
@@ -186,11 +187,13 @@ def generate_informe_excel(data: dict) -> bytes:
     ws["J9"] = _format_date(data.get("fecha_recepcion"))
     # Fecha Moldeo (J10)
     ws["J10"] = _format_date(data.get("fecha_moldeo"))
-    # Fecha Rotura (J11) — usa la fecha_ensayo del primer item de compresión si existe
-    fecha_rotura = data.get("fecha_rotura")
-    if not fecha_rotura and items:
-        fecha_rotura = items[0].get("fecha_ensayo")
-    ws["J11"] = _format_date(fecha_rotura)
+    # Fecha ensayo programado (I11 label + J11 value)
+    # Sobreescribimos el label del template "Fecha Rotura" → "Fecha ensayo programado"
+    ws["I11"] = "Fecha ensayo programado"
+    ws["I11"].font = Font(name="Arial", size=8)
+    ws["I11"].alignment = ALIGN_LEFT
+    fecha_programado = data.get("fecha_ensayo_programado") or data.get("fecha_rotura", "")
+    ws["J11"] = _format_date(fecha_programado)
     # Densidad (J13)
     densidad = data.get("densidad")
     if isinstance(densidad, bool):
@@ -212,7 +215,47 @@ def generate_informe_excel(data: dict) -> bytes:
         ws.cell(row=row, column=9, value=item.get("tipo_fractura", ""))      # I: Tipo fractura
         ws.cell(row=row, column=10, value=item.get("masa_muestra_aire"))     # J: Masa muestra aire
 
-    # --- 4. Save to bytes ---
+    # --- 4. Footer: Realizado / Fecha ensayo / Revisado ---
+    last_data_row = DATA_START_ROW + max(num_items, TEMPLATE_DATA_ROWS) - 1
+    footer_row = last_data_row + 2  # Skip one empty row after data
+
+    # Clear old note at B24 if it exists and is now in a different position
+    try:
+        if ws["B24"].value and "ESTO DATOS" in str(ws["B24"].value):
+            ws["B24"] = None
+    except Exception:
+        pass
+
+    # Realizado (columns A-C)
+    cell_realizado = ws.cell(row=footer_row, column=1, value="Realizado:")
+    cell_realizado.font = Font(name="Arial", size=9, bold=True)
+    cell_realizado.alignment = ALIGN_LEFT
+    # Line for signature
+    ws.cell(row=footer_row + 1, column=1, value="_________________________")
+    ws.cell(row=footer_row + 1, column=1).font = FONT_DATA
+    ws.cell(row=footer_row + 1, column=1).alignment = ALIGN_CENTER
+
+    # Fecha ensayo (columns D-G) — actual test date from compression
+    cell_fecha = ws.cell(row=footer_row, column=4, value="Fecha ensayo:")
+    cell_fecha.font = Font(name="Arial", size=9, bold=True)
+    cell_fecha.alignment = ALIGN_LEFT
+    fecha_ensayo_real = data.get("fecha_ensayo_real", "")
+    if not fecha_ensayo_real and items:
+        fecha_ensayo_real = items[0].get("fecha_ensayo", "")
+    ws.cell(row=footer_row + 1, column=4, value=_format_date(fecha_ensayo_real))
+    ws.cell(row=footer_row + 1, column=4).font = Font(name="Arial", size=9)
+    ws.cell(row=footer_row + 1, column=4).alignment = ALIGN_CENTER
+
+    # Revisado (columns H-J)
+    cell_revisado = ws.cell(row=footer_row, column=8, value="Revisado:")
+    cell_revisado.font = Font(name="Arial", size=9, bold=True)
+    cell_revisado.alignment = ALIGN_LEFT
+    # Line for signature
+    ws.cell(row=footer_row + 1, column=8, value="_________________________")
+    ws.cell(row=footer_row + 1, column=8).font = FONT_DATA
+    ws.cell(row=footer_row + 1, column=8).alignment = ALIGN_CENTER
+
+    # --- 5. Save to bytes ---
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
