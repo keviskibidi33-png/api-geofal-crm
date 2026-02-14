@@ -56,7 +56,8 @@ class ItemCompresion(Base):
     codigo_lem = Column(String(50), nullable=False, comment="Código LEM de la muestra")
     
     # Datos del ensayo
-    fecha_ensayo = Column(DateTime, nullable=True, comment="Fecha del ensayo")
+    fecha_ensayo_programado = Column(DateTime, nullable=True, comment="Fecha del ensayo programado")
+    fecha_ensayo = Column(DateTime, nullable=True, comment="Fecha del ensayo real")
     hora_ensayo = Column(String(10), nullable=True, comment="Hora del ensayo")
     carga_maxima = Column(Float, nullable=True, comment="Carga máxima (kN)")
     tipo_fractura = Column(String(50), nullable=True, comment="Tipo de fractura")

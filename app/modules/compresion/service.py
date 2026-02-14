@@ -123,6 +123,7 @@ class CompresionService:
                     ensayo_id=ensayo.id,
                     item=item_data.item,
                     codigo_lem=item_data.codigo_lem,
+                    fecha_ensayo_programado=item_data.fecha_ensayo_programado,
                     fecha_ensayo=item_data.fecha_ensayo,
                     hora_ensayo=item_data.hora_ensayo,
                     carga_maxima=item_data.carga_maxima,
@@ -201,6 +202,7 @@ class CompresionService:
                     ensayo_id=ensayo_id,
                     item=item_data.item,
                     codigo_lem=item_data.codigo_lem,
+                    fecha_ensayo_programado=item_data.fecha_ensayo_programado,
                     fecha_ensayo=item_data.fecha_ensayo,
                     hora_ensayo=item_data.hora_ensayo,
                     carga_maxima=item_data.carga_maxima,
@@ -247,6 +249,7 @@ class CompresionService:
             items.append(CompressionItem(
                 item=item.item,
                 codigo_lem=item.codigo_lem,
+                fecha_ensayo_programado=item.fecha_ensayo_programado.date() if item.fecha_ensayo_programado else None,
                 fecha_ensayo=item.fecha_ensayo.date() if item.fecha_ensayo else None,
                 hora_ensayo=item.hora_ensayo,
                 carga_maxima=item.carga_maxima,

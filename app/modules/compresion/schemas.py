@@ -8,6 +8,7 @@ from pydantic import BaseModel
 class ItemCompresionBase(BaseModel):
     item: int
     codigo_lem: str
+    fecha_ensayo_programado: Optional[date] = None
     fecha_ensayo: Optional[date] = None
     hora_ensayo: Optional[str] = None
     carga_maxima: Optional[float] = None
@@ -86,6 +87,7 @@ class CompressionItem(BaseModel):
     """Schema for export - kept for backwards compatibility"""
     item: int
     codigo_lem: str
+    fecha_ensayo_programado: Optional[date] = None
     fecha_ensayo: Optional[date] = None
     hora_ensayo: Optional[str] = None
     carga_maxima: Optional[float] = None
