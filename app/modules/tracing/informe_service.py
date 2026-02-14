@@ -149,11 +149,6 @@ class InformeService:
         muestras_rec = recepcion.muestras or []
         m0 = muestras_rec[0] if muestras_rec else None
 
-        # fecha_ensayo_programado = fecha de rotura planificada (desde recepción)
-        # fecha_ensayo_real = fecha real del ensayo de compresión
-        fecha_ensayo_programado = m0.fecha_rotura if m0 else ""
-        fecha_ensayo_real = _extraer_fecha_rotura(compresion, None) if compresion else ""
-
         header = {
             "cliente": recepcion.cliente or "",
             "direccion": recepcion.domicilio_legal or "",
@@ -165,8 +160,7 @@ class InformeService:
             "fc_kg_cm2": m0.fc_kg_cm2 if m0 else None,
             "fecha_recepcion": recepcion.fecha_recepcion,
             "fecha_moldeo": m0.fecha_moldeo if m0 else "",
-            "fecha_ensayo_programado": fecha_ensayo_programado,
-            "fecha_ensayo_real": fecha_ensayo_real,
+            "fecha_rotura": _extraer_fecha_rotura(compresion, m0) if compresion else (m0.fecha_rotura if m0 else ""),
             "densidad": m0.requiere_densidad if m0 else False,
         }
 

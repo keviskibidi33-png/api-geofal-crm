@@ -233,7 +233,10 @@ def generate_compression_excel(data: CompressionExportRequest) -> io.BytesIO:
             _set_cell_value(sheet_data, 'P34', '', ns)
             _set_cell_value(sheet_data, f'P{artifact_row}', '', ns)
             
-            # Fill items
+            # Fill items — Column mapping matches template:
+            # B=Item, C=Código LEM, D=Fecha ensayo programado, E=Hora ensayo,
+            # F=Carga máxima, G=Tipo fractura, H=Defectos, I=Realizado,
+            # J=Fecha ensayo (actual), K=Revisado, L=Fecha revisado, M=Aprobado, N=Fecha aprobado
             for idx, item in enumerate(items):
                 row_idx = 16 + idx
                 _set_cell_value(sheet_data, f'B{row_idx}', item.item, ns, is_number=True)
@@ -244,10 +247,11 @@ def generate_compression_excel(data: CompressionExportRequest) -> io.BytesIO:
                 _set_cell_value(sheet_data, f'G{row_idx}', item.tipo_fractura or '', ns)
                 _set_cell_value(sheet_data, f'H{row_idx}', item.defectos or '', ns)
                 _set_cell_value(sheet_data, f'I{row_idx}', item.realizado or '', ns)
-                _set_cell_value(sheet_data, f'J{row_idx}', item.revisado or '', ns)
-                _set_cell_value(sheet_data, f'K{row_idx}', item.fecha_revisado.strftime('%d/%m/%Y') if item.fecha_revisado else '', ns)
-                _set_cell_value(sheet_data, f'L{row_idx}', item.aprobado or '', ns)
-                _set_cell_value(sheet_data, f'M{row_idx}', item.fecha_aprobado.strftime('%d/%m/%Y') if item.fecha_aprobado else '', ns)
+                _set_cell_value(sheet_data, f'J{row_idx}', item.fecha_ensayo.strftime('%d/%m/%Y') if item.fecha_ensayo else '', ns)
+                _set_cell_value(sheet_data, f'K{row_idx}', item.revisado or '', ns)
+                _set_cell_value(sheet_data, f'L{row_idx}', item.fecha_revisado.strftime('%d/%m/%Y') if item.fecha_revisado else '', ns)
+                _set_cell_value(sheet_data, f'M{row_idx}', item.aprobado or '', ns)
+                _set_cell_value(sheet_data, f'N{row_idx}', item.fecha_aprobado.strftime('%d/%m/%Y') if item.fecha_aprobado else '', ns)
             
             # Footer data
             f_row = 35 + extra_rows
