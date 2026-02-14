@@ -3,7 +3,11 @@ Servicio para consolidar datos de Recepción + Verificación + Compresión
 y generar el Informe (Resumen de Ensayo).
 
 Fuente de verdad: COMPRESIÓN (cada ItemCompresion es una fila del informe).
+Si compresión no existe, usa RECEPCIÓN como fuente de filas.
 Cross-reference: Verificación y Recepción por codigo_lem + item_numero.
+
+Permite generar informe con datos parciales (módulos pendientes)
+para control y verificación por versiones.
 """
 
 import re
@@ -15,6 +19,7 @@ from app.modules.recepcion.models import RecepcionMuestra, MuestraConcreto
 from app.modules.verificacion.models import VerificacionMuestras, MuestraVerificada
 from app.modules.compresion.models import EnsayoCompresion, ItemCompresion
 from .service import TracingService
+from .models import Trazabilidad, InformeVersion
 
 logger = logging.getLogger(__name__)
 
@@ -74,17 +79,17 @@ def _extraer_fecha_rotura(compresion: EnsayoCompresion, primera_muestra) -> str:
     return ""
 
 
-def _build_item(ic: ItemCompresion, mv: Optional[MuestraVerificada], mc: Optional[MuestraConcreto]) -> dict:
+def _build_item(ic: Optional[ItemCompresion], mv: Optional[MuestraVerificada], mc: Optional[MuestraConcreto]) -> dict:
     """
     Construye un item consolidado para el informe.
-    Cada campo viene directo de su tabla DB — sin reutilizar datos de otro item.
+    Acepta datos parciales — campos faltantes quedan como None/"".
     
     Match por item_numero (posición), NO por codigo_lem.
     Compresión.item = Verificación.item_numero = Recepción.item_numero
     """
     return {
         # Identificación
-        "codigo_lem": ic.codigo_lem or "",
+        "codigo_lem": (ic.codigo_lem if ic else (mc.codigo_muestra_lem if mc else "")) or "",
         "codigo_cliente": (mc.identificacion_muestra if mc else "") or "",
         # Verificación — directo de DB, datos únicos de ESTE item
         "diametro_1": mv.diametro_1_mm if mv else None,
@@ -94,9 +99,9 @@ def _build_item(ic: ItemCompresion, mv: Optional[MuestraVerificada], mc: Optiona
         "longitud_3": mv.longitud_3_mm if mv else None,
         "masa_muestra_aire": mv.masa_muestra_aire_g if mv else None,
         # Compresión — directo de DB, datos únicos de ESTE item
-        "carga_maxima": ic.carga_maxima,
-        "tipo_fractura": ic.tipo_fractura,
-        "fecha_ensayo": ic.fecha_ensayo,
+        "carga_maxima": ic.carga_maxima if ic else None,
+        "tipo_fractura": ic.tipo_fractura if ic else None,
+        "fecha_ensayo": ic.fecha_ensayo if ic else None,
     }
 
 
@@ -108,9 +113,13 @@ class InformeService:
         """
         Consolida datos de Recepción + Verificación + Compresión.
         
-        Fuente de verdad: items de Compresión (cada fila = un item del informe).
-        Cross-ref: Verificación y Recepción por codigo_lem para datos complementarios.
-        Duplicados: códigos LEM repetidos se manejan por orden de aparición.
+        Permite datos parciales: si un módulo no está completo, los campos
+        correspondientes quedan vacíos. Esto permite descargar el informe
+        en cualquier momento para control y verificación.
+        
+        Fuente de filas:
+        - Si existe compresión → sus items son la fuente de verdad
+        - Si no → se usan las muestras de recepción como base
         """
         # ── 1. Buscar recepción ──
         recepcion, canonical = TracingService._buscar_recepcion_flexible(db, numero_recepcion)
@@ -120,20 +129,21 @@ class InformeService:
         # ── 2. Buscar verificación y compresión ──
         verificacion, compresion = _buscar_modulos(db, numero_recepcion, canonical)
 
-        # ── 3. Validar que los 3 módulos estén completos ──
-        faltantes = []
+        # ── 3. Registrar qué módulos están disponibles (para metadata) ──
+        modulos_estado = {
+            "recepcion": "completado",
+            "verificacion": "completado" if verificacion else "pendiente",
+            "compresion": "completado" if (compresion and compresion.estado == "COMPLETADO") else
+                          "en_proceso" if compresion else "pendiente",
+        }
+        
+        modulos_faltantes = []
         if not verificacion:
-            faltantes.append("Verificación de Muestras")
+            modulos_faltantes.append("Verificación de Muestras")
         if not compresion:
-            faltantes.append("Ensayo de Compresión")
+            modulos_faltantes.append("Ensayo de Compresión")
         elif compresion.estado != "COMPLETADO":
-            faltantes.append(f"Ensayo de Compresión (estado: {compresion.estado})")
-        if faltantes:
-            raise ValueError(
-                f"No se puede generar el Informe. "
-                f"Faltan o no están completados: {', '.join(faltantes)}. "
-                f"Los 3 formatos deben estar completados."
-            )
+            modulos_faltantes.append(f"Ensayo de Compresión (estado: {compresion.estado})")
 
         # ── 4. Datos de cabecera (desde recepción) ──
         muestras_rec = recepcion.muestras or []
@@ -150,12 +160,11 @@ class InformeService:
             "fc_kg_cm2": m0.fc_kg_cm2 if m0 else None,
             "fecha_recepcion": recepcion.fecha_recepcion,
             "fecha_moldeo": m0.fecha_moldeo if m0 else "",
-            "fecha_rotura": _extraer_fecha_rotura(compresion, m0),
+            "fecha_rotura": _extraer_fecha_rotura(compresion, m0) if compresion else (m0.fecha_rotura if m0 else ""),
             "densidad": m0.requiere_densidad if m0 else False,
         }
 
         # ── 5. Indexar verificación y recepción por item_numero (1:1 match) ──
-        # Cada item tiene datos ÚNICOS — no se reutilizan entre items
         ver_by_item = _index_by_item_numero(
             verificacion.muestras_verificadas if verificacion else [],
             item_attr="item_numero"
@@ -165,18 +174,33 @@ class InformeService:
             item_attr="item_numero"
         )
 
-        # ── 6. Construir items desde COMPRESIÓN (fuente de verdad) ──
-        # Match 1:1 por item_numero: Compresión.item == Verificación.item_numero == Recepción.item_numero
+        # ── 6. Construir items ──
         items = []
-        sorted_comp = sorted(compresion.items, key=lambda x: x.item or 0)
-        for ic in sorted_comp:
-            item_num = ic.item  # Número de item en compresión
-            items.append(_build_item(
-                ic,
-                mv=ver_by_item.get(item_num),  # Verificación del MISMO item
-                mc=rec_by_item.get(item_num),   # Recepción del MISMO item
-            ))
+        
+        if compresion and compresion.items:
+            # Fuente de verdad: COMPRESIÓN
+            sorted_comp = sorted(compresion.items, key=lambda x: x.item or 0)
+            for ic in sorted_comp:
+                item_num = ic.item
+                items.append(_build_item(
+                    ic,
+                    mv=ver_by_item.get(item_num),
+                    mc=rec_by_item.get(item_num),
+                ))
+        else:
+            # Sin compresión: usar muestras de recepción como base
+            sorted_rec = sorted(muestras_rec, key=lambda x: x.item_numero or 0)
+            for mc in sorted_rec:
+                item_num = mc.item_numero
+                items.append(_build_item(
+                    ic=None,
+                    mv=ver_by_item.get(item_num),
+                    mc=mc,
+                ))
 
+        # ── 7. Metadata y estado de completitud ──
+        datos_completos = not modulos_faltantes
+        
         header["items"] = items
         header["_meta"] = {
             "recepcion_id": recepcion.id,
@@ -185,8 +209,67 @@ class InformeService:
             "total_muestras": len(items),
             "muestras_con_verificacion": sum(1 for i in items if i["diametro_1"] is not None),
             "muestras_con_compresion": sum(1 for i in items if i["carga_maxima"] is not None),
+            "datos_completos": datos_completos,
+            "modulos_faltantes": modulos_faltantes,
+            "modulos_estado": modulos_estado,
         }
         return header
+
+    @staticmethod
+    def registrar_version(db: Session, numero_recepcion: str, data: dict, notas: str = None, generado_por: str = None) -> InformeVersion:
+        """
+        Registra una nueva versión del informe generado.
+        Cada descarga/generación crea un registro de versión.
+        """
+        # Buscar trazabilidad
+        traza = db.query(Trazabilidad).filter(
+            Trazabilidad.numero_recepcion == numero_recepcion
+        ).first()
+        
+        if not traza:
+            # Si no existe, sincronizar primero
+            traza = TracingService.actualizar_trazabilidad(db, numero_recepcion)
+        
+        if not traza:
+            raise ValueError(f"No se encontró trazabilidad para '{numero_recepcion}'")
+
+        # Obtener la última versión
+        ultima_version = db.query(InformeVersion).filter(
+            InformeVersion.trazabilidad_id == traza.id
+        ).order_by(InformeVersion.version.desc()).first()
+        
+        nueva_version = (ultima_version.version + 1) if ultima_version else 1
+        
+        meta = data.get("_meta", {})
+        
+        version = InformeVersion(
+            trazabilidad_id=traza.id,
+            numero_recepcion=numero_recepcion,
+            version=nueva_version,
+            estado_recepcion=meta.get("modulos_estado", {}).get("recepcion", "pendiente"),
+            estado_verificacion=meta.get("modulos_estado", {}).get("verificacion", "pendiente"),
+            estado_compresion=meta.get("modulos_estado", {}).get("compresion", "pendiente"),
+            total_muestras=meta.get("total_muestras", 0),
+            muestras_con_verificacion=meta.get("muestras_con_verificacion", 0),
+            muestras_con_compresion=meta.get("muestras_con_compresion", 0),
+            notas=notas,
+            generado_por=generado_por,
+            data_snapshot=meta,
+        )
+        
+        db.add(version)
+        db.commit()
+        db.refresh(version)
+        
+        logger.info(f"Informe v{nueva_version} registrado para {numero_recepcion}")
+        return version
+
+    @staticmethod
+    def obtener_versiones(db: Session, numero_recepcion: str) -> list:
+        """Obtiene el historial de versiones de un informe."""
+        return db.query(InformeVersion).filter(
+            InformeVersion.numero_recepcion == numero_recepcion
+        ).order_by(InformeVersion.version.desc()).all()
 
     @staticmethod
     def preview_datos(db: Session, numero_recepcion: str) -> dict:

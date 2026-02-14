@@ -210,7 +210,11 @@ class TracingService:
             traza.estado_compresion = "pendiente"
 
         # Informe / Resumen de Ensayo
-        # REQUIERE los 3 módulos completados para poder generar
+        # Siempre disponible para descarga si existe recepción
+        # Estado refleja completitud de datos:
+        # - completado: los 3 módulos listos → datos completos
+        # - en_proceso: algún módulo avanzó pero faltan datos
+        # - pendiente: solo recepción, nada más
         all_three_done = (
             traza.estado_recepcion == "completado" and
             traza.estado_verificacion == "completado" and
@@ -222,11 +226,11 @@ class TracingService:
         )
         
         if all_three_done:
-            traza.estado_informe = "completado"  # Los 3 listos → se puede generar
+            traza.estado_informe = "completado"  # Los 3 listos → datos completos
         elif any_progress:
-            traza.estado_informe = "en_proceso"  # Avance parcial, faltan módulos
+            traza.estado_informe = "en_proceso"  # Avance parcial, descargable con datos parciales
         else:
-            traza.estado_informe = "pendiente"   # Solo recepción, nada más
+            traza.estado_informe = "en_proceso"  # Solo recepción, descargable con datos parciales
             
         # 6. Guardar metadata extra en JSON
         traza.data_consolidada = {

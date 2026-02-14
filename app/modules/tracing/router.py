@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 from app.database import get_db_session
-from .schemas import TracingResponse, StageStatus, TracingSummary, StageSummary
-from .models import Trazabilidad
+from .schemas import TracingResponse, StageStatus, TracingSummary, StageSummary, InformeVersionResponse, InformeVersionListResponse
+from .models import Trazabilidad, InformeVersion
 from .service import TracingService
 from .informe_service import InformeService
 from .informe_excel import generate_informe_excel
@@ -88,6 +88,36 @@ def obtener_seguimiento_flujo(numero_recepcion: str, db: Session = Depends(get_d
                 "compresion_id": compresion.id
             })
 
+    # Count informe versions
+    version_count = db.query(InformeVersion).filter(
+        InformeVersion.numero_recepcion == traza.numero_recepcion
+    ).count()
+    
+    ultima_version = db.query(InformeVersion).filter(
+        InformeVersion.numero_recepcion == traza.numero_recepcion
+    ).order_by(desc(InformeVersion.version)).first()
+
+    # Informe siempre disponible para descarga si existe recepción
+    informe_data = {"tipo": "resumen_ensayo", "versiones": version_count}
+    if ultima_version:
+        informe_data["ultima_version"] = ultima_version.version
+        informe_data["fecha_ultima"] = ultima_version.fecha_generacion.isoformat() if ultima_version.fecha_generacion else None
+        informe_data["datos_completos"] = (
+            ultima_version.estado_recepcion == "completado" and
+            ultima_version.estado_verificacion == "completado" and
+            ultima_version.estado_compresion == "completado"
+        )
+
+    informe_message = (
+        f"Informe disponible — v{ultima_version.version} generada"
+        if ultima_version
+        else (
+            "Listo para generar informe completo"
+            if traza.estado_informe == "completado"
+            else f"Disponible con datos parciales — {_mensaje_informe_pendiente(traza)}"
+        )
+    )
+
     stages = [
         StageStatus(
             name="Recepción",
@@ -103,7 +133,7 @@ def obtener_seguimiento_flujo(numero_recepcion: str, db: Session = Depends(get_d
             key="verificacion",
             status=traza.estado_verificacion,
             message="Validación de dimensiones y geometría" if traza.estado_verificacion == "completado" else "Pendiente de verificación",
-            date=None, # Podríamos extraerlo de data_consolidada si fuera necesario
+            date=None,
             data=data_verificacion,
             download_url=f"/api/verificacion/{verificacion_id}/exportar" if verificacion_id else None
         ),
@@ -120,18 +150,10 @@ def obtener_seguimiento_flujo(numero_recepcion: str, db: Session = Depends(get_d
             name="Informe",
             key="informe",
             status=traza.estado_informe,
-            message=(
-                "Informe disponible para descarga"
-                if traza.estado_informe == "completado"
-                else _mensaje_informe_pendiente(traza)
-            ),
-            date=traza.fecha_actualizacion if traza.estado_informe == "completado" else None,
-            download_url=(
-                f"/api/tracing/informe/{traza.numero_recepcion}/excel"
-                if traza.estado_informe == "completado"
-                else None
-            ),
-            data={"tipo": "resumen_ensayo"} if traza.estado_informe == "completado" else None
+            message=informe_message,
+            date=ultima_version.fecha_generacion if ultima_version else (traza.fecha_actualizacion if traza.estado_informe == "completado" else None),
+            download_url=f"/api/tracing/informe/{traza.numero_recepcion}/excel",
+            data=informe_data
         )
     ]
     
@@ -290,30 +312,46 @@ def preview_informe(numero_recepcion: str, db: Session = Depends(get_db_session)
 
 
 @router.get("/informe/{numero_recepcion}/excel")
-def generar_informe_excel(numero_recepcion: str, db: Session = Depends(get_db_session)):
+def generar_informe_excel_endpoint(
+    numero_recepcion: str,
+    notas: Optional[str] = Query(None, description="Notas opcionales para esta versión"),
+    db: Session = Depends(get_db_session)
+):
     """
     Genera y descarga el Excel de Resumen de Ensayo.
-    Consolida datos de los 3 módulos (Recepción, Verificación, Compresión)
-    en el template RESUMEN ENSAYO.xlsx.
+    Consolida datos de los módulos disponibles (Recepción, Verificación, Compresión).
     
-    Se puede llamar múltiples veces — cada vez regenera con los datos actuales.
+    Permite descarga con datos parciales — los campos de módulos faltantes
+    quedan vacíos en el Excel. Cada descarga se registra como una nueva versión.
     """
     try:
-        # 1. Consolidar datos de los 3 módulos
+        # 1. Consolidar datos (ahora permite parciales)
         data = InformeService.consolidar_datos(db, numero_recepcion)
         
         # 2. Generar Excel
         excel_bytes = generate_informe_excel(data)
         
-        # 3. Build filename
+        # 3. Registrar versión
+        meta = data.get("_meta", {})
+        datos_completos = meta.get("datos_completos", False)
+        version = InformeService.registrar_version(
+            db, numero_recepcion, data,
+            notas=notas,
+            generado_por=None  # TODO: extraer del token JWT si aplica
+        )
+        
+        # 4. Build filename con versión
         rec_num = data.get("recepcion_numero", numero_recepcion)
-        filename = f"Resumen_Ensayo_{rec_num}.xlsx"
+        status_tag = "" if datos_completos else "_PARCIAL"
+        filename = f"Resumen_Ensayo_{rec_num}_v{version.version}{status_tag}.xlsx"
         
         return Response(
             content=excel_bytes,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={
                 "Content-Disposition": f'attachment; filename="{filename}"',
+                "X-Informe-Version": str(version.version),
+                "X-Datos-Completos": str(datos_completos).lower(),
             },
         )
     except ValueError as e:
@@ -324,3 +362,18 @@ def generar_informe_excel(numero_recepcion: str, db: Session = Depends(get_db_se
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error generando informe: {str(e)}")
+
+
+@router.get("/informe/{numero_recepcion}/versiones", response_model=InformeVersionListResponse)
+def listar_versiones_informe(numero_recepcion: str, db: Session = Depends(get_db_session)):
+    """
+    Lista el historial de versiones generadas del informe para una recepción.
+    Permite auditar y rastrear qué datos estaban disponibles en cada generación.
+    """
+    versiones = InformeService.obtener_versiones(db, numero_recepcion)
+    
+    return InformeVersionListResponse(
+        numero_recepcion=numero_recepcion,
+        total_versiones=len(versiones),
+        versiones=[InformeVersionResponse.from_orm_ext(v) for v in versiones]
+    )
