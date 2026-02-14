@@ -21,7 +21,7 @@ class RecepcionMuestra(Base):
     domicilio_legal = Column(String(300), nullable=False, comment="Domicilio legal del cliente")
     ruc = Column(String(20), nullable=False, comment="RUC del cliente")
     persona_contacto = Column(String(100), nullable=False, comment="Persona de contacto")
-    email = Column(String(100), nullable=False, comment="Email de contacto")
+    email = Column(String(500), nullable=False, comment="Email de contacto (puede ser múltiple)")
     telefono = Column(String(20), nullable=False, comment="Teléfono de contacto")
     
     # Información del solicitante
@@ -85,10 +85,10 @@ class MuestraConcreto(Base):
     item_numero = Column(Integer, nullable=False, comment="Número de item")
     codigo_muestra = Column(String(50), nullable=True, comment="Código de la muestra")
     codigo_muestra_lem = Column(String(50), nullable=True, comment="Código muestra LEM (zona sombreada)")
-    identificacion_muestra = Column(String(50), nullable=False, comment="Identificación de la muestra")
+    identificacion_muestra = Column(String(500), nullable=False, comment="Identificación/Código de la muestra")
     
     # Características de la muestra
-    estructura = Column(String(100), nullable=False, comment="Tipo de estructura")
+    estructura = Column(String(500), nullable=False, comment="Tipo de estructura")
     fc_kg_cm2 = Column(Float, nullable=False, comment="Resistencia característica (kg/cm²)")
     
     # Fechas de moldeo

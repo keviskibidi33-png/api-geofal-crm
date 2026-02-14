@@ -9,8 +9,8 @@ class MuestraConcretoBase(BaseModel):
     item_numero: int = Field(..., ge=1, description="Número de item")
     codigo_muestra: Optional[str] = Field("", max_length=50, description="Código de la muestra")
     codigo_muestra_lem: Optional[str] = Field("", max_length=50, description="Código muestra LEM (zona sombreada)")
-    identificacion_muestra: Optional[str] = Field("", max_length=50, description="Identificación de la muestra")
-    estructura: Optional[str] = Field("", max_length=100, description="Tipo de estructura")
+    identificacion_muestra: Optional[str] = Field("", max_length=500, description="Identificación/Código de la muestra (multilínea)")
+    estructura: Optional[str] = Field("", max_length=500, description="Tipo de estructura (multilínea)")
     fc_kg_cm2: float = Field(280, gt=0, description="Resistencia característica en kg/cm²")
     fecha_moldeo: Optional[str] = Field("", description="Fecha de moldeo (DD/MM/YYYY)")
     hora_moldeo: Optional[str] = Field("", description="Hora de moldeo (HH:MM)")
@@ -50,7 +50,7 @@ class RecepcionMuestraBase(BaseModel):
     domicilio_legal: Optional[str] = Field("", max_length=300, description="Domicilio legal del cliente")
     ruc: Optional[str] = Field("", max_length=20, description="RUC del cliente")
     persona_contacto: Optional[str] = Field("", max_length=100, description="Persona de contacto")
-    email: Optional[str] = Field("", description="Email de contacto")
+    email: Optional[str] = Field("", max_length=500, description="Email de contacto (puede ser múltiple)")
     telefono: Optional[str] = Field("", max_length=20, description="Teléfono de contacto")
     
     # Información del solicitante
