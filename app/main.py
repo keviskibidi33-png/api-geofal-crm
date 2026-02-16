@@ -144,6 +144,10 @@ _origin_regex = r"https://.*\.geofal\.com\.pe"
 print(f"DEBUG: CORS Origins: {_origins}")
 print(f"DEBUG: Allow Credentials: {_allow_creds}")
 
+# JWT Auth Middleware
+app.add_middleware(JWTAuthMiddleware)
+
+# CORS Middleware must be outermost so even 401/500 responses include CORS headers
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins,
@@ -154,9 +158,6 @@ app.add_middleware(
     expose_headers=["Content-Disposition"],
     max_age=3600,
 )
-
-# JWT Auth Middleware (runs AFTER CORS — order is reversed in Starlette)
-app.add_middleware(JWTAuthMiddleware)
  
  
 def _get_database_url() -> str:

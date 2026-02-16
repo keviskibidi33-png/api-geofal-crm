@@ -30,6 +30,11 @@ def _get_jwt_secret() -> Optional[str]:
     return os.getenv("SUPABASE_JWT_SECRET")
 
 
+def _allow_insecure_dev_auth() -> bool:
+    """Explicit opt-in for local development when JWT secret is unavailable."""
+    return os.getenv("ALLOW_INSECURE_DEV_AUTH", "false").strip().lower() == "true"
+
+
 # ── Routes that don't require authentication ───────────────────────
 
 PUBLIC_PATHS = {
@@ -57,9 +62,13 @@ def _decode_token(token: str) -> dict:
     """Decode and verify a Supabase JWT token."""
     secret = _get_jwt_secret()
     if not secret:
-        # If no JWT secret configured, allow all requests (dev mode)
-        print("[AUTH] WARNING: SUPABASE_JWT_SECRET not set — skipping token validation")
-        return {"sub": "anonymous", "role": "anon"}
+        if _allow_insecure_dev_auth():
+            print("[AUTH] WARNING: SUPABASE_JWT_SECRET not set — insecure dev auth bypass enabled")
+            return {"sub": "anonymous", "role": "anon"}
+        raise HTTPException(
+            status_code=500,
+            detail="Configuración de autenticación inválida: falta SUPABASE_JWT_SECRET",
+        )
 
     try:
         payload = jwt.decode(
@@ -98,7 +107,8 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
     Global middleware that enforces JWT authentication on all routes
     except public ones. 
     
-    If SUPABASE_JWT_SECRET is not set, all requests are allowed (dev mode).
+    If SUPABASE_JWT_SECRET is not set, requests are blocked unless
+    ALLOW_INSECURE_DEV_AUTH=true is explicitly configured.
     """
 
     async def dispatch(self, request: Request, call_next):
@@ -111,10 +121,16 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         if path in PUBLIC_PATHS or path.startswith(PUBLIC_PREFIXES):
             return await call_next(request)
 
-        # Check if JWT secret is configured (if not, dev mode — allow all)
+        # Check if JWT secret is configured
         secret = _get_jwt_secret()
         if not secret:
-            return await call_next(request)
+            if _allow_insecure_dev_auth():
+                print("[AUTH] WARNING: SUPABASE_JWT_SECRET not set — insecure dev auth bypass enabled")
+                return await call_next(request)
+            return JSONResponse(
+                status_code=500,
+                content={"detail": "Configuración de autenticación inválida: falta SUPABASE_JWT_SECRET"},
+            )
 
         # Extract Authorization header
         auth_header = request.headers.get("authorization", "")
