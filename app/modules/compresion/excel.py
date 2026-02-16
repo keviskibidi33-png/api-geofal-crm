@@ -233,33 +233,32 @@ def generate_compression_excel(data: CompressionExportRequest) -> io.BytesIO:
             _set_cell_value(sheet_data, 'P34', '', ns)
             _set_cell_value(sheet_data, f'P{artifact_row}', '', ns)
             
-            # Fill items — Column mapping matches template:
-            # B=Item, C=Código LEM, D=Fecha ensayo programado, E=Hora ensayo,
-            # F=Carga máxima, G=Tipo fractura, H=Defectos, I=Realizado,
-            # J=Fecha ensayo (actual), K=Revisado, L=Fecha revisado, M=Aprobado, N=Fecha aprobado
+            # Fill items — Column mapping matches updated template:
+            # B=Item, C=Código LEM, D=Fecha ensayo, E=Carga máxima, F=Tipo fractura,
+            # G=Defectos, H=Realizado, I=Revisado, J=Fecha revisado, K=Hora ensayo,
+            # L=Aprobado, M=Fecha aprobado
             for idx, item in enumerate(items):
                 row_idx = 16 + idx
                 _set_cell_value(sheet_data, f'B{row_idx}', item.item, ns, is_number=True)
                 _set_cell_value(sheet_data, f'C{row_idx}', item.codigo_lem, ns)
-                _set_cell_value(sheet_data, f'D{row_idx}', item.fecha_ensayo_programado.strftime('%d/%m/%Y') if item.fecha_ensayo_programado else '', ns)
-                _set_cell_value(sheet_data, f'E{row_idx}', item.hora_ensayo or '', ns)
-                _set_cell_value(sheet_data, f'F{row_idx}', item.carga_maxima, ns, is_number=True)
-                _set_cell_value(sheet_data, f'G{row_idx}', item.tipo_fractura or '', ns)
-                _set_cell_value(sheet_data, f'H{row_idx}', item.defectos or '', ns)
-                _set_cell_value(sheet_data, f'I{row_idx}', item.realizado or '', ns)
-                _set_cell_value(sheet_data, f'J{row_idx}', item.fecha_ensayo.strftime('%d/%m/%Y') if item.fecha_ensayo else '', ns)
-                _set_cell_value(sheet_data, f'K{row_idx}', item.revisado or '', ns)
-                _set_cell_value(sheet_data, f'L{row_idx}', item.fecha_revisado.strftime('%d/%m/%Y') if item.fecha_revisado else '', ns)
-                _set_cell_value(sheet_data, f'M{row_idx}', item.aprobado or '', ns)
-                _set_cell_value(sheet_data, f'N{row_idx}', item.fecha_aprobado.strftime('%d/%m/%Y') if item.fecha_aprobado else '', ns)
+                _set_cell_value(sheet_data, f'D{row_idx}', item.fecha_ensayo.strftime('%d/%m/%Y') if item.fecha_ensayo else '', ns)
+                _set_cell_value(sheet_data, f'E{row_idx}', item.carga_maxima, ns, is_number=True)
+                _set_cell_value(sheet_data, f'F{row_idx}', item.tipo_fractura or '', ns)
+                _set_cell_value(sheet_data, f'G{row_idx}', item.defectos or '', ns)
+                _set_cell_value(sheet_data, f'H{row_idx}', item.realizado or '', ns)
+                _set_cell_value(sheet_data, f'I{row_idx}', item.revisado or '', ns)
+                _set_cell_value(sheet_data, f'J{row_idx}', item.fecha_revisado.strftime('%d/%m/%Y') if item.fecha_revisado else '', ns)
+                _set_cell_value(sheet_data, f'K{row_idx}', item.hora_ensayo or '', ns)
+                _set_cell_value(sheet_data, f'L{row_idx}', item.aprobado or '', ns)
+                _set_cell_value(sheet_data, f'M{row_idx}', item.fecha_aprobado.strftime('%d/%m/%Y') if item.fecha_aprobado else '', ns)
             
-            # Footer data
+            # Footer data (columns shifted left by 1 after removing old Hora column)
             f_row = 35 + extra_rows
-            _set_cell_value(sheet_data, f'E{f_row}', data.codigo_equipo or '', ns)
-            _set_cell_value(sheet_data, f'I{f_row}', data.otros or '', ns)
+            _set_cell_value(sheet_data, f'D{f_row}', data.codigo_equipo or '', ns)
+            _set_cell_value(sheet_data, f'H{f_row}', data.otros or '', ns)
             
             n_row = 37 + extra_rows
-            _set_cell_value(sheet_data, f'D{n_row}', data.nota or '', ns)
+            _set_cell_value(sheet_data, f'C{n_row}', data.nota or '', ns)
 
             # 2. Handle Drawings
             if 'xl/drawings/drawing1.xml' in z_in.namelist():
