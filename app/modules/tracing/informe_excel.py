@@ -119,6 +119,8 @@ def generate_informe_excel(data: dict) -> bytes:
                 "fecha_recepcion": str,
                 "fecha_moldeo": str,
                 "fecha_rotura": str,
+                "hora_moldeo": str,
+                "hora_rotura": str,
                 "densidad": str/bool,
                 "items": [
                     {
@@ -191,12 +193,16 @@ def generate_informe_excel(data: dict) -> bytes:
     if not fecha_rotura and items:
         fecha_rotura = items[0].get("fecha_ensayo")
     ws["J11"] = _format_date(fecha_rotura)
-    # Densidad (J13)
+    # Hora Moldeo (J12)
+    ws["J12"] = data.get("hora_moldeo") or ""
+    # Hora Rotura (J13)
+    ws["J13"] = data.get("hora_rotura") or ""
+    # Densidad (J14)
     densidad = data.get("densidad")
     if isinstance(densidad, bool):
-        ws["J13"] = "Sí" if densidad else "No"
+        ws["J14"] = "Sí" if densidad else "No"
     else:
-        ws["J13"] = str(densidad) if densidad else ""
+        ws["J14"] = str(densidad) if densidad else ""
 
     # --- 3. Fill data items ---
     for idx, item in enumerate(items):

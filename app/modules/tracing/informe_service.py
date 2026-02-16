@@ -79,6 +79,15 @@ def _extraer_fecha_rotura(compresion: EnsayoCompresion, primera_muestra) -> str:
     return ""
 
 
+def _extraer_hora_rotura(compresion: EnsayoCompresion) -> str:
+    """Obtiene la hora de rotura real desde compresión (hora_ensayo del primer item válido)."""
+    if compresion and compresion.items:
+        for ic in sorted(compresion.items, key=lambda x: x.item or 0):
+            if ic.hora_ensayo:
+                return ic.hora_ensayo
+    return ""
+
+
 def _build_item(ic: Optional[ItemCompresion], mv: Optional[MuestraVerificada], mc: Optional[MuestraConcreto]) -> dict:
     """
     Construye un item consolidado para el informe.
@@ -160,7 +169,9 @@ class InformeService:
             "fc_kg_cm2": m0.fc_kg_cm2 if m0 else None,
             "fecha_recepcion": recepcion.fecha_recepcion,
             "fecha_moldeo": m0.fecha_moldeo if m0 else "",
+            "hora_moldeo": m0.hora_moldeo if m0 else "",
             "fecha_rotura": _extraer_fecha_rotura(compresion, m0) if compresion else (m0.fecha_rotura if m0 else ""),
+            "hora_rotura": _extraer_hora_rotura(compresion),
             "densidad": m0.requiere_densidad if m0 else False,
         }
 
