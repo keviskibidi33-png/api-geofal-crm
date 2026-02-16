@@ -150,7 +150,7 @@ async def generar_excel_recepcion(
         # Generar siempre al vuelo para descarga directa e instantánea
         excel_content = excel_logic.generar_excel_recepcion(recepcion)
         
-        filename = f"Recepcion_{recepcion.numero_ot.replace('/', '_')}.xlsx"
+        filename = f"N-{recepcion.numero_recepcion} Recepcion V04.xlsx"
         
         return Response(
             content=excel_content,
