@@ -50,6 +50,8 @@ PUBLIC_PREFIXES = (
     "/docs",
     "/redoc",
     "/openapi",
+    "/api/cotizacion/by-token",
+    "/by-token",
 )
 
 
