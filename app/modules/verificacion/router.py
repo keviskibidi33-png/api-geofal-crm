@@ -133,7 +133,7 @@ def exportar_verificacion(verificacion_id: int, db: Session = Depends(get_db_ses
     
     try:
         excel_bytes = excel_logic.generar_excel_verificacion(ver)
-        filename = f"Verificación Compresión N-{ver.numero_verificacion}.xlsx"
+        filename = f"Verificacion_Compresion_N-{ver.numero_verificacion}.xlsx"
         
         return Response(
             content=excel_bytes,

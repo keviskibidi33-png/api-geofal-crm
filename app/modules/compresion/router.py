@@ -182,7 +182,7 @@ async def generar_excel_ensayo(
         if not excel_buffer:
             raise HTTPException(status_code=500, detail="Error generando Excel")
         
-        filename = f"Formato Compresión N-{ensayo.numero_recepcion}.xlsx"
+        filename = f"Formato Compresion N-{ensayo.numero_recepcion}.xlsx"
         
         return Response(
             content=excel_buffer.getvalue(),
