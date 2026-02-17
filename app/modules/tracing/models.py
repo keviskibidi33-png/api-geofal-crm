@@ -26,7 +26,7 @@ class Trazabilidad(Base):
     fecha_actualizacion = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
 
     # Relación con versiones de informe
-    versiones_informe = relationship("InformeVersion", back_populates="trazabilidad", order_by="desc(InformeVersion.version)")
+    versiones_informe = relationship("InformeVersion", back_populates="trazabilidad", order_by="desc(InformeVersion.version)", cascade="all, delete-orphan", passive_deletes=True)
 
 
 class InformeVersion(Base):
