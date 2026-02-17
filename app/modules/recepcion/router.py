@@ -203,7 +203,7 @@ async def generar_excel_recepcion(
         cliente_safe = unicodedata.normalize('NFKD', cliente_raw).encode('ascii', 'ignore').decode('ascii')
         cliente_safe = re.sub(r'[^\w\s\-]', '', cliente_safe).strip()
         
-        filename = f"REC N-{recepcion.numero_recepcion} ({cliente_safe}).xlsx"
+        filename = f"REC N-{recepcion.numero_recepcion} {cliente_safe}.xlsx"
         
         return Response(
             content=excel_content,
