@@ -76,15 +76,7 @@ def _format_date(val) -> str:
         # If already formatted, return as-is
         if "/" in val:
             return val
-        # Strip time portion like "00:00:00" if present (e.g. "2026-02-14 00:00:00")
-        clean = val.strip().split(" ")[0].split("T")[0]
         # Try ISO parse
-        try:
-            dt = datetime.fromisoformat(clean)
-            return dt.strftime("%d/%m/%Y")
-        except Exception:
-            pass
-        # Fallback: try full string with timezone
         try:
             dt = datetime.fromisoformat(val.replace("Z", "+00:00"))
             return dt.strftime("%d/%m/%Y")
