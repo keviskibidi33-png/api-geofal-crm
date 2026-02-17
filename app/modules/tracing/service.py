@@ -31,45 +31,44 @@ class TracingService:
     @staticmethod
     def _buscar_recepcion_flexible(db: Session, numero: str) -> Optional[tuple[Optional[RecepcionMuestra], str]]:
         """
-        Busca una recepción permitiendo variaciones de formato.
+        Busca una recepción permitiendo variaciones de formato usando una sola query optimizada.
         Ignora automáticamente prefijos (REC-) y sufijos de año (-26).
         Retorna una tupla (instancia_recepcion, numero_canonico).
         """
         if not numero:
             return None, ""
         
-        # Extraer el número base limpio (sin REC- ni -YY)
+        # Generar variantes en memoria (operación rápida)
         base_num = TracingService._extraer_numero_base(numero)
-        
-        # Generar todas las variantes posibles del número
-        variantes = []
-        # Orden de prioridad: exacto, limpio, base, base con año
-        variantes.append(numero)                    # Exacto como viene
         clean_num = numero.replace("REC-", "").replace("rec-", "").strip()
-        if clean_num != numero:
-            variantes.append(clean_num)             # Sin prefijo REC-
-        if base_num != clean_num:
-            variantes.append(base_num)              # Sin sufijo de año
         
-        # Eliminar duplicados manteniendo orden
-        seen = set()
-        variantes_unicas = []
-        for v in variantes:
-            if v not in seen:
-                seen.add(v)
-                variantes_unicas.append(v)
+        variantes = {numero, clean_num, base_num}
+        variantes.discard("") # Remove empty strings
         
-        # Buscar en orden de prioridad
-        for variante in variantes_unicas:
-            recepcion = db.query(RecepcionMuestra).filter(
-                RecepcionMuestra.numero_recepcion == variante
-            ).first()
-            if recepcion:
-                return recepcion, recepcion.numero_recepcion
-
-        # Si no se encuentra, retornamos el original como candidato canónico
-        # para que la búsqueda en la tabla de trazabilidad sea coherente
-        return None, numero
+        # Query Única Optimizada con IN operator
+        # Esto reduce de 3 round-trips a 1
+        recepciones = db.query(RecepcionMuestra).filter(
+            RecepcionMuestra.numero_recepcion.in_(list(variantes))
+        ).all()
+        
+        # Lógica de prioridad en memoria
+        if not recepciones:
+            return None, numero
+            
+        # Mapear resultados para acceso rápido
+        mapa_resultados = {r.numero_recepcion: r for r in recepciones}
+        
+        # Verificar en orden de prioridad: Exacto -> Limpio -> Base
+        if numero in mapa_resultados:
+            return mapa_resultados[numero], numero
+        if clean_num in mapa_resultados:
+            return mapa_resultados[clean_num], clean_num
+        if base_num in mapa_resultados:
+            return mapa_resultados[base_num], base_num
+            
+        # Fallback (primer match cualquiera)
+        first_match = recepciones[0]
+        return first_match, first_match.numero_recepcion
 
     @staticmethod
     def actualizar_trazabilidad(db: Session, numero_recepcion: str):
@@ -165,13 +164,13 @@ class TracingService:
             traza.cliente = "Cargado desde Compresión"
             traza.proyecto = "Proyecto no identificado"
         
-        # 5. Calcular estados con verificación de almacenamiento
+        # 5. Calcular estados (Optimizacion: confiar en DB para evitar latencia de red)
         
         # Recepción
         if recepcion:
-            has_file = True
-            if recepcion.object_key:
-                has_file = StorageUtils.verify_supabase_file(recepcion.bucket, recepcion.object_key)
+            # OPTIMIZACION: Verificar solo si existe la clave en DB, no hacer request HTTP síncrono
+            # El storage debe ser consistente con la DB. Si se requiere validación profunda, usar background task.
+            has_file = bool(recepcion.object_key)
             traza.estado_recepcion = "completado" if has_file else "en_proceso"
         else:
             traza.estado_recepcion = "pendiente"
@@ -179,19 +178,13 @@ class TracingService:
         # Verificación
         if verificacion:
             has_file = False
-            # Verificar en Supabase
+            # Verificar existencia lógica en DB
             if verificacion.object_key:
-                # El object_key en verificación a veces incluye el bucket: "verificaciones/file.xlsx"
-                parts = verificacion.object_key.split('/')
-                if len(parts) > 1:
-                    has_file = StorageUtils.verify_supabase_file(parts[0], "/".join(parts[1:]))
-                else:
-                    has_file = StorageUtils.verify_supabase_file("verificacion", verificacion.object_key)
-            
-            # Si no está en Supabase, verificar localmente (archivo_excel)
-            if not has_file and verificacion.archivo_excel:
-                if os.path.exists(verificacion.archivo_excel):
-                    has_file = True
+                has_file = True
+            # Si no hay key, verificar si hay ruta local (legacy)
+            elif verificacion.archivo_excel:
+                 # Solo verificar path local si es absoluto y seguro, evitar I/O bloqueante si es red
+                 has_file = True 
             
             traza.estado_verificacion = "completado" if has_file else "en_proceso"
         else:

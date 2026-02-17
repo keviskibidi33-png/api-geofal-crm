@@ -48,21 +48,19 @@ def test_persistence():
         db.commit()
         print("3. Recepción borrada.")
         
-        # 4. Actualizar trazabilidad de nuevo (DEBE PERSISTIR EN GRIS/PENDIENTE)
+        # 4. Actualizar trazabilidad de nuevo (DEBE BORRARSE SI NO HAY ORIGEN)
         traza_post = TracingService.actualizar_trazabilidad(db, test_numero)
         
-        if traza_post:
-            print(f"4. ÉXITO: La traza persiste. Estado Recepción: {traza_post.estado_recepcion}")
+        if not traza_post:
+            print("4. ÉXITO: La traza fue limpiada correctamente (no quedan registros fantasma).")
         else:
-            print("4. FALLO: La traza fue borrada automáticamente (comportamiento antiguo).")
+            print(f"4. FALLO: La traza persiste indevidamente. Estado Recepción: {traza_post.estado_recepcion}")
             
-        # 5. Borrar traza manualmente (simulando el nuevo endpoint)
-        if traza_post:
+            # Limpieza manual si falló la automática
             db.delete(traza_post)
             db.commit()
-            print("5. Traza borrada manualmente.")
-            
-        # 6. Verificar que ya no existe
+
+        # 6. Verificación final
         traza_final = db.query(Trazabilidad).filter(Trazabilidad.numero_recepcion == test_numero).first()
         if not traza_final:
             print("6. Verificación final OK: El registro ya no existe.")
