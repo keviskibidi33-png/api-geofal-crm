@@ -138,6 +138,52 @@ async def obtener_recepcion(
         raise HTTPException(status_code=404, detail="Recepción no encontrada")
     return recepcion
 
+@router.put("/{recepcion_id}", response_model=RecepcionMuestraResponse)
+async def actualizar_recepcion(
+    recepcion_id: int,
+    recepcion_update: RecepcionMuestraUpdate,
+    db: Session = Depends(get_db_session)
+):
+    """Actualizar recepción existente"""
+    # 1. Verificar existencia
+    recepcion = recepcion_service.obtener_recepcion(db, recepcion_id)
+    if not recepcion:
+        raise HTTPException(status_code=404, detail="Recepción no encontrada")
+
+    # 2. Preparar datos
+    update_data = recepcion_update.dict(exclude_unset=True)
+    
+    # 3. Parsear fechas si existen (Lógica espejada de crear_recepcion)
+    from datetime import datetime
+    
+    def parse_date(date_str):
+        if not date_str or date_str.strip() == "":
+            return None
+        try:
+            return datetime.strptime(date_str.strip(), '%d/%m/%Y')
+        except ValueError:
+            try:
+                return datetime.fromisoformat(date_str.strip())
+            except ValueError:
+                return None
+
+    if 'fecha_recepcion' in update_data and update_data['fecha_recepcion']:
+        update_data['fecha_recepcion'] = parse_date(update_data['fecha_recepcion'])
+    
+    if 'fecha_estimada_culminacion' in update_data and update_data['fecha_estimada_culminacion']:
+        update_data['fecha_estimada_culminacion'] = parse_date(update_data['fecha_estimada_culminacion'])
+
+    # 4. Actualizar
+    updated_recepcion = recepcion_service.actualizar_recepcion(db, recepcion_id, update_data)
+    
+    # 5. Sincronizar trazabilidad si hubo cambios relevantes (opcional pero recomendado)
+    try:
+        TracingService.actualizar_trazabilidad(db, updated_recepcion.numero_recepcion)
+    except Exception:
+        pass # No bloquear respuesta por error en traza
+
+    return updated_recepcion
+
 @router.get("/{recepcion_id}/excel")
 async def generar_excel_recepcion(
     recepcion_id: int,
