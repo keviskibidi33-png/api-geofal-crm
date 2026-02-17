@@ -1,8 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List
 import unicodedata
 import re
+import io
+import openpyxl
 from app.database import get_db, get_db_session
 from .schemas import RecepcionMuestraCreate, RecepcionMuestraResponse, RecepcionMuestraUpdate
 from .service import RecepcionService
@@ -183,6 +185,111 @@ async def actualizar_recepcion(
         pass # No bloquear respuesta por error en traza
 
     return updated_recepcion
+
+@router.post("/importar-excel")
+async def importar_excel_recepcion(file: UploadFile = File(...)):
+    """
+    Importa datos desde un Excel (puede ser Cotización o Plantilla) para llenar el formulario de Recepción.
+    Expande los items según cantidad.
+    """
+    if not file.filename.endswith(('.xlsx', '.xlsm')):
+        raise HTTPException(status_code=400, detail="Solo se permiten archivos Excel (.xlsx)")
+    
+    content = await file.read()
+    
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True, read_only=True)
+        
+        # Buscar hoja de cotización
+        ws = None
+        for sheet_name in wb.sheetnames:
+            if sheet_name.upper() in ("MORT2", "COTIZACION", "COTIZACIÓN"):
+                ws = wb[sheet_name]
+                break
+        if ws is None:
+            ws = wb.active
+            
+        def safe_cell(cell_ref: str) -> str:
+            try:
+                val = ws[cell_ref].value
+                return str(val).strip() if val is not None else ""
+            except Exception:
+                return ""
+        
+        def safe_number(cell_ref: str) -> float:
+            try:
+                val = ws[cell_ref].value
+                if val is None: return 0.0
+                return float(val)
+            except (ValueError, TypeError):
+                return 0.0
+
+        # --- Extraer Datos ---
+        cliente = safe_cell("D5")
+        ruc = safe_cell("D6")
+        contacto = safe_cell("D7")
+        telefono = safe_cell("E8")
+        email = safe_cell("D9")
+        proyecto = safe_cell("L5")
+        ubicacion = safe_cell("L7")
+        solicitante = cliente  # Default
+        
+        # --- Items (muestras) ---
+        muestras = []
+        row = 17
+        max_empty = 5
+        empty_count = 0
+        
+        while empty_count < max_empty and row < 200:
+            desc = safe_cell(f"C{row}")
+            cant = safe_number(f"M{row}")
+            
+            if not desc and cant == 0:
+                empty_count += 1
+                row += 1
+                continue
+            
+            empty_count = 0
+            
+            # Expandir según cantidad
+            qty = int(cant) if cant > 0 else 1
+            # Limitar expansión para evitar loops infinitos o ataques
+            if qty > 100: qty = 100 
+            
+            for _ in range(qty):
+                muestras.append({
+                    "identificacion_muestra": desc,
+                    "estructura": "",
+                    "fc_kg_cm2": 280,
+                    "edad": 7,
+                    "requiere_densidad": False,
+                    "fecha_moldeo": "",
+                    "hora_moldeo": "",
+                    "fecha_rotura": "",
+                    "codigo_muestra_lem": ""
+                })
+            
+            row += 1
+            
+        wb.close()
+        
+        return {
+            "cliente": cliente,
+            "ruc": ruc,
+            "persona_contacto": contacto,
+            "telefono": telefono,
+            "email": email,
+            "proyecto": proyecto,
+            "ubicacion": ubicacion,
+            "solicitante": solicitante,
+            "domicilio_solicitante": ubicacion, # Default guess
+            "muestras": muestras
+        }
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=400, detail=f"Error procesando Excel: {str(e)}")
 
 @router.get("/{recepcion_id}/excel")
 async def generar_excel_recepcion(
