@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 from typing import List
+import unicodedata
+import re
 from app.database import get_db, get_db_session
 from .schemas import RecepcionMuestraCreate, RecepcionMuestraResponse, RecepcionMuestraUpdate
 from .service import RecepcionService
@@ -150,7 +152,12 @@ async def generar_excel_recepcion(
         # Generar siempre al vuelo para descarga directa e instantánea
         excel_content = excel_logic.generar_excel_recepcion(recepcion)
         
-        filename = f"N-{recepcion.numero_recepcion} Recepcion V04.xlsx"
+        # Sanitize client name for filename
+        cliente_raw = recepcion.cliente or "Sin Cliente"
+        cliente_safe = unicodedata.normalize('NFKD', cliente_raw).encode('ascii', 'ignore').decode('ascii')
+        cliente_safe = re.sub(r'[^\w\s\-]', '', cliente_safe).strip()
+        
+        filename = f"REC N-{recepcion.numero_recepcion} ({cliente_safe}).xlsx"
         
         return Response(
             content=excel_content,
