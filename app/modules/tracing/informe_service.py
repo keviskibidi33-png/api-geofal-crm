@@ -210,8 +210,26 @@ class InformeService:
         # ── 6. Construir items ──
         items = []
         
-        if compresion and compresion.items:
-            # Fuente de verdad: COMPRESIÓN
+        # Indexar compresión antes del loop 
+        compresion_by_item = _index_by_item_numero(
+            compresion.items if compresion else [],
+            item_attr="item"
+        )
+
+        # 6. Construir items usando RECEPCIÓN como MASTER LIST de filas
+        # Esto asegura que todas las muestras (ej. las 22 de la OT 336-26) aparezcan 
+        # en orden, independientemente de si tienen datos en Verificación o Compresión.
+        if muestras_rec:
+            sorted_rec = sorted(muestras_rec, key=lambda x: x.item_numero or 0)
+            for mc in sorted_rec:
+                item_num = mc.item_numero
+                items.append(_build_item(
+                    ic=compresion_by_item.get(item_num),
+                    mv=ver_by_item.get(item_num),
+                    mc=mc,
+                ))
+        elif compresion and compresion.items:
+            # Fallback si no hay recepción (data legacy o parcial): usar muestras de compresión
             sorted_comp = sorted(compresion.items, key=lambda x: x.item or 0)
             for ic in sorted_comp:
                 item_num = ic.item
@@ -219,16 +237,6 @@ class InformeService:
                     ic,
                     mv=ver_by_item.get(item_num),
                     mc=rec_by_item.get(item_num),
-                ))
-        elif muestras_rec:
-            # Sin compresión: usar muestras de recepción como base
-            sorted_rec = sorted(muestras_rec, key=lambda x: x.item_numero or 0)
-            for mc in sorted_rec:
-                item_num = mc.item_numero
-                items.append(_build_item(
-                    ic=None,
-                    mv=ver_by_item.get(item_num),
-                    mc=mc,
                 ))
         elif verificacion and verificacion.muestras_verificadas:
              # Fallback: Solo existe verificación
@@ -238,7 +246,7 @@ class InformeService:
                  items.append(_build_item(
                      ic=None,
                      mv=mv,
-                     mc=None,
+                     mc=rec_by_item.get(item_num), # Attempt to match rec if it exists
                  ))
 
         # ── 7. Metadata y estado de completitud ──
