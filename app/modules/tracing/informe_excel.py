@@ -231,25 +231,41 @@ def generate_informe_excel(data: dict) -> bytes:
     for i, item in enumerate(items):
         r = data_start_row + i
         write_cell(f"A{r}", item.get("codigo_lem", ""))
-        write_cell(f"B{r}", item.get("codigo_cliente", ""))
-        write_cell(f"C{r}", item.get("diametro_1"), is_num=True)
-        write_cell(f"D{r}", item.get("diametro_2"), is_num=True)
-        write_cell(f"E{r}", item.get("longitud_1"), is_num=True)
-        write_cell(f"F{r}", item.get("longitud_2"), is_num=True)
-        write_cell(f"G{r}", item.get("longitud_3"), is_num=True)
-        write_cell(f"H{r}", item.get("carga_maxima"), is_num=True)
-        write_cell(f"I{r}", item.get("tipo_fractura", ""))
-        write_cell(f"J{r}", item.get("masa_muestra_aire"), is_num=True)
+        write_cell(f"B{r}", item.get("estructura", ""))
+        write_cell(f"C{r}", item.get("fc_kg_cm2"), is_num=True)
+        write_cell(f"D{r}", item.get("codigo_cliente", ""))
+        write_cell(f"E{r}", item.get("diametro_1"), is_num=True)
+        write_cell(f"F{r}", item.get("diametro_2"), is_num=True)
+        write_cell(f"G{r}", item.get("longitud_1"), is_num=True)
+        write_cell(f"H{r}", item.get("longitud_2"), is_num=True)
+        write_cell(f"I{r}", item.get("longitud_3"), is_num=True)
+        write_cell(f"J{r}", item.get("carga_maxima"), is_num=True)
+        write_cell(f"K{r}", item.get("tipo_fractura", ""))
+        write_cell(f"L{r}", item.get("masa_muestra_aire"), is_num=True)
 
-    # 3. Final Serialization
+    # ── 3. Final Serialization & Structural Cleanup ──
+    
+    # CRITICAL: Excel require row elements within sheetData to be in strictly ascending order
+    # Shifting and duplication can leave the XML tree out of order.
+    rows_list = list(sheet_data.findall(f'{{{ns}}}row'))
+    rows_list.sort(key=lambda r: int(r.get('r', 0)))
+    
+    # Re-append rows in correct order
+    for r_el in list(sheet_data):
+        if r_el.tag == f'{{{ns}}}row':
+            sheet_data.remove(r_el)
+    for r_el in rows_list:
+        sheet_data.append(r_el)
+
     modified_sheet = etree.tostring(root, encoding='utf-8', xml_declaration=True)
     
-    # Rebuild Shared Strings
+    # Rebuild Shared Strings with clean namespaces
     ss_root_new = etree.Element(f'{{{ns}}}sst', nsmap={None: ns})
     for text in shared_strings:
         si = etree.SubElement(ss_root_new, f'{{{ns}}}si')
         t = etree.SubElement(si, f'{{{ns}}}t')
-        t.text = text
+        t.text = str(text)
+    
     ss_root_new.set('count', str(len(shared_strings)))
     ss_root_new.set('uniqueCount', str(len(shared_strings)))
     modified_ss = etree.tostring(ss_root_new, encoding='utf-8', xml_declaration=True)

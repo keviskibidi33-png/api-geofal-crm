@@ -200,77 +200,113 @@ async def importar_excel_recepcion(file: UploadFile = File(...)):
     try:
         wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True, read_only=True)
         
-        # Buscar hoja de cotización
+        # --- Detect Format ---
+        # Quotation sheets: MORT2, COTIZACION, COTIZACIÓN
+        # Published Report sheets: CO 01.1, CO 01.2, etc.
+        is_quotation = False
         ws = None
         for sheet_name in wb.sheetnames:
-            if sheet_name.upper() in ("MORT2", "COTIZACION", "COTIZACIÓN"):
+            if any(q in sheet_name.upper() for q in ("MORT2", "COTIZACION", "COTIZACIÓN")):
+                ws = wb[sheet_name]
+                is_quotation = True
+                break
+            if any(r in sheet_name.upper() for r in ("CO 01", "CO 02")):
                 ws = wb[sheet_name]
                 break
+        
         if ws is None:
             ws = wb.active
-            
+            # Heuristic check if it looks like a quotation
+            if ws["D5"].value and not ws["B6"].value: is_quotation = True
+
+        from datetime import datetime, date
+
         def safe_cell(cell_ref: str) -> str:
             try:
                 val = ws[cell_ref].value
-                return str(val).strip() if val is not None else ""
-            except Exception:
-                return ""
+                if val is None: return ""
+                if isinstance(val, (datetime, date)): return val.strftime("%d/%m/%Y")
+                return str(val).strip()
+            except Exception: return ""
         
         def safe_number(cell_ref: str) -> float:
             try:
                 val = ws[cell_ref].value
                 if val is None: return 0.0
                 return float(val)
-            except (ValueError, TypeError):
-                return 0.0
+            except (ValueError, TypeError): return 0.0
 
-        # --- Extraer Datos ---
-        cliente = safe_cell("D5")
-        ruc = safe_cell("D6")
-        contacto = safe_cell("D7")
-        telefono = safe_cell("E8")
-        email = safe_cell("D9")
-        proyecto = safe_cell("L5")
-        ubicacion = safe_cell("L7")
-        solicitante = cliente  # Default
-        
-        # --- Items (muestras) ---
+        # --- Extraction Logic ---
         muestras = []
-        row = 17
-        max_empty = 5
-        empty_count = 0
-        
-        while empty_count < max_empty and row < 200:
-            desc = safe_cell(f"C{row}")
-            cant = safe_number(f"M{row}")
+        if is_quotation:
+            # Legacy Quotation Logic
+            cliente = safe_cell("D5")
+            ruc = safe_cell("D6")
+            contacto = safe_cell("D7")
+            telefono = safe_cell("E8")
+            email = safe_cell("D9")
+            proyecto = safe_cell("L5")
+            ubicacion = safe_cell("L7")
+            solicitante = cliente
+            domicilio_solicitante = ubicacion
             
-            if not desc and cant == 0:
-                empty_count += 1
+            row = 17
+            while row < 200:
+                desc = safe_cell(f"C{row}")
+                cant = safe_number(f"M{row}")
+                if not desc and cant == 0:
+                    if row > 50: break # Safety
+                else:
+                    qty = int(cant) if cant > 0 else 1
+                    if qty > 100: qty = 100
+                    for _ in range(qty):
+                        muestras.append({
+                            "identificacion_muestra": desc,
+                            "estructura": "",
+                            "fc_kg_cm2": 210,
+                            "edad": 7,
+                            "requiere_densidad": False,
+                            "fecha_moldeo": "",
+                            "hora_moldeo": "",
+                            "fecha_rotura": "",
+                            "codigo_muestra_lem": ""
+                        })
                 row += 1
-                continue
+        else:
+            # Published Reception Report Logic (Multi-sample/Consolidated)
+            # These usually have the "CLIENTE :" label around C10 or C11.
+            # Heuristic: Let's use coordinates based on inspection
+            cliente = safe_cell("D10") or safe_cell("D11")
+            ruc = safe_cell("D12")
+            contacto = safe_cell("D13")
+            email = safe_cell("D14")
+            telefono = safe_cell("H14")
+            solicitante = safe_cell("D16")
+            domicilio_solicitante = safe_cell("D17")
+            proyecto = safe_cell("D18")
+            ubicacion = safe_cell("D19")
             
-            empty_count = 0
-            
-            # Expandir según cantidad
-            qty = int(cant) if cant > 0 else 1
-            # Limitar expansión para evitar loops infinitos o ataques
-            if qty > 100: qty = 100 
-            
-            for _ in range(qty):
+            # Items start at 23
+            row = 23
+            while row < 300:
+                lem = safe_cell(f"B{row}")
+                ident = safe_cell(f"D{row}")
+                if not lem and not ident:
+                    break
+                
                 muestras.append({
-                    "identificacion_muestra": desc,
-                    "estructura": "",
-                    "fc_kg_cm2": 280,
-                    "edad": 7,
-                    "requiere_densidad": False,
-                    "fecha_moldeo": "",
-                    "hora_moldeo": "",
-                    "fecha_rotura": "",
-                    "codigo_muestra_lem": ""
+                    "identificacion_muestra": ident,
+                    "estructura": safe_cell(f"E{row}"),
+                    "fc_kg_cm2": int(safe_number(f"F{row}") or 210),
+                    "fecha_moldeo": safe_cell(f"G{row}"),
+                    "hora_moldeo": safe_cell(f"H{row}"),
+                    "edad": int(safe_number(f"I{row}") or 7),
+                    "fecha_rotura": safe_cell(f"J{row}"),
+                    "requiere_densidad": "SI" in safe_cell(f"K{row}").upper(),
+                    "codigo_muestra_lem": lem
                 })
-            
-            row += 1
-            
+                row += 1
+        
         wb.close()
         
         return {
@@ -282,7 +318,7 @@ async def importar_excel_recepcion(file: UploadFile = File(...)):
             "proyecto": proyecto,
             "ubicacion": ubicacion,
             "solicitante": solicitante,
-            "domicilio_solicitante": ubicacion, # Default guess
+            "domicilio_solicitante": domicilio_solicitante,
             "muestras": muestras
         }
         
