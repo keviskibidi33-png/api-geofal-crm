@@ -340,10 +340,9 @@ def generar_informe_excel_endpoint(
             generado_por=None  # TODO: extraer del token JWT si aplica
         )
         
-        # 4. Build filename con versión
+        # 4. Build filename
         rec_num = data.get("recepcion_numero", numero_recepcion)
-        status_tag = "" if datos_completos else "_PARCIAL"
-        filename = f"Resumen_Ensayo_{rec_num}_v{version.version}{status_tag}.xlsx"
+        filename = f"Resumen Compresión N-{rec_num}.xlsx"
         
         return Response(
             content=excel_bytes,

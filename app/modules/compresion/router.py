@@ -182,7 +182,7 @@ async def generar_excel_ensayo(
         if not excel_buffer:
             raise HTTPException(status_code=500, detail="Error generando Excel")
         
-        filename = f"N-{ensayo.numero_recepcion} Compresion V04.xlsx"
+        filename = f"Formato Compresión N-{ensayo.numero_recepcion}.xlsx"
         
         return Response(
             content=excel_buffer.getvalue(),
@@ -239,7 +239,7 @@ async def export_compression(payload: CompressionExportRequest):
     """Export compression directly without DB (backwards compatible)"""
     try:
         excel_file = generate_compression_excel(payload)
-        filename = f"N-{payload.recepcion_numero} Compresion V04.xlsx"
+        filename = f"Formato Compresión N-{payload.recepcion_numero}.xlsx"
         return StreamingResponse(
             excel_file,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
