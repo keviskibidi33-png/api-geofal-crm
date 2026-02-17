@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 # Ruta del template — multi-path search como los demás módulos
 def _find_template():
-    filename = "Template_Informe.xlsx"
+    filename = "Resumen N-XXX-26 Compresion.xlsx"
     current_dir = Path(__file__).resolve().parent
     app_dir = current_dir.parents[1]  # app/
 
@@ -49,9 +49,9 @@ BORDER_THIN = Border(
     top=Side(style="thin"), bottom=Side(style="thin"),
 )
 
-# Data row starts at row 16 in template (3 sample rows: 16, 17, 18)
-DATA_START_ROW = 16
-TEMPLATE_DATA_ROWS = 3  # Template has 3 yellow rows pre-formatted
+# Data row starts at row 18 in template (14 sample rows: 18-31)
+DATA_START_ROW = 18
+TEMPLATE_DATA_ROWS = 14  # Template has 14 pre-formatted data rows
 
 # Column mapping for data items (row 16+)
 #   A=1: Código LEM
@@ -76,7 +76,15 @@ def _format_date(val) -> str:
         # If already formatted, return as-is
         if "/" in val:
             return val
+        # Strip time portion like "00:00:00" if present (e.g. "2026-02-14 00:00:00")
+        clean = val.strip().split(" ")[0].split("T")[0]
         # Try ISO parse
+        try:
+            dt = datetime.fromisoformat(clean)
+            return dt.strftime("%d/%m/%Y")
+        except Exception:
+            pass
+        # Fallback: try full string with timezone
         try:
             dt = datetime.fromisoformat(val.replace("Z", "+00:00"))
             return dt.strftime("%d/%m/%Y")
@@ -167,42 +175,42 @@ def generate_informe_excel(data: dict) -> bytes:
                 _copy_cell_style(source_cell, target_cell)
 
     # --- 2. Fill header fields ---
-    # CLIENTE (B5)
-    ws["B5"] = data.get("cliente", "")
-    # DIRECCIÓN (B6)
-    ws["B6"] = data.get("direccion", "")
-    # PROYECTO (B7)
-    ws["B7"] = data.get("proyecto", "")
-    # UBICACIÓN (B8)
-    ws["B8"] = data.get("ubicacion", "")
-    # RECEPCIÓN N° (J5)
-    ws["J5"] = data.get("recepcion_numero", "")
-    # OT N° (J6)
-    ws["J6"] = data.get("ot_numero", "")
-    # Estructura (B10)
-    ws["B10"] = data.get("estructura", "")
-    # F'c (B11)
+    # CLIENTE (B6)
+    ws["B6"] = data.get("cliente", "")
+    # DIRECCIÓN (B7)
+    ws["B7"] = data.get("direccion", "")
+    # PROYECTO (B8)
+    ws["B8"] = data.get("proyecto", "")
+    # UBICACIÓN (B9)
+    ws["B9"] = data.get("ubicacion", "")
+    # RECEPCIÓN N° (J6)
+    ws["J6"] = data.get("recepcion_numero", "")
+    # OT N° (J7)
+    ws["J7"] = data.get("ot_numero", "")
+    # Estructura (B11)
+    ws["B11"] = data.get("estructura", "")
+    # F'c (B12)
     fc = data.get("fc_kg_cm2")
-    ws["B11"] = f"{fc}" if fc else ""
-    # Fecha Recepción (J9)
-    ws["J9"] = _format_date(data.get("fecha_recepcion"))
-    # Fecha Moldeo (J10)
-    ws["J10"] = _format_date(data.get("fecha_moldeo"))
-    # Fecha Rotura (J11) — usa la fecha_ensayo del primer item de compresión si existe
+    ws["B12"] = f"{fc}" if fc else ""
+    # Fecha Recepción (J10)
+    ws["J10"] = _format_date(data.get("fecha_recepcion"))
+    # Fecha Moldeo (J11) — handle 00:00:00 time suffix
+    ws["J11"] = _format_date(data.get("fecha_moldeo"))
+    # Fecha Rotura (J12) — usa la fecha_ensayo del primer item de compresión si existe
     fecha_rotura = data.get("fecha_rotura")
     if not fecha_rotura and items:
         fecha_rotura = items[0].get("fecha_ensayo")
-    ws["J11"] = _format_date(fecha_rotura)
-    # Hora Moldeo (J12)
-    ws["J12"] = data.get("hora_moldeo") or ""
-    # Hora Rotura (J13)
-    ws["J13"] = data.get("hora_rotura") or ""
-    # Densidad (J14)
+    ws["J12"] = _format_date(fecha_rotura)
+    # Hora Moldeo (J13)
+    ws["J13"] = data.get("hora_moldeo") or ""
+    # Hora Rotura (J14)
+    ws["J14"] = data.get("hora_rotura") or ""
+    # Densidad (J15)
     densidad = data.get("densidad")
     if isinstance(densidad, bool):
-        ws["J14"] = "Sí" if densidad else "No"
+        ws["J15"] = "Sí" if densidad else "No"
     else:
-        ws["J14"] = str(densidad) if densidad else ""
+        ws["J15"] = str(densidad) if densidad else ""
 
     # --- 3. Fill data items ---
     for idx, item in enumerate(items):

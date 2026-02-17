@@ -342,7 +342,7 @@ def generar_informe_excel_endpoint(
         
         # 4. Build filename
         rec_num = data.get("recepcion_numero", numero_recepcion)
-        filename = f"Resumen Compresión N-{rec_num}.xlsx"
+        filename = f"Resumen N-{rec_num} Compresion.xlsx"
         
         return Response(
             content=excel_bytes,
