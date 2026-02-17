@@ -1,225 +1,286 @@
-"""
-Generador de Excel de Resumen de Ensayo (Informe Final).
-Consolida datos de Recepción + Verificación + Compresión en un solo reporte.
-Usa openpyxl sobre el template Template_Informe.xlsx.
-"""
-
 import io
-import os
+import zipfile
 import logging
-from copy import copy
+import copy
 from pathlib import Path
 from typing import List, Optional
 from datetime import datetime
-
-from openpyxl import load_workbook
-from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+from lxml import etree
 
 logger = logging.getLogger(__name__)
 
-# Ruta del template — multi-path search como los demás módulos
+NAMESPACES = {
+    'main': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main',
+}
+
+# Ruta del template
 def _find_template():
     filename = "Resumen N-XXX-26 Compresion.xlsx"
     current_dir = Path(__file__).resolve().parent
     app_dir = current_dir.parents[1]  # app/
 
     possible_paths = [
-        app_dir / "templates" / filename,                      # Standard: app/templates/
-        Path("/app/templates") / filename,                     # Docker absolute fallback
-        current_dir.parents[2] / "app" / "templates" / filename,  # Root/app/templates/
+        app_dir / "templates" / filename,
+        Path("/app/templates") / filename,
+        current_dir.parents[2] / "app" / "templates" / filename,
     ]
 
     for p in possible_paths:
         if p.exists():
             return str(p)
 
-    # Fallback to standard
     return str(app_dir / "templates" / filename)
 
 TEMPLATE_PATH = _find_template()
 
-# Yellow fill for data cells
-YELLOW_FILL = PatternFill(start_color="FFFFFF00", end_color="FFFFFF00", fill_type="solid")
-FONT_DATA = Font(name="Arial", size=8)
-FONT_DATA_BOLD = Font(name="Arial", size=8, bold=True)
-ALIGN_CENTER = Alignment(horizontal="center", vertical="center", wrap_text=True)
-ALIGN_LEFT = Alignment(horizontal="left", vertical="center", wrap_text=True)
-BORDER_THIN = Border(
-    left=Side(style="thin"), right=Side(style="thin"),
-    top=Side(style="thin"), bottom=Side(style="thin"),
-)
+# --- XML Helpers ---
 
-# Data row starts at row 18 in template (14 sample rows: 18-31)
-DATA_START_ROW = 18
-TEMPLATE_DATA_ROWS = 14  # Template has 14 pre-formatted data rows
+def _parse_cell_ref(ref: str) -> tuple[str, int]:
+    col = ''.join(c for c in ref if c.isalpha())
+    row = int(''.join(c for c in ref if c.isdigit()))
+    return col, row
 
-# Column mapping for data items (row 16+)
-#   A=1: Código LEM
-#   B=2: Código cliente  
-#   C=3: Diámetro 1
-#   D=4: Diámetro 2
-#   E=5: Longitud 1
-#   F=6: Longitud 2
-#   G=7: Longitud 3
-#   H=8: Carga Máxima (kN)
-#   I=9: Tipo fractura
-#   J=10: Masa muestra aire (g)
+def _col_letter_to_num(col: str) -> int:
+    num = 0
+    for c in col.upper():
+        num = num * 26 + (ord(c) - ord('A') + 1)
+    return num
 
+def _find_or_create_row(sheet_data: etree._Element, row_num: int, ns: str) -> etree._Element:
+    for row in sheet_data.iterfind(f'{{{ns}}}row'):
+        if row.get('r') == str(row_num):
+            return row
+    row = etree.SubElement(sheet_data, f'{{{ns}}}row')
+    row.set('r', str(row_num))
+    return row
+
+def _set_cell_value_fast(row, ref, value, ns, is_number=False, get_string_idx=None):
+    c = row.find(f'{{{ns}}}c[@r="{ref}"]')
+    if c is None:
+        c = etree.SubElement(row, f'{{{ns}}}c')
+        c.set('r', ref)
+    
+    style = c.get('s')
+    # Clear content
+    for child in list(c):
+        c.remove(child)
+    
+    if value is None or value == '':
+        if 't' in c.attrib: del c.attrib['t']
+        if style: c.set('s', style)
+        return
+
+    if is_number:
+        if 't' in c.attrib: del c.attrib['t']
+        v = etree.SubElement(c, f'{{{ns}}}v')
+        v.text = str(value)
+    else:
+        if get_string_idx:
+            c.set('t', 's')
+            v = etree.SubElement(c, f'{{{ns}}}v')
+            v.text = str(get_string_idx(str(value)))
+        else:
+            c.set('t', 'inlineStr')
+            is_elem = etree.SubElement(c, f'{{{ns}}}is')
+            t = etree.SubElement(is_elem, f'{{{ns}}}t')
+            t.text = str(value)
+    
+    if style:
+        c.set('s', style)
+
+def _duplicate_row_xml(sheet_data: etree._Element, source_row_num: int, target_row_num: int, ns: str):
+    source_row = sheet_data.find(f'{{{ns}}}row[@r="{source_row_num}"]')
+    if source_row is None: return
+    new_row = copy.deepcopy(source_row)
+    new_row.set('r', str(target_row_num))
+    for cell in new_row.findall(f'{{{ns}}}c'):
+        old_ref = cell.get('r')
+        col, _ = _parse_cell_ref(old_ref)
+        cell.set('r', f'{col}{target_row_num}')
+        for child in list(cell): cell.remove(child)
+    # Append to sheetData
+    sheet_data.append(new_row)
+
+def _shift_rows(sheet_data: etree._Element, from_row: int, shift: int, ns: str):
+    if shift <= 0: return
+    rows = list(sheet_data.findall(f'{{{ns}}}row'))
+    rows.sort(key=lambda r: int(r.get('r')), reverse=True)
+    for row in rows:
+        row_num = int(row.get('r'))
+        if row_num >= from_row:
+            new_num = row_num + shift
+            row.set('r', str(new_num))
+            for cell in row.findall(f'{{{ns}}}c'):
+                old_ref = cell.get('r')
+                col, _ = _parse_cell_ref(old_ref)
+                cell.set('r', f'{col}{new_num}')
+
+def _shift_merged_cells(root: etree._Element, from_row: int, shift: int, ns: str):
+    if shift <= 0: return
+    mc_node = root.find(f'{{{ns}}}mergeCells')
+    if mc_node is None: return
+    for mc in mc_node.findall(f'{{{ns}}}mergeCell'):
+        ref = mc.get('ref')
+        if not ref or ':' not in ref: continue
+        parts = ref.split(':')
+        new_parts = []
+        for p in parts:
+            c, r = _parse_cell_ref(p)
+            if r >= from_row: new_parts.append(f"{c}{r + shift}")
+            else: new_parts.append(p)
+        mc.set('ref', ':'.join(new_parts))
 
 def _format_date(val) -> str:
-    """Formatea una fecha a DD/MM/YYYY."""
-    if val is None:
-        return ""
-    if isinstance(val, datetime):
-        return val.strftime("%d/%m/%Y")
+    if val is None: return ""
+    if isinstance(val, datetime): return val.strftime("%d/%m/%Y")
     if isinstance(val, str):
-        # If already formatted, return as-is
-        if "/" in val:
-            return val
-        # Try ISO parse
+        if "/" in val: return val
         try:
             dt = datetime.fromisoformat(val.replace("Z", "+00:00"))
             return dt.strftime("%d/%m/%Y")
-        except Exception:
-            return val
+        except: return val
     return str(val)
 
-
-def _copy_cell_style(source_cell, target_cell):
-    """Copy style from source to target cell safely."""
-    try:
-        target_cell.font = copy(source_cell.font)
-        target_cell.border = copy(source_cell.border)
-        target_cell.fill = copy(source_cell.fill)
-        target_cell.number_format = source_cell.number_format
-        target_cell.alignment = copy(source_cell.alignment)
-    except Exception:
-        # Fallback: apply default data style
-        target_cell.font = FONT_DATA
-        target_cell.border = BORDER_THIN
-        target_cell.fill = YELLOW_FILL
-        target_cell.alignment = ALIGN_CENTER
-
-
 def generate_informe_excel(data: dict) -> bytes:
-    """
-    Genera el Excel de Resumen de Ensayo a partir de datos consolidados.
-    
-    Args:
-        data: dict con estructura:
-            {
-                "cliente": str,
-                "direccion": str,
-                "proyecto": str,
-                "ubicacion": str,
-                "recepcion_numero": str,
-                "ot_numero": str,
-                "estructura": str,
-                "fc_kg_cm2": float,
-                "fecha_recepcion": str,
-                "fecha_moldeo": str,
-                "fecha_rotura": str,
-                "hora_moldeo": str,
-                "hora_rotura": str,
-                "densidad": str/bool,
-                "items": [
-                    {
-                        "codigo_lem": str,
-                        "codigo_cliente": str,
-                        "diametro_1": float,
-                        "diametro_2": float,
-                        "longitud_1": float,
-                        "longitud_2": float,
-                        "longitud_3": float,
-                        "carga_maxima": float,
-                        "tipo_fractura": str,
-                        "masa_muestra_aire": float,
-                    }, ...
-                ]
-            }
-    
-    Returns:
-        bytes del archivo Excel generado.
-    """
-    if not os.path.exists(TEMPLATE_PATH):
+    if not Path(TEMPLATE_PATH).exists():
         raise FileNotFoundError(f"Template no encontrado: {TEMPLATE_PATH}")
 
-    wb = load_workbook(TEMPLATE_PATH)
-    ws = wb.active
+    # 1. Shared Strings Extraction
+    shared_strings = []
+    ss_xml_original = None
+    with zipfile.ZipFile(TEMPLATE_PATH, 'r') as z:
+        if 'xl/sharedStrings.xml' in z.namelist():
+            ss_xml_original = z.read('xl/sharedStrings.xml')
+            ss_root = etree.fromstring(ss_xml_original)
+            ns_ss = ss_root.nsmap.get(None, NAMESPACES['main'])
+            for si in ss_root.findall(f'{{{ns_ss}}}si'):
+                t = si.find(f'{{{ns_ss}}}t')
+                if t is not None: shared_strings.append((t.text or "").strip())
+                else: shared_strings.append(''.join([x.text or '' for x in si.findall(f'.//{{{ns_ss}}}t')]).strip())
+
+    ss_map = {text: i for i, text in enumerate(shared_strings)}
+    def get_string_idx(text: str) -> int:
+        text = str(text or "").strip()
+        if text in ss_map: return ss_map[text]
+        idx = len(shared_strings)
+        shared_strings.append(text)
+        ss_map[text] = idx
+        return idx
+
+    # 2. Sheet XML Modification
+    sheet_file = 'xl/worksheets/sheet1.xml'
+    with zipfile.ZipFile(TEMPLATE_PATH, 'r') as z:
+        sheet_xml = z.read(sheet_file)
+    
+    root = etree.fromstring(sheet_xml)
+    ns = NAMESPACES['main']
+    sheet_data = root.find(f'.//{{{ns}}}sheetData')
 
     items = data.get("items", [])
     num_items = len(items)
+    template_rows = 14
+    data_start_row = 18
 
-    # --- 1. Insert extra rows if needed (more than 3 samples) ---
-    if num_items > TEMPLATE_DATA_ROWS:
-        extra_rows = num_items - TEMPLATE_DATA_ROWS
-        # Insert rows after the last template data row
-        insert_at = DATA_START_ROW + TEMPLATE_DATA_ROWS
-        ws.insert_rows(insert_at, extra_rows)
+    # Dynamic row shifting for extra samples
+    if num_items > template_rows:
+        extra_rows = num_items - template_rows
+        shift_at = data_start_row + template_rows
+        _shift_rows(sheet_data, shift_at, extra_rows, ns)
+        _shift_merged_cells(root, shift_at, extra_rows, ns)
+        # Replicate template rows
+        source_row = data_start_row + template_rows - 1
+        for i in range(template_rows, num_items):
+            _duplicate_row_xml(sheet_data, source_row, data_start_row + i, ns)
 
-        # Copy style from the last template row to new rows
-        style_source_row = DATA_START_ROW + TEMPLATE_DATA_ROWS - 1  # Row 18 (last yellow row)
-        for extra_idx in range(extra_rows):
-            target_row = insert_at + extra_idx
-            for col in range(1, 11):  # A to J
-                source_cell = ws.cell(row=style_source_row, column=col)
-                target_cell = ws.cell(row=target_row, column=col)
-                _copy_cell_style(source_cell, target_cell)
+    # Cache for performance
+    rows_cache = {r.get('r'): r for r in sheet_data.findall(f'{{{ns}}}row')}
+    def write_cell(ref, value, is_num=False):
+        _, r_num = _parse_cell_ref(ref)
+        row_el = rows_cache.get(str(r_num))
+        if row_el is None:
+            row_el = _find_or_create_row(sheet_data, r_num, ns)
+            rows_cache[str(r_num)] = row_el
+        _set_cell_value_fast(row_el, ref, value, ns, is_num, get_string_idx)
 
-    # --- 2. Fill header fields ---
-    # CLIENTE (B6)
-    ws["B6"] = data.get("cliente", "")
-    # DIRECCIÓN (B7)
-    ws["B7"] = data.get("direccion", "")
-    # PROYECTO (B8)
-    ws["B8"] = data.get("proyecto", "")
-    # UBICACIÓN (B9)
-    ws["B9"] = data.get("ubicacion", "")
-    # RECEPCIÓN N° (J6)
-    ws["J6"] = data.get("recepcion_numero", "")
-    # OT N° (J7)
-    ws["J7"] = data.get("ot_numero", "")
-    # Estructura (B11)
-    ws["B11"] = data.get("estructura", "")
-    # F'c (B12)
+    # Fill Header
+    write_cell("B6", data.get("cliente", ""))
+    write_cell("B7", data.get("direccion", ""))
+    write_cell("B8", data.get("proyecto", ""))
+    write_cell("B9", data.get("ubicacion", ""))
+    write_cell("J6", data.get("recepcion_numero", ""))
+    write_cell("J7", data.get("ot_numero", ""))
+    write_cell("B11", data.get("estructura", ""))
     fc = data.get("fc_kg_cm2")
-    ws["B12"] = f"{fc}" if fc else ""
-    # Fecha Recepción (J10)
-    ws["J10"] = _format_date(data.get("fecha_recepcion"))
-    # Fecha Moldeo (J11) — handle 00:00:00 time suffix
-    ws["J11"] = _format_date(data.get("fecha_moldeo"))
-    # Fecha Rotura (J12) — usa la fecha_ensayo del primer item de compresión si existe
+    write_cell("B12", str(fc) if fc else "")
+    write_cell("J10", _format_date(data.get("fecha_recepcion")))
+    write_cell("J11", _format_date(data.get("fecha_moldeo")))
+    
     fecha_rotura = data.get("fecha_rotura")
     if not fecha_rotura and items:
         fecha_rotura = items[0].get("fecha_ensayo")
-    ws["J12"] = _format_date(fecha_rotura)
-    # Hora Moldeo (J13)
-    ws["J13"] = data.get("hora_moldeo") or ""
-    # Hora Rotura (J14)
-    ws["J14"] = data.get("hora_rotura") or ""
-    # Densidad (J15)
+    write_cell("J12", _format_date(fecha_rotura))
+    write_cell("J13", data.get("hora_moldeo", ""))
+    write_cell("J14", data.get("hora_rotura", ""))
+    
     densidad = data.get("densidad")
-    if isinstance(densidad, bool):
-        ws["J15"] = "Sí" if densidad else "No"
-    else:
-        ws["J15"] = str(densidad) if densidad else ""
+    if isinstance(densidad, bool): den_val = "Sí" if densidad else "No"
+    else: den_val = str(densidad) if densidad else ""
+    write_cell("J15", den_val)
 
-    # --- 3. Fill data items ---
-    for idx, item in enumerate(items):
-        row = DATA_START_ROW + idx
-        ws.cell(row=row, column=1, value=item.get("codigo_lem", ""))        # A: Código LEM
-        ws.cell(row=row, column=2, value=item.get("codigo_cliente", ""))     # B: Código cliente
-        ws.cell(row=row, column=3, value=item.get("diametro_1"))             # C: Diámetro 1
-        ws.cell(row=row, column=4, value=item.get("diametro_2"))             # D: Diámetro 2
-        ws.cell(row=row, column=5, value=item.get("longitud_1"))             # E: Longitud 1
-        ws.cell(row=row, column=6, value=item.get("longitud_2"))             # F: Longitud 2
-        ws.cell(row=row, column=7, value=item.get("longitud_3"))             # G: Longitud 3
-        ws.cell(row=row, column=8, value=item.get("carga_maxima"))           # H: Carga Máxima
-        ws.cell(row=row, column=9, value=item.get("tipo_fractura", ""))      # I: Tipo fractura
-        ws.cell(row=row, column=10, value=item.get("masa_muestra_aire"))     # J: Masa muestra aire
+    # Fill Items
+    for i, item in enumerate(items):
+        r = data_start_row + i
+        write_cell(f"A{r}", item.get("codigo_lem", ""))
+        write_cell(f"B{r}", item.get("codigo_cliente", ""))
+        write_cell(f"C{r}", item.get("diametro_1"), is_num=True)
+        write_cell(f"D{r}", item.get("diametro_2"), is_num=True)
+        write_cell(f"E{r}", item.get("longitud_1"), is_num=True)
+        write_cell(f"F{r}", item.get("longitud_2"), is_num=True)
+        write_cell(f"G{r}", item.get("longitud_3"), is_num=True)
+        write_cell(f"H{r}", item.get("carga_maxima"), is_num=True)
+        write_cell(f"I{r}", item.get("tipo_fractura", ""))
+        write_cell(f"J{r}", item.get("masa_muestra_aire"), is_num=True)
 
-    # --- 4. Save to bytes ---
+    # 3. Final Serialization
+    modified_sheet = etree.tostring(root, encoding='utf-8', xml_declaration=True)
+    
+    # Rebuild Shared Strings
+    ss_root_new = etree.Element(f'{{{ns}}}sst', nsmap={None: ns})
+    for text in shared_strings:
+        si = etree.SubElement(ss_root_new, f'{{{ns}}}si')
+        t = etree.SubElement(si, f'{{{ns}}}t')
+        t.text = text
+    ss_root_new.set('count', str(len(shared_strings)))
+    ss_root_new.set('uniqueCount', str(len(shared_strings)))
+    modified_ss = etree.tostring(ss_root_new, encoding='utf-8', xml_declaration=True)
+
+    # 4. Handle Drawings (Line shift if extra rows)
+    drawing_file = 'xl/drawings/drawing1.xml'
+    modified_drawing = None
+    if num_items > template_rows:
+        shift = num_items - template_rows
+        with zipfile.ZipFile(TEMPLATE_PATH, 'r') as z:
+            if drawing_file in z.namelist():
+                d_root = etree.fromstring(z.read(drawing_file))
+                d_ns = {'xdr': 'http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing'}
+                for anchor in d_root.xpath('//xdr:twoCellAnchor | //xdr:oneCellAnchor', namespaces=d_ns):
+                    frow = anchor.find('.//xdr:from/xdr:row', namespaces=d_ns)
+                    trow = anchor.find('.//xdr:to/xdr:row', namespaces=d_ns)
+                    if frow is not None and int(frow.text) >= 32: # Usually footer starts around here
+                        frow.text = str(int(frow.text) + shift)
+                        if trow is not None: trow.text = str(int(trow.text) + shift)
+                modified_drawing = etree.tostring(d_root, encoding='utf-8', xml_declaration=True)
+
+    # 5. Pack into ZIP
     output = io.BytesIO()
-    wb.save(output)
+    with zipfile.ZipFile(TEMPLATE_PATH, 'r') as z_in:
+        with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED) as z_out:
+            for item in z_in.namelist():
+                if item == sheet_file: z_out.writestr(item, modified_sheet)
+                elif item == 'xl/sharedStrings.xml': z_out.writestr(item, modified_ss)
+                elif item == drawing_file and modified_drawing is not None: z_out.writestr(item, modified_drawing)
+                else: z_out.writestr(item, z_in.read(item))
+    
     output.seek(0)
-    return output.read()
+    return output.getvalue()
+
