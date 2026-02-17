@@ -96,10 +96,16 @@ def _build_item(ic: Optional[ItemCompresion], mv: Optional[MuestraVerificada], m
     Match por item_numero (posición), NO por codigo_lem.
     Compresión.item = Verificación.item_numero = Recepción.item_numero
     """
+    # Identificación inteligente (Prioridad: Compresión > Recepción > Verificación)
+    lem = (ic.codigo_lem if ic else (mc.codigo_muestra_lem if mc else (mv.codigo_lem if mv else ""))) or ""
+    # Código Cliente (Prioridad: Recepción > Verificación > Compresión [si tuviera])
+    # Verificación tiene campo legacy 'codigo_cliente'
+    cod_cliente = (mc.identificacion_muestra if mc else (mv.codigo_cliente if mv else "")) or ""
+
     return {
         # Identificación
-        "codigo_lem": (ic.codigo_lem if ic else (mc.codigo_muestra_lem if mc else "")) or "",
-        "codigo_cliente": (mc.identificacion_muestra if mc else "") or "",
+        "codigo_lem": lem,
+        "codigo_cliente": cod_cliente,
         # Verificación — directo de DB, datos únicos de ESTE item
         "diametro_1": mv.diametro_1_mm if mv else None,
         "diametro_2": mv.diametro_2_mm if mv else None,
@@ -130,23 +136,28 @@ class InformeService:
         - Si existe compresión → sus items son la fuente de verdad
         - Si no → se usan las muestras de recepción como base
         """
-        # ── 1. Buscar recepción ──
+        # ── 1. Buscar recepción (base principal) ──
         recepcion, canonical = TracingService._buscar_recepcion_flexible(db, numero_recepcion)
-        if not recepcion:
-            raise ValueError(f"No se encontró recepción para '{numero_recepcion}'")
 
         # ── 2. Buscar verificación y compresión ──
         verificacion, compresion = _buscar_modulos(db, numero_recepcion, canonical)
+        
+        # ── 2b. Validar existencia mínima ──
+        # Si no existe NADA en ningún módulo, no podemos generar informe
+        if not recepcion and not verificacion and not compresion:
+             raise ValueError(f"No se encontró información para '{numero_recepcion}' en ningún módulo")
 
         # ── 3. Registrar qué módulos están disponibles (para metadata) ──
         modulos_estado = {
-            "recepcion": "completado",
+            "recepcion": "completado" if recepcion else "pendiente",
             "verificacion": "completado" if verificacion else "pendiente",
             "compresion": "completado" if (compresion and compresion.estado == "COMPLETADO") else
                           "en_proceso" if compresion else "pendiente",
         }
         
         modulos_faltantes = []
+        if not recepcion:
+             modulos_faltantes.append("Recepción (Datos base)")
         if not verificacion:
             modulos_faltantes.append("Verificación de Muestras")
         if not compresion:
@@ -154,20 +165,27 @@ class InformeService:
         elif compresion.estado != "COMPLETADO":
             modulos_faltantes.append(f"Ensayo de Compresión (estado: {compresion.estado})")
 
-        # ── 4. Datos de cabecera (desde recepción) ──
-        muestras_rec = recepcion.muestras or []
+        # ── 4. Datos de cabecera (Prioridad: Recepción > Verificación > Compresión) ──
+        muestras_rec = recepcion.muestras if recepcion else []
         m0 = muestras_rec[0] if muestras_rec else None
 
+        # Helper para extraer dato de cualquier fuente disponible
+        def get_header_val(attr, fallback=""):
+             if recepcion and getattr(recepcion, attr, None): return getattr(recepcion, attr)
+             if verificacion and getattr(verificacion, attr, None): return getattr(verificacion, attr)
+             if compresion and getattr(compresion, attr, None): return getattr(compresion, attr)
+             return fallback
+
         header = {
-            "cliente": recepcion.cliente or "",
-            "direccion": recepcion.domicilio_legal or "",
-            "proyecto": recepcion.proyecto or "",
-            "ubicacion": recepcion.ubicacion or "",
-            "recepcion_numero": recepcion.numero_recepcion or "",
-            "ot_numero": recepcion.numero_ot or "",
+            "cliente": get_header_val("cliente"),
+            "direccion": get_header_val("domicilio_legal"),
+            "proyecto": get_header_val("proyecto"),
+            "ubicacion": get_header_val("ubicacion"),
+            "recepcion_numero": (recepcion.numero_recepcion if recepcion else (verificacion.numero_verificacion if verificacion else (compresion.numero_recepcion if compresion else numero_recepcion))),
+            "ot_numero": get_header_val("numero_ot"),
             "estructura": m0.estructura if m0 else "",
             "fc_kg_cm2": m0.fc_kg_cm2 if m0 else None,
-            "fecha_recepcion": recepcion.fecha_recepcion,
+            "fecha_recepcion": recepcion.fecha_recepcion if recepcion else None,
             "fecha_moldeo": m0.fecha_moldeo if m0 else "",
             "hora_moldeo": m0.hora_moldeo if m0 else "",
             "fecha_rotura": _extraer_fecha_rotura(compresion, m0) if compresion else (m0.fecha_rotura if m0 else ""),
@@ -198,7 +216,7 @@ class InformeService:
                     mv=ver_by_item.get(item_num),
                     mc=rec_by_item.get(item_num),
                 ))
-        else:
+        elif muestras_rec:
             # Sin compresión: usar muestras de recepción como base
             sorted_rec = sorted(muestras_rec, key=lambda x: x.item_numero or 0)
             for mc in sorted_rec:
@@ -208,13 +226,23 @@ class InformeService:
                     mv=ver_by_item.get(item_num),
                     mc=mc,
                 ))
+        elif verificacion and verificacion.muestras_verificadas:
+             # Fallback: Solo existe verificación
+             sorted_ver = sorted(verificacion.muestras_verificadas, key=lambda x: x.item_numero or 0)
+             for mv in sorted_ver:
+                 item_num = mv.item_numero
+                 items.append(_build_item(
+                     ic=None,
+                     mv=mv,
+                     mc=None,
+                 ))
 
         # ── 7. Metadata y estado de completitud ──
         datos_completos = not modulos_faltantes
         
         header["items"] = items
         header["_meta"] = {
-            "recepcion_id": recepcion.id,
+            "recepcion_id": recepcion.id if recepcion else None,
             "verificacion_id": verificacion.id if verificacion else None,
             "compresion_id": compresion.id if compresion else None,
             "total_muestras": len(items),
