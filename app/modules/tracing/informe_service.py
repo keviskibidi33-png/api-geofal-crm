@@ -106,6 +106,8 @@ def _build_item(ic: Optional[ItemCompresion], mv: Optional[MuestraVerificada], m
         # Identificación
         "codigo_lem": lem,
         "codigo_cliente": cod_cliente,
+        "estructura": (mc.estructura if mc else (mv.tipo_testigo if mv else "")) or "",
+        "fc_kg_cm2": (mc.fc_kg_cm2 if mc else None),
         # Verificación — directo de DB, datos únicos de ESTE item
         "diametro_1": mv.diametro_1_mm if mv else None,
         "diametro_2": mv.diametro_2_mm if mv else None,

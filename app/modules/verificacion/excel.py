@@ -245,7 +245,18 @@ class ExcelLogic:
         write('K', 18, verificacion.equipo_balanza, is_footer=True)
         if verificacion.nota: write('B', 19, verificacion.nota, is_footer=True)
 
-        # 6. Serialization
+        # ── 6. Structural Cleanup (Row Sorting) ──
+        # CRITICAL: Excel requires row elements to be in ascending order
+        rows_list = list(sheet_data.findall(f'{{{ns}}}row'))
+        rows_list.sort(key=lambda r_node: int(r_node.get('r', 0)))
+        
+        for r_el in list(sheet_data):
+            if r_el.tag == f'{{{ns}}}row':
+                sheet_data.remove(r_el)
+        for r_el in rows_list:
+            sheet_data.append(r_el)
+
+        # 7. Serialization
         modified_sheet = etree.tostring(root, encoding='utf-8', xml_declaration=True)
         
         ss_root_new = etree.Element(f'{{{ns}}}sst', nsmap={None: ns})

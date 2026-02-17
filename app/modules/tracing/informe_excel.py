@@ -210,8 +210,8 @@ def generate_informe_excel(data: dict) -> bytes:
     write_cell("J6", data.get("recepcion_numero", ""))
     write_cell("J7", data.get("ot_numero", ""))
     write_cell("B11", data.get("estructura", ""))
-    fc = data.get("fc_kg_cm2")
-    write_cell("B12", str(fc) if fc else "")
+    fc_header = data.get("fc_kg_cm2")
+    write_cell("B12", fc_header, is_num=True if isinstance(fc_header, (int, float)) else False)
     write_cell("J10", _format_date(data.get("fecha_recepcion")))
     write_cell("J11", _format_date(data.get("fecha_moldeo")))
     
@@ -248,7 +248,7 @@ def generate_informe_excel(data: dict) -> bytes:
     # CRITICAL: Excel require row elements within sheetData to be in strictly ascending order
     # Shifting and duplication can leave the XML tree out of order.
     rows_list = list(sheet_data.findall(f'{{{ns}}}row'))
-    rows_list.sort(key=lambda r: int(r.get('r', 0)))
+    rows_list.sort(key=lambda r_node: int(r_node.get('r', 0)))
     
     # Re-append rows in correct order
     for r_el in list(sheet_data):
