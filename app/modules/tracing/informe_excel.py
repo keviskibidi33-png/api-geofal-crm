@@ -233,19 +233,19 @@ def generate_informe_excel(data: dict) -> bytes:
         write_cell(f"A{r}", item.get("codigo_lem", ""))
         write_cell(f"B{r}", item.get("estructura", ""))
         
-        # Override Column C (FC) to strip style index 's'
-        # This removes the template's hardcoded numFmtId 164 (suffix "-CO-26")
+        # Override Column C (FC) to strip custom style (suffix "-CO-26")
+        # Use Style 22 (Integer + Border + Center) found in styles.xml
         fc_ref = f"C{r}"
         fc_val = item.get("fc_kg_cm2")
-        # Ensure we write a number to trigger the fallback style instead of the custom one
         write_cell(fc_ref, fc_val, is_num=True)
-        # Force removal of style 's' for Column C if it was duplicated from template
+        
+        # Apply clean style 22
         _, r_num = _parse_cell_ref(fc_ref)
         row_el = rows_cache.get(str(r_num))
         if row_el is not None:
             c_node = row_el.find(f'{{{ns}}}c[@r="{fc_ref}"]')
-            if c_node is not None and 's' in c_node.attrib:
-                del c_node.attrib['s']
+            if c_node is not None:
+                c_node.set('s', '22')
 
         write_cell(f"D{r}", item.get("codigo_cliente", ""))
         write_cell(f"E{r}", item.get("diametro_1"), is_num=True)
