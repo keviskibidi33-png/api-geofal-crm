@@ -68,7 +68,7 @@ def _set_cell_value_fast(row, ref, value, ns, is_number=False, get_string_idx=No
     if value is None or value == '':
         if 't' in c.attrib: del c.attrib['t']
         if style: c.set('s', style)
-        return
+        return c
 
     if is_number:
         if 't' in c.attrib: del c.attrib['t']
@@ -87,6 +87,7 @@ def _set_cell_value_fast(row, ref, value, ns, is_number=False, get_string_idx=No
     
     if style:
         c.set('s', style)
+    return c
 
 def _duplicate_row_xml(sheet_data: etree._Element, source_row_num: int, target_row_num: int, ns: str):
     source_row = sheet_data.find(f'{{{ns}}}row[@r="{source_row_num}"]')
@@ -129,6 +130,37 @@ def _shift_merged_cells(root: etree._Element, from_row: int, shift: int, ns: str
             if r >= from_row: new_parts.append(f"{c}{r + shift}")
             else: new_parts.append(p)
         mc.set('ref', ':'.join(new_parts))
+
+def _remove_merged_cells_in_range(root: etree._Element, start_row: int, end_row: int, ns: str):
+    """
+    Remove merged cells that fall completely within the specified row range.
+    This is to prevent layout issues in the data area.
+    """
+    mc_node = root.find(f'{{{ns}}}mergeCells')
+    if mc_node is None: return
+    
+    to_remove = []
+    for mc in mc_node.findall(f'{{{ns}}}mergeCell'):
+        ref = mc.get('ref')
+        if not ref or ':' not in ref: continue
+        
+        # Parse range
+        parts = ref.split(':')
+        if len(parts) != 2: continue
+        
+        c1, r1 = _parse_cell_ref(parts[0])
+        c2, r2 = _parse_cell_ref(parts[1])
+        
+        # Check if merge intersects or is contained in our target range
+        # We are aggressive: if it touches the data rows, we kill it? 
+        # Or only if fully contained?
+        # User said "quita las filas conbinadas", implying they are bad.
+        # Let's remove if ANY part of the merge is in the range.
+        if not (r2 < start_row or r1 > end_row):
+            to_remove.append(mc)
+            
+    for mc in to_remove:
+        mc_node.remove(mc)
 
 def _format_date(val) -> str:
     if val is None: return ""
@@ -211,6 +243,13 @@ def generate_informe_excel(data: dict) -> bytes:
         _shift_rows(sheet_data, shift_at, shift_amount, ns)
         _shift_merged_cells(root, shift_at, shift_amount, ns)
         
+        # CRITICAL: User requested removal of merged cells in the data area
+        # Range: data_start_row to (data_start_row + num_items)
+        if num_items > 0:
+            _remove_merged_cells_in_range(root, data_start_row, data_start_row + num_items, ns)
+        
+
+        
         # Replicate template rows for the new items
         source_row = data_start_row + template_rows - 1 # Row 31 (last formatted item row)
         
@@ -222,6 +261,13 @@ def generate_informe_excel(data: dict) -> bytes:
         spacer_row_idx = data_start_row + num_items
         _duplicate_row_xml(sheet_data, source_row, spacer_row_idx, ns)
              
+
+
+    # CRITICAL: Always remove merged cells in the data area to prevent layout issues
+    # Range: data_start_row to (data_start_row + num_items) (inclusive of spacer)
+    if num_items > 0:
+        _remove_merged_cells_in_range(root, data_start_row, data_start_row + num_items, ns)
+             
     # Cache for performance (refresh after shift)
     rows_cache = {r.get('r'): r for r in sheet_data.findall(f'{{{ns}}}row')}
     def write_cell(ref, value, is_num=False, force_style=None):
@@ -230,12 +276,12 @@ def generate_informe_excel(data: dict) -> bytes:
         if row_el is None:
             row_el = _find_or_create_row(sheet_data, r_num, ns)
             rows_cache[str(r_num)] = row_el
-        _set_cell_value_fast(row_el, ref, value, ns, is_num, get_string_idx)
         
-        if force_style:
-            c_node = row_el.find(f'{{{ns}}}c[@r="{ref}"]')
-            if c_node is not None:
-                c_node.set('s', force_style)
+        # Capture returned c node
+        c_node = _set_cell_value_fast(row_el, ref, value, ns, is_num, get_string_idx)
+        
+        if force_style and c_node is not None:
+             c_node.set('s', force_style)
 
 
     # Fill Header (Column L in Template)
@@ -269,26 +315,26 @@ def generate_informe_excel(data: dict) -> bytes:
     if num_items > template_rows:
         spacer_r = data_start_row + num_items
         for col_char in "ABCDEFGHIJKL":
-            # Overwrite with empty, forcing style 19 (Bordered)
-            write_cell(f"{col_char}{spacer_r}", "", force_style='19')
+            # Overwrite with empty, forcing style 28 (Bordered Black)
+            write_cell(f"{col_char}{spacer_r}", "", force_style='28')
 
     # Fill Items
     for i, item in enumerate(items):
         r = data_start_row + i
         
-        # Force Style 19 on ALL columns to ensure borders
-        write_cell(f"A{r}", item.get("codigo_lem", ""), force_style='19')
-        write_cell(f"B{r}", item.get("estructura", ""), force_style='19')
-        write_cell(f"C{r}", item.get("fc_kg_cm2"), is_num=True, force_style='19')
-        write_cell(f"D{r}", item.get("codigo_cliente", ""), force_style='19')
-        write_cell(f"E{r}", item.get("diametro_1"), is_num=True, force_style='19')
-        write_cell(f"F{r}", item.get("diametro_2"), is_num=True, force_style='19')
-        write_cell(f"G{r}", item.get("longitud_1"), is_num=True, force_style='19')
-        write_cell(f"H{r}", item.get("longitud_2"), is_num=True, force_style='19')
-        write_cell(f"I{r}", item.get("longitud_3"), is_num=True, force_style='19')
-        write_cell(f"J{r}", item.get("carga_maxima"), is_num=True, force_style='19')
-        write_cell(f"K{r}", item.get("tipo_fractura", ""), force_style='19')
-        write_cell(f"L{r}", item.get("masa_muestra_aire"), is_num=True, force_style='19')
+        # Force Style 28 (Black Borders) on ALL columns to ensure borders
+        write_cell(f"A{r}", item.get("codigo_lem", ""), force_style='28')
+        write_cell(f"B{r}", item.get("estructura", ""), force_style='28')
+        write_cell(f"C{r}", item.get("fc_kg_cm2"), is_num=True, force_style='28')
+        write_cell(f"D{r}", item.get("codigo_cliente", ""), force_style='28')
+        write_cell(f"E{r}", item.get("diametro_1"), is_num=True, force_style='28')
+        write_cell(f"F{r}", item.get("diametro_2"), is_num=True, force_style='28')
+        write_cell(f"G{r}", item.get("longitud_1"), is_num=True, force_style='28')
+        write_cell(f"H{r}", item.get("longitud_2"), is_num=True, force_style='28')
+        write_cell(f"I{r}", item.get("longitud_3"), is_num=True, force_style='28')
+        write_cell(f"J{r}", item.get("carga_maxima"), is_num=True, force_style='28')
+        write_cell(f"K{r}", item.get("tipo_fractura", ""), force_style='28')
+        write_cell(f"L{r}", item.get("masa_muestra_aire"), is_num=True, force_style='28')
         
     # Fill Footer (Equipment Code)
     # Original footer start: 32

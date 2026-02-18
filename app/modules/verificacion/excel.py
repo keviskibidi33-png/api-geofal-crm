@@ -76,6 +76,7 @@ class ExcelLogic:
                 t = etree.SubElement(is_elem, f'{{{ns}}}t')
                 t.text = str(value)
         if style: c.set('s', style)
+        return c
 
     def _duplicate_row(self, sheet_data, source_row_num, target_row_num, ns):
         source_row = sheet_data.find(f'{{{ns}}}row[@r="{source_row_num}"]')
@@ -117,6 +118,31 @@ class ExcelLogic:
                 if r >= from_row: new_parts.append(f"{c}{r + shift}")
                 else: new_parts.append(p)
             mc.set('ref', ':'.join(new_parts))
+
+    def _remove_merged_cells_in_range(self, root, start_row, end_row, ns):
+        """
+        Remove merged cells that fall completely within the specified row range.
+        """
+        mc_node = root.find(f'{{{ns}}}mergeCells')
+        if mc_node is None: return
+        
+        to_remove = []
+        for mc in mc_node.findall(f'{{{ns}}}mergeCell'):
+            ref = mc.get('ref')
+            if not ref or ':' not in ref: continue
+            
+            parts = ref.split(':')
+            if len(parts) != 2: continue
+            
+            c1, r1 = self._parse_cell_ref(parts[0])
+            c2, r2 = self._parse_cell_ref(parts[1])
+            
+            # Remove if intersects
+            if not (r2 < start_row or r1 > end_row):
+                to_remove.append(mc)
+                
+        for mc in to_remove:
+            mc_node.remove(mc)
 
     def _col_num_to_letter(self, n):
         string = ""
@@ -164,24 +190,47 @@ class ExcelLogic:
         base_rows = 8 # Template has 8 data rows (10-17)
         data_start_row = 10
 
+        # CRITICAL: Standardize template rows (10-17) to match Row 12
+        # Row 10 has Percentage format, Row 17 has No Borders.
+        # Row 12 is verified to be correct (Number format + Borders).
+        master_row_idx = 12
+        if sheet_data.find(f'{{{ns}}}row[@r="{master_row_idx}"]') is not None:
+             for r_idx in range(data_start_row, data_start_row + base_rows):
+                 if r_idx == master_row_idx: continue
+                 
+                 # Remove existing row (e.g. 10, 11, 13...17)
+                 existing = sheet_data.find(f'{{{ns}}}row[@r="{r_idx}"]')
+                 if existing is not None:
+                     sheet_data.remove(existing)
+                 
+                 # Create fresh copy from Master (12)
+                 self._duplicate_row(sheet_data, master_row_idx, r_idx, ns)
+
         # Shift for extra samples
         if n_muestras > base_rows:
             shift = n_muestras - base_rows
             _from = 18 # Rows below samples start at 18
             self._shift_rows(sheet_data, _from, shift, ns)
             self._shift_merged(root, _from, shift, ns)
-            # Duplicate template row (row 10)
+            # Duplicate template row (row 12, which has correct Number format, unlike Row 10)
             for i in range(base_rows, n_muestras):
-                self._duplicate_row(sheet_data, 10, 10 + i, ns)
+                self._duplicate_row(sheet_data, 12, 10 + i, ns)
+                
+        # CRITICAL: Always remove merged cells in the data area to prevent layout issues
+        # Range: data_start_row to (data_start_row + n_muestras)
+        if n_muestras > 0:
+            self._remove_merged_cells_in_range(root, data_start_row, data_start_row + n_muestras, ns)
 
         rows_cache = {r.get('r'): r for r in sheet_data.findall(f'{{{ns}}}row')}
-        def write(col, r_num, val, is_num=False, is_footer=False):
+        def write(col, r_num, val, is_num=False, is_footer=False, force_style=None):
             actual_r = r_num
             if is_footer and n_muestras > base_rows: actual_r += (n_muestras - base_rows)
             row_el = rows_cache.get(str(actual_r))
             if row_el is None: row_el = self._get_row(sheet_data, actual_r, ns); rows_cache[str(actual_r)] = row_el
             c_ref = f"{col}{actual_r}"
-            self._set_cell_value(row_el, c_ref, val, ns, is_num, get_ss_idx)
+            c_node = self._set_cell_value(row_el, c_ref, val, ns, is_num, get_ss_idx)
+            if force_style and c_node is not None:
+                c_node.set('s', force_style)
 
         # 3. Fill Header (using anchor-like search for robustness)
         header_vals = {
@@ -203,7 +252,9 @@ class ExcelLogic:
                                 # offset typically 1 or 3 columns
                                 offset = 3 if "VERIFICADO" in k else 1
                                 target_col = self._col_num_to_letter(ord(col_name[-1]) - 64 + offset)
-                                write(target_col, rn, v)
+                                # CRITICAL: User reported missing borders on Row 8. Force Style 28.
+                                f_style = '28' if rn == 8 else None
+                                write(target_col, rn, v, force_style=f_style)
                     except: pass
 
         # 4. Samples Table
@@ -214,6 +265,8 @@ class ExcelLogic:
 
         for i, m in enumerate(muestras):
             curr_row = data_start_row + i
+            # Item rows inherit styles from Row 10 via _duplicate_row.
+            # _set_cell_value now preserves them. Do NOT force style here.
             write('A', curr_row, i + 1, True)
             write('B', curr_row, m.codigo_lem)
             write('C', curr_row, m.tipo_testigo)
@@ -245,7 +298,15 @@ class ExcelLogic:
         write('K', 18, verificacion.equipo_balanza, is_footer=True)
         if verificacion.nota: write('B', 19, verificacion.nota, is_footer=True)
 
-        # ── 6. Structural Cleanup (Row Sorting) ──
+        # 6. Structural Cleanup (Row Sorting)
+        
+        # CRITICAL: Force Row 8 (Header) to have Style 19 (Full Borders)
+        # The template has mixed borders (No Bottom). User wants Boxes.
+        r8 = sheet_data.find(f'{{{ns}}}row[@r="8"]')
+        if r8 is not None:
+            for c in r8.findall(f'{{{ns}}}c'):
+                c.set('s', '19') # Full Box Style
+        
         # CRITICAL: Excel requires row elements to be in ascending order
         rows_list = list(sheet_data.findall(f'{{{ns}}}row'))
         rows_list.sort(key=lambda r_node: int(r_node.get('r', 0)))
