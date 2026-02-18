@@ -213,18 +213,29 @@ def generate_informe_excel(data: dict) -> bytes:
         
         # Replicate template rows for the new items
         source_row = data_start_row + template_rows - 1 # Row 31 (last formatted item row)
+        
+        # Create Item Rows
         for i in range(template_rows, num_items):
              _duplicate_row_xml(sheet_data, source_row, data_start_row + i, ns)
              
+        # Create Spacer Row (at the end of items)
+        spacer_row_idx = data_start_row + num_items
+        _duplicate_row_xml(sheet_data, source_row, spacer_row_idx, ns)
+             
     # Cache for performance (refresh after shift)
     rows_cache = {r.get('r'): r for r in sheet_data.findall(f'{{{ns}}}row')}
-    def write_cell(ref, value, is_num=False):
+    def write_cell(ref, value, is_num=False, force_style=None):
         _, r_num = _parse_cell_ref(ref)
         row_el = rows_cache.get(str(r_num))
         if row_el is None:
             row_el = _find_or_create_row(sheet_data, r_num, ns)
             rows_cache[str(r_num)] = row_el
         _set_cell_value_fast(row_el, ref, value, ns, is_num, get_string_idx)
+        
+        if force_style:
+            c_node = row_el.find(f'{{{ns}}}c[@r="{ref}"]')
+            if c_node is not None:
+                c_node.set('s', force_style)
 
 
     # Fill Header (Column L in Template)
@@ -253,34 +264,31 @@ def generate_informe_excel(data: dict) -> bytes:
     else: den_val = str(densidad) if densidad else ""
     write_cell("L15", den_val)
 
+    # Clean the spacer row content if it was duplicated (it might have copied values if source had them, though usually source is empty template)
+    # We want the spacer row to be empty but formatted
+    if num_items > template_rows:
+        spacer_r = data_start_row + num_items
+        for col_char in "ABCDEFGHIJKL":
+            # Overwrite with empty, forcing style 19 (Bordered)
+            write_cell(f"{col_char}{spacer_r}", "", force_style='19')
+
     # Fill Items
     for i, item in enumerate(items):
         r = data_start_row + i
-        write_cell(f"A{r}", item.get("codigo_lem", ""))
-        write_cell(f"B{r}", item.get("estructura", ""))
         
-        # Override Column C (FC) to strip custom style (suffix "-CO-26")
-        fc_ref = f"C{r}"
-        fc_val = item.get("fc_kg_cm2")
-        write_cell(fc_ref, fc_val, is_num=True)
-        
-        # Apply clean style 19
-        _, r_num = _parse_cell_ref(fc_ref)
-        row_el = rows_cache.get(str(r_num))
-        if row_el is not None:
-            c_node = row_el.find(f'{{{ns}}}c[@r="{fc_ref}"]')
-            if c_node is not None:
-                c_node.set('s', '19')
-
-        write_cell(f"D{r}", item.get("codigo_cliente", ""))
-        write_cell(f"E{r}", item.get("diametro_1"), is_num=True)
-        write_cell(f"F{r}", item.get("diametro_2"), is_num=True)
-        write_cell(f"G{r}", item.get("longitud_1"), is_num=True)
-        write_cell(f"H{r}", item.get("longitud_2"), is_num=True)
-        write_cell(f"I{r}", item.get("longitud_3"), is_num=True)
-        write_cell(f"J{r}", item.get("carga_maxima"), is_num=True)
-        write_cell(f"K{r}", item.get("tipo_fractura", ""))
-        write_cell(f"L{r}", item.get("masa_muestra_aire"), is_num=True)
+        # Force Style 19 on ALL columns to ensure borders
+        write_cell(f"A{r}", item.get("codigo_lem", ""), force_style='19')
+        write_cell(f"B{r}", item.get("estructura", ""), force_style='19')
+        write_cell(f"C{r}", item.get("fc_kg_cm2"), is_num=True, force_style='19')
+        write_cell(f"D{r}", item.get("codigo_cliente", ""), force_style='19')
+        write_cell(f"E{r}", item.get("diametro_1"), is_num=True, force_style='19')
+        write_cell(f"F{r}", item.get("diametro_2"), is_num=True, force_style='19')
+        write_cell(f"G{r}", item.get("longitud_1"), is_num=True, force_style='19')
+        write_cell(f"H{r}", item.get("longitud_2"), is_num=True, force_style='19')
+        write_cell(f"I{r}", item.get("longitud_3"), is_num=True, force_style='19')
+        write_cell(f"J{r}", item.get("carga_maxima"), is_num=True, force_style='19')
+        write_cell(f"K{r}", item.get("tipo_fractura", ""), force_style='19')
+        write_cell(f"L{r}", item.get("masa_muestra_aire"), is_num=True, force_style='19')
         
     # Fill Footer (Equipment Code)
     # Original footer start: 32
