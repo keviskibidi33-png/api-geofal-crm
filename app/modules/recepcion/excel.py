@@ -5,6 +5,7 @@ import copy
 from datetime import datetime, date
 from typing import List, Dict, Any, Optional
 from lxml import etree
+import openpyxl  # Added for parsing
 from .models import RecepcionMuestra, MuestraConcreto
 
 NAMESPACES = {
@@ -398,3 +399,207 @@ class ExcelLogic:
         
         output.seek(0)
         return output.getvalue()
+
+    def parsear_recepcion(self, content: bytes) -> dict:
+        """
+        Parsea el contenido de un Excel de Recepción (Formato con etiquetas).
+        Retorna un diccionario con los datos extraídos.
+        """
+        if not openpyxl:
+            raise Exception("openpyxl library is required for parsing")
+
+        wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True, read_only=True)
+        ws = wb.active # Default to active sheet, assume it's the right one or logic from router can be adapted
+        
+        # Helper to find cell by value (Anchor parsing)
+        # Scan first 100 rows, 20 cols
+        anchors = {}
+        anchors_list = {}
+        
+        # Define keywords to look for
+        keywords = {
+            "RECEPCIÓN N°": ["recepcion_n", "recepcion_no", "recepcion n"],
+            "COTIZACIÓN N°": ["cotizacion_n", "cotizacion_no"],
+            "OT N°": ["ot_n", "ot_no"],
+            "CLIENTE": ["cliente"],
+            "RUC": ["ruc"],
+            "DOMICILIO LEGAL": ["domicilio_legal"],
+            "PERSONA CONTACTO": ["contacto"],
+            "E-MAIL": ["email", "e-mail"],
+            "TELÉFONO": ["telefono"],
+            "SOLICITANTE": ["solicitante"],
+            "PROYECTO": ["proyecto"],
+            "UBICACIÓN": ["ubicacion"],
+            "FECHA DE RECEPCIÓN": ["fecha_recepcion"],
+            "FECHA ESTIMADA DE CULMINACIÓN": ["fecha_culminacion"],
+            "ENTREGADO POR": ["entregado_por"],
+            "RECIBIDO POR": ["recibido_por"],
+            "OBSERVACIONES": ["observaciones"],
+            "EMISIÓN DE INFORMES": ["emision_informes"] # Checkbox area
+        }
+
+        # Scan for anchors
+        max_row_scan = 100
+        for row in ws.iter_rows(min_row=1, max_row=max_row_scan, max_col=20, values_only=False):
+            for cell in row:
+                if isinstance(cell.value, str):
+                    val_clean = str(cell.value).strip().upper().replace(":", "").strip()
+                    # Store anchor by exact match of keyword
+                    for key in keywords:
+                        clean_key = key.replace(":", "").strip()
+                        if clean_key in val_clean:
+                             # Heuristic: If match is too long relative to key, it's likely a value, not a label
+                             # e.g. "CLIENTE" in "CLIENTE COTIZACION"
+                             if len(val_clean) > len(clean_key) + 10:
+                                 continue
+                                 
+                             anchors[key] = (cell.column, cell.row) # Last found
+                             if key not in anchors_list: anchors_list[key] = []
+                             anchors_list[key].append((cell.column, cell.row))
+
+        def get_val(r, c):
+             try:
+                 return ws.cell(row=r, column=c).value
+             except: return None
+
+        def safe_str(val):
+            if val is None: return ""
+            if isinstance(val, (datetime, date)): return val.strftime("%d/%m/%Y")
+            return str(val).strip()
+
+        data = {}
+
+        # Extraction Helpers
+        def extract_right(anchor_name, offset_col=1, search_limit=3):
+            # Tries to find value to the right of the anchor
+            if anchor_name in anchors:
+                col, row = anchors[anchor_name]
+                # Search next few columns for non-empty
+                for i in range(search_limit):
+                    val = get_val(row, col + offset_col + i)
+                    if val:
+                        return safe_str(val)
+            return ""
+
+        def extract_below(anchor_name, offset_row=1):
+             if anchor_name in anchors:
+                col, row = anchors[anchor_name]
+                val = get_val(row + offset_row, col)
+                return safe_str(val)
+             return ""
+
+        # Map fields
+        data['numero_recepcion'] = extract_right("RECEPCIÓN N°", 1)
+        data['numero_cotizacion'] = extract_right("COTIZACIÓN N°", 1) # Sometimes col offset is 2 depending on merge
+        if not data['numero_cotizacion']: data['numero_cotizacion'] = extract_right("COTIZACIÓN N°", 2)
+        
+        data['numero_ot'] = extract_right("OT N°", 1)
+        
+        data['fecha_recepcion'] = extract_right("FECHA DE RECEPCIÓN", 1)
+        
+        data['cliente'] = extract_right("CLIENTE", 1)
+        data['ruc'] = extract_right("RUC", 1)
+        # Handle duplicate Domicilio Legal
+        # Logic: First one is Client, Second is Solicitante (if exists)
+        dl_locs = anchors_list.get("DOMICILIO LEGAL", [])
+        dl_locs.sort(key=lambda x: x[1]) # Sort by row
+        
+        if len(dl_locs) > 0:
+            c_col, c_row = dl_locs[0]
+            val = get_val(c_row, c_col + 1)
+            if not val: val = get_val(c_row, c_col + 2)
+            data['domicilio_legal'] = safe_str(val)
+            
+        if len(dl_locs) > 1:
+            s_col, s_row = dl_locs[1]
+            val = get_val(s_row, s_col + 1)
+            if not val: val = get_val(s_row, s_col + 2)
+            data['domicilio_solicitante'] = safe_str(val)
+        else:
+            # Fallback for domicilio solicitante
+             if "SOLICITANTE" in anchors:
+                 s_col, s_row = anchors["SOLICITANTE"]
+                 val = get_val(s_row + 1, s_col) # Below Solicitante label
+                 if not val: val = get_val(s_row + 1, s_col + 1)
+                 data['domicilio_solicitante'] = safe_str(val)
+
+        data['persona_contacto'] = extract_right("PERSONA CONTACTO", 1)
+        data['email'] = extract_right("E-MAIL", 1)
+        data['telefono'] = extract_right("TELÉFONO", 1)
+        
+        data['solicitante'] = extract_right("SOLICITANTE", 1)
+        data['proyecto'] = extract_right("PROYECTO", 1)
+        data['ubicacion'] = extract_right("UBICACIÓN", 1)
+        
+        # Dates and Signatures
+        data['fecha_estimada_culminacion'] = extract_right("FECHA ESTIMADA DE CULMINACIÓN", 1)
+        
+        data['entregado_por'] = extract_below("ENTREGADO POR", 1)
+        data['recibido_por'] = extract_below("RECIBIDO POR", 1)
+
+        # Muestras
+        # Find header row for table, looks for "ITEM" or "CÓDIGO LEM"
+        header_row = 0
+        for row in ws.iter_rows(min_row=15, max_row=30, values_only=False):
+             for cell in row:
+                 if str(cell.value).strip().upper() in ["ITEM", "CÓDIGO LEM", "DESCRIPCIÓN DE LA MUESTRA"]:
+                     header_row = cell.row
+                     break
+             if header_row > 0: break
+        
+        muestras = []
+        if header_row > 0:
+            start_row = header_row + 1
+            # Iterate until empty
+            for r in range(start_row, 300):
+                # Standard Layout assumption:
+                # B: LEM
+                # D: Ident/Desc
+                # E: Estructura
+                # F: f'c
+                # G: Fecha Moldeo
+                # H: Hora Moldeo
+                # I: Edad
+                # J: Fecha Rotura
+                # K: Densidad
+                
+                lem = get_val(r, 2)
+                ident = get_val(r, 4)
+                
+                # Stop conditions
+                first_col_val = get_val(r, 1) or ""
+                if "NOTA" in str(first_col_val).upper(): break
+                if "OBSERVACIONES" in str(ident).upper(): break
+                
+                if not lem and not ident:
+                    # Check next row to be sure
+                    if not get_val(r+1, 4): break
+                    continue
+
+                m = {
+                    "codigo_muestra_lem": safe_str(lem),
+                    "identificacion_muestra": safe_str(ident),
+                    "estructura": safe_str(get_val(r, 5)),
+                    "fc_kg_cm2": 210, # Default
+                    "fecha_moldeo": safe_str(get_val(r, 7)),
+                    "hora_moldeo": safe_str(get_val(r, 8)),
+                    "edad": 7, # Default
+                    "fecha_rotura": safe_str(get_val(r, 10)),
+                    "requiere_densidad": "SI" in safe_str(get_val(r, 11)).upper()
+                }
+                
+                # Parse numbers safely
+                try: 
+                    v = get_val(r, 6)
+                    if v: m["fc_kg_cm2"] = float(v)
+                except: pass
+                
+                try:
+                    v = get_val(r, 9)
+                    if v: m["edad"] = int(v)
+                except: pass
+                
+                muestras.append(m)
+        
+        data['muestras'] = muestras
+        return data
