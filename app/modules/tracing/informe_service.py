@@ -186,10 +186,10 @@ class InformeService:
              if compresion and getattr(compresion, attr, None): return getattr(compresion, attr)
              return fallback
 
-        direccion = (get_header_val("domicilio_legal") or (recepcion.domicilio_solicitante if recepcion else ""))
+        direccion = (get_header_val("domicilio_solicitante") or (recepcion.domicilio_legal if recepcion else ""))
         
         header = {
-            "cliente": get_header_val("cliente"),
+            "cliente": get_header_val("solicitante", fallback=get_header_val("cliente")),
             "direccion": direccion,
             "proyecto": get_header_val("proyecto"),
             "ubicacion": get_header_val("ubicacion"),
