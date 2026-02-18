@@ -321,10 +321,15 @@ def generate_informe_excel(data: dict) -> bytes:
         write_cell(f"B{r}", item.get("codigo_cliente", ""))
         write_cell(f"C{r}", item.get("estructura", ""))
         write_cell(f"D{r}", item.get("fc_kg_cm2"), is_num=True)
+        # Fuente por requerimiento:
+        # - Fecha moldeo: Recepción
+        # - Fecha rotura: Recepción
+        # - Hora moldeo: Recepción
+        # - Hora rotura: Compresión (formato)
         write_cell(f"E{r}", _format_date(item.get("fecha_moldeo")))
-        write_cell(f"F{r}", _format_date(item.get("fecha_ensayo")))
+        write_cell(f"F{r}", _format_date(item.get("fecha_rotura")))
         write_cell(f"G{r}", item.get("hora_moldeo", ""))
-        write_cell(f"H{r}", item.get("hora_ensayo", ""))
+        write_cell(f"H{r}", item.get("hora_rotura", item.get("hora_ensayo", "")))
         
         write_cell(f"I{r}", item.get("diametro_1"), is_num=True)
         write_cell(f"J{r}", item.get("diametro_2"), is_num=True)

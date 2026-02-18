@@ -1,0 +1,171 @@
+GEOFAL CRM - MAPA DE CRUCE DE DATOS (RESUMEN Y COMPRESION)
+Version: 2026-02-18
+Archivo fuente principal:
+- app/modules/tracing/informe_service.py
+- app/modules/tracing/informe_excel.py
+- app/modules/compresion/excel.py
+
+====================================================================
+1) OBJETIVO
+====================================================================
+Documentar con precision:
+- Que datos se comparan/cruzan entre modulos.
+- Que modulo es la fuente de verdad por campo.
+- Como se mapean los campos a columnas Excel.
+- Que incongruencia se corrigio en Compresion export.
+
+====================================================================
+2) DIAGRAMA GENERAL (ASCII)
+====================================================================
+
+                 +----------------------+
+                 |  RECEPCION (DB)      |
+                 |  RecepcionMuestra    |
+                 |  MuestraConcreto     |
+                 +----------+-----------+
+                            |
+                            | item_numero (1:1)
+                            v
++----------------------+    +----------------------+    +----------------------+
+| VERIFICACION (DB)    |    | CONSOLIDACION        |    | COMPRESION (DB)      |
+| VerificacionMuestras |--->| InformeService       |<---| EnsayoCompresion     |
+| MuestraVerificada    |    | _build_item(...)     |    | ItemCompresion       |
++----------------------+    +----------+-----------+    +----------------------+
+                                       |
+                                       | data dict consolidado
+                                       v
+                             +-------------------------+
+                             | tracing/informe_excel.py |
+                             | Genera Resumen N-XX.xlsx |
+                             +-------------------------+
+
+Adicional (modulo compresion):
+
++----------------------+   export request   +---------------------------+
+| EnsayoCompresion DB  | -----------------> | compresion/excel.py       |
+| ItemCompresion DB    |                    | Template_Compresion.xlsx  |
++----------------------+                    +---------------------------+
+
+====================================================================
+3) REGLA DE MATCH ENTRE MODULOS
+====================================================================
+- Match principal por item_numero (posicion de muestra).
+- Orden de filas del resumen:
+  1) Si hay recepcion.muestras -> usar recepcion como lista maestra.
+  2) Si no hay recepcion pero hay compresion -> usar compresion.items.
+  3) Si no hay lo anterior pero hay verificacion -> usar verificacion.
+
+====================================================================
+4) FUENTE DE VERDAD POR CAMPO (RESUMEN)
+====================================================================
+Identificacion:
+- codigo_lem: prioridad Compresion > Recepcion > Verificacion
+- codigo_cliente: prioridad Recepcion > Verificacion
+
+Campos por fila (muestra):
+- estructura: Recepcion (fallback Verificacion)
+- fc_kg_cm2: Recepcion
+- fecha_moldeo: RECEPCION
+- fecha_rotura: RECEPCION
+- hora_moldeo: RECEPCION
+- hora_rotura: COMPRESION (item.hora_ensayo)
+- diametro_1/2, longitud_1/2/3, masa_muestra_aire: Verificacion
+- carga_maxima, tipo_fractura: Compresion
+
+Nota de compatibilidad legacy en data consolidada:
+- fecha_ensayo y hora_ensayo se mantienen para compatibilidad, pero
+  en Resumen se usa fecha_rotura/hora_rotura segun regla anterior.
+
+====================================================================
+5) MAPEO DE COLUMNAS - RESUMEN (A:P)
+====================================================================
+Cabecera:
+- B6: cliente
+- B7: direccion
+- B8: proyecto
+- B9: ubicacion
+- P6: recepcion_numero
+- P7: ot_numero
+- P10: fecha_recepcion
+- P11: densidad (SI/NO)
+
+Tabla (desde fila 14):
+- A: codigo_lem
+- B: codigo_cliente
+- C: estructura
+- D: fc_kg_cm2
+- E: fecha_moldeo (Recepcion)
+- F: fecha_rotura (Recepcion)
+- G: hora_moldeo (Recepcion)
+- H: hora_rotura (Compresion/hora_ensayo)
+- I: diametro_1
+- J: diametro_2
+- K: longitud_1
+- L: longitud_2
+- M: longitud_3
+- N: carga_maxima
+- O: tipo_fractura
+- P: masa_muestra_aire
+
+Reglas de layout:
+- Inicio de items: fila 14.
+- Si items > 14: se expanden filas dinamicamente.
+- Se inserta una fila separadora (spacer) luego del ultimo item.
+- No se escribe codigo_equipo en footer del Resumen.
+- Fila 12 se mantiene limpia (sin inyeccion de datos).
+
+====================================================================
+6) MAPEO DE COLUMNAS - COMPRESION EXPORT (Template_Compresion)
+====================================================================
+Fila de encabezados del template (row 15):
+- H15: Realizado
+- I15: Fecha revisado
+- J15: Hora ensayo
+- K15: Revisado
+- L15: Aprobado
+- M15: Fecha aprobado
+
+Mapeo correcto aplicado en compresion/excel.py:
+- H <- item.realizado
+- I <- item.fecha_revisado
+- J <- item.hora_ensayo
+- K <- item.revisado
+- L <- item.aprobado
+- M <- item.fecha_aprobado
+
+Incongruencia corregida:
+- Antes estaba corrido: I=Revisado, J=Fecha revisado, K=Hora ensayo.
+- Efecto: nombres en columna de fecha.
+- Estado actual: corregido y alineado al template.
+
+====================================================================
+7) CHECKLIST DE VALIDACION RAPIDA
+====================================================================
+Resumen:
+- Verificar B6:B9 y P6/P7/P10/P11.
+- Verificar primera fila en A14.
+- Verificar E/F/G/H por muestra segun fuentes (Recepcion/Compresion).
+- Verificar que C12:H12 este vacio.
+- Verificar que no aparezca codigo_equipo en footer.
+
+Compresion:
+- Verificar encabezados H..M en fila 15.
+- Verificar fila de datos:
+  H=Realizado, I=Fecha revisado, J=Hora ensayo, K=Revisado.
+
+====================================================================
+8) CAUSAS TIPICAS DE DESCUADRE EN PRODUCCION
+====================================================================
+1. Codigo nuevo + template binario viejo (mismo nombre de archivo).
+2. Backend sin reinicio luego de cambios.
+3. Datos realmente vacios en DB (ej. hora_ensayo vacia).
+4. Frontend/guardado con columnas correctas, pero export antiguo.
+
+====================================================================
+9) RECOMENDACION OPERATIVA
+====================================================================
+- En cada cambio de Excel:
+  1) Commit de codigo.
+  2) Commit de template .xlsx si cambio binario.
+  3) Deploy limpio y reinicio backend.
+  4) Prueba con caso real (pocos items y muchos items).

@@ -108,6 +108,10 @@ def _build_item(ic: Optional[ItemCompresion], mv: Optional[MuestraVerificada], m
         "codigo_cliente": cod_cliente,
         "estructura": (mc.estructura if mc else (mv.tipo_testigo if mv else "")) or "",
         "fc_kg_cm2": (mc.fc_kg_cm2 if mc else None),
+        # Recepción — fuente para fecha/hora de moldeo y fecha de rotura programada
+        "fecha_moldeo": (mc.fecha_moldeo if mc else None),
+        "fecha_rotura": (mc.fecha_rotura if mc else None),
+        "hora_moldeo": (mc.hora_moldeo if mc else ""),
         # Verificación — directo de DB, datos únicos de ESTE item
         "diametro_1": mv.diametro_1_mm if mv else None,
         "diametro_2": mv.diametro_2_mm if mv else None,
@@ -118,7 +122,11 @@ def _build_item(ic: Optional[ItemCompresion], mv: Optional[MuestraVerificada], m
         # Compresión — directo de DB, datos únicos de ESTE item
         "carga_maxima": ic.carga_maxima if ic else None,
         "tipo_fractura": ic.tipo_fractura if ic else None,
+        # Hora de rotura viene del formato de compresión (hora_ensayo)
+        "hora_rotura": (ic.hora_ensayo if ic else ""),
+        # Compat legacy
         "fecha_ensayo": ic.fecha_ensayo if ic else None,
+        "hora_ensayo": ic.hora_ensayo if ic else "",
     }
 
 

@@ -235,7 +235,7 @@ def generate_compression_excel(data: CompressionExportRequest) -> io.BytesIO:
             
             # Fill items — Column mapping matches updated template:
             # B=Item, C=Código LEM, D=Fecha ensayo, E=Carga máxima, F=Tipo fractura,
-            # G=Defectos, H=Realizado, I=Revisado, J=Fecha revisado, K=Hora ensayo,
+            # G=Defectos, H=Realizado, I=Fecha revisado, J=Hora ensayo, K=Revisado,
             # L=Aprobado, M=Fecha aprobado
             for idx, item in enumerate(items):
                 row_idx = 16 + idx
@@ -247,9 +247,9 @@ def generate_compression_excel(data: CompressionExportRequest) -> io.BytesIO:
                 _set_cell_value(sheet_data, f'F{row_idx}', item.tipo_fractura or '', ns)
                 _set_cell_value(sheet_data, f'G{row_idx}', item.defectos or '', ns)
                 _set_cell_value(sheet_data, f'H{row_idx}', item.realizado or '', ns)
-                _set_cell_value(sheet_data, f'I{row_idx}', item.revisado or '', ns)
-                _set_cell_value(sheet_data, f'J{row_idx}', item.fecha_revisado.strftime('%d/%m/%Y') if item.fecha_revisado else '', ns)
-                _set_cell_value(sheet_data, f'K{row_idx}', item.hora_ensayo or '', ns)
+                _set_cell_value(sheet_data, f'I{row_idx}', item.fecha_revisado.strftime('%d/%m/%Y') if item.fecha_revisado else '', ns)
+                _set_cell_value(sheet_data, f'J{row_idx}', item.hora_ensayo or '', ns)
+                _set_cell_value(sheet_data, f'K{row_idx}', item.revisado or '', ns)
                 _set_cell_value(sheet_data, f'L{row_idx}', item.aprobado or '', ns)
                 _set_cell_value(sheet_data, f'M{row_idx}', item.fecha_aprobado.strftime('%d/%m/%Y') if item.fecha_aprobado else '', ns)
             
