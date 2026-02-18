@@ -188,7 +188,7 @@ class VerificacionService:
             self.db.add(db_verificacion)
             self.db.flush()
             
-            for muestra_data in verificacion_data.muestras_verificadas:
+            for idx, muestra_data in enumerate(verificacion_data.muestras_verificadas, start=1):
                 # Lógica de cálculo integrada
                 tolerancia_porcentaje = None
                 cumple_tolerancia = None
@@ -228,7 +228,7 @@ class VerificacionService:
 
                 db_muestra = MuestraVerificada(
                     verificacion_id=db_verificacion.id,
-                    item_numero=muestra_data.item_numero,
+                    item_numero=idx,  # Re-sequence to ensure 1, 2, 3...
                     codigo_lem=muestra_data.codigo_lem or muestra_data.codigo_cliente or "",
                     tipo_testigo=muestra_data.tipo_testigo,
                     diametro_1_mm=muestra_data.diametro_1_mm,
@@ -371,14 +371,14 @@ class VerificacionService:
                 # Borrar muestras existentes
                 self.db.query(MuestraVerificada).filter(MuestraVerificada.verificacion_id == verificacion_id).delete()
                 
-                # Crear nuevas muestras
-                for muestra_dict in data.muestras_verificadas:
+                # Crear nuevas muestras con item_numero re-secuenciado
+                for idx, muestra_dict in enumerate(data.muestras_verificadas, start=1):
                     # El microfrontend envía los datos ya calculados, pero podemos recalcular si es necesario
                     # Para mantener robustez, manejamos mapeo de campos legacy
                     
                     db_muestra = MuestraVerificada(
                         verificacion_id=verificacion_id,
-                        item_numero=muestra_dict.get('item_numero'),
+                        item_numero=idx,  # Re-sequence to ensure 1, 2, 3...
                         codigo_lem=muestra_dict.get('codigo_lem') or muestra_dict.get('codigo_cliente') or "",
                         tipo_testigo=muestra_dict.get('tipo_testigo'),
                         diametro_1_mm=muestra_dict.get('diametro_1_mm'),

@@ -185,7 +185,7 @@ class ExcelLogic:
         ns = NAMESPACES['main']
         sheet_data = root.find(f'.//{{{ns}}}sheetData')
 
-        muestras = verificacion.muestras_verificadas
+        muestras = sorted(verificacion.muestras_verificadas, key=lambda m: m.item_numero or 0)
         n_muestras = len(muestras)
         base_rows = 8 # Template has 8 data rows (10-17)
         data_start_row = 10
@@ -267,7 +267,7 @@ class ExcelLogic:
             curr_row = data_start_row + i
             # Item rows inherit styles from Row 10 via _duplicate_row.
             # _set_cell_value now preserves them. Do NOT force style here.
-            write('A', curr_row, i + 1, True)
+            write('A', curr_row, m.item_numero, True)
             write('B', curr_row, m.codigo_lem)
             write('C', curr_row, m.tipo_testigo)
             write('D', curr_row, m.diametro_1_mm, True)

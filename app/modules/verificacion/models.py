@@ -41,7 +41,7 @@ class VerificacionMuestras(Base):
     object_key = Column(String(500), nullable=True, comment="Ruta del archivo en el Storage de Supabase")
     
     # Relación con muestras verificadas
-    muestras_verificadas = relationship("MuestraVerificada", back_populates="verificacion", cascade="all, delete-orphan")
+    muestras_verificadas = relationship("MuestraVerificada", back_populates="verificacion", cascade="all, delete-orphan", order_by="MuestraVerificada.item_numero")
 
 
 class MuestraVerificada(Base):
