@@ -169,10 +169,35 @@ class RecepcionService:
         if not recepcion:
             return None
         
+        # Separar muestras del resto de datos
+        muestras_data = recepcion_data.pop('muestras', None)
+        
+        # Actualizar campos de cabecera
         for campo, valor in recepcion_data.items():
             if hasattr(recepcion, campo):
                 setattr(recepcion, campo, valor)
         
+        # Actualizar muestras si se proporcionaron
+        if muestras_data is not None:
+            # 1. Eliminar muestras existentes (Cascade delete handled by ORM usually, but explicit is safer here if not using cascade)
+            # Check model: cascade="all, delete-orphan" is present in RecepcionMuestra.muestras
+            # Cleaning the list via relationship is the ORM way:
+            recepcion.muestras = [] 
+            db.flush() 
+            
+            # 2. Crear nuevas muestras
+            for i, m_dict in enumerate(muestras_data):
+                # Ensure defaults
+                if not m_dict.get('identificacion_muestra') or m_dict.get('identificacion_muestra', '').strip() == '':
+                     m_dict['identificacion_muestra'] = f"Muestra {m_dict.get('item_numero', i+1)}"
+                
+                if not m_dict.get('estructura') or m_dict.get('estructura', '').strip() == '':
+                    m_dict['estructura'] = "Sin especificar"
+
+                # Parse update model to dict if needed, typically it's already dict
+                new_muestra = MuestraConcreto(recepcion_id=recepcion.id, **m_dict)
+                db.add(new_muestra)
+
         db.commit()
         db.refresh(recepcion)
         return recepcion

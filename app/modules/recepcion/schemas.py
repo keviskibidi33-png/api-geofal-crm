@@ -119,6 +119,26 @@ class RecepcionMuestraResponse(RecepcionMuestraBase):
     class Config:
         from_attributes = True
 
+class MuestraConcretoUpdate(BaseModel):
+    """Esquema para actualizar muestra de concreto"""
+    item_numero: Optional[int] = None
+    codigo_muestra: Optional[str] = None
+    codigo_muestra_lem: Optional[str] = None
+    identificacion_muestra: Optional[str] = None
+    estructura: Optional[str] = None
+    fc_kg_cm2: Optional[float] = None
+    fecha_moldeo: Optional[str] = None
+    hora_moldeo: Optional[str] = None
+    edad: Optional[int] = None
+    fecha_rotura: Optional[str] = None
+    requiere_densidad: Optional[bool] = None
+
+    @validator('fecha_moldeo', 'fecha_rotura')
+    def validate_date_format(cls, v):
+        if v and v.strip() and not re.match(r'^\d{2}/\d{2}/\d{4}$', v):
+            raise ValueError('La fecha debe estar en formato DD/MM/YYYY')
+        return v
+
 class RecepcionMuestraUpdate(BaseModel):
     """Esquema para actualizar una recepción de muestra"""
     numero_cotizacion: Optional[str] = None
@@ -140,6 +160,7 @@ class RecepcionMuestraUpdate(BaseModel):
     recibido_por: Optional[str] = None
     observaciones: Optional[str] = None
     estado: Optional[str] = None
+    muestras: Optional[List[MuestraConcretoUpdate]] = None
 
     @validator('fecha_recepcion', 'fecha_estimada_culminacion')
     def validate_date_format(cls, v):

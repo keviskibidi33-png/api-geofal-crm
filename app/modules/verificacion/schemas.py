@@ -14,8 +14,8 @@ class MuestraVerificadaBase(BaseModel):
     tipo_testigo: Optional[str] = Field("", max_length=50, description="Tipo de testigo (4in x 8in, 6in x 12in, Diamantina)")
     
     # DIÁMETRO (FORMULA)
-    diametro_1_mm: Optional[float] = Field(None, gt=0, description="Diámetro 1 en mm")
-    diametro_2_mm: Optional[float] = Field(None, gt=0, description="Diámetro 2 en mm")
+    diametro_1_mm: Optional[float] = Field(None, ge=0, description="Diámetro 1 en mm")
+    diametro_2_mm: Optional[float] = Field(None, ge=0, description="Diámetro 2 en mm")
     tolerancia_porcentaje: Optional[float] = Field(None, description="ΔΦ 2%> - Tolerancia calculada en %")
     aceptacion_diametro: Optional[str] = Field(None, max_length=20, description="Aceptación diámetro (Cumple/No cumple)")
     
@@ -39,12 +39,12 @@ class MuestraVerificadaBase(BaseModel):
     conformidad: Optional[str] = Field(None, max_length=50, description="Conformidad (Ensayar, etc.)")
     
     # LONGITUD
-    longitud_1_mm: Optional[float] = Field(None, gt=0, description="Longitud 1 en mm")
-    longitud_2_mm: Optional[float] = Field(None, gt=0, description="Longitud 2 en mm")
-    longitud_3_mm: Optional[float] = Field(None, gt=0, description="Longitud 3 en mm")
+    longitud_1_mm: Optional[float] = Field(None, ge=0, description="Longitud 1 en mm")
+    longitud_2_mm: Optional[float] = Field(None, ge=0, description="Longitud 2 en mm")
+    longitud_3_mm: Optional[float] = Field(None, ge=0, description="Longitud 3 en mm")
     
     # MASA
-    masa_muestra_aire_g: Optional[float] = Field(None, gt=0, description="Masa muestra aire en gramos")
+    masa_muestra_aire_g: Optional[float] = Field(None, ge=0, description="Masa muestra aire en gramos")
     pesar: Optional[str] = Field(None, max_length=20, description="Pesar / No pesar")
     
     # Campos legacy para compatibilidad
