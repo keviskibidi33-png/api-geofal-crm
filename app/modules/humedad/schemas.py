@@ -79,9 +79,9 @@ class HumedadRequest(BaseModel):
     metodo_b_legibilidad_3: Optional[str] = Field(None, description="Legibilidad fila 49")
 
     # ── Equipo utilizado (rows 42-46, col J-L) ─────────────────────────
-    equipo_balanza_01: Optional[str] = Field(None, description="Balanza 0.1 g (J42)")
-    equipo_balanza_001: Optional[str] = Field(None, description="Balanza 0.01 g (J43)")
-    equipo_horno: Optional[str] = Field(None, description="Horno 110°C (J45)")
+    equipo_balanza_01: Optional[str] = Field("EQP-0046", description="Balanza 0.1 g (J42)")
+    equipo_balanza_001: Optional[str] = Field("EQP-0045", description="Balanza 0.01 g (J43)")
+    equipo_horno: Optional[str] = Field("EQP-0049", description="Horno 110°C (J45)")
 
     # ── Observaciones (row 52) ─────────────────────────────────────────
     observaciones: Optional[str] = Field(None, description="Observaciones (D52)")
