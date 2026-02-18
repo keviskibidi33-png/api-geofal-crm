@@ -217,7 +217,8 @@ def validar_estado(numero_recepcion: str, db: Session = Depends(get_db_session))
                 {
                     "item_numero": m.item_numero,
                     "codigo_lem": m.codigo_muestra_lem or m.codigo_muestra,
-                    "tipo_testigo": m.estructura
+                    "tipo_testigo": m.estructura,
+                    "fecha_rotura": m.fecha_rotura
                 }
                 for m in recepcion_db.muestras
             ]
