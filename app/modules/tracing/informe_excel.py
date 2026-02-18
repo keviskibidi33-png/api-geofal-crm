@@ -202,30 +202,30 @@ def generate_informe_excel(data: dict) -> bytes:
             rows_cache[str(r_num)] = row_el
         _set_cell_value_fast(row_el, ref, value, ns, is_num, get_string_idx)
 
-    # Fill Header
+    # Fill Header (Column L in Template)
     write_cell("B6", data.get("cliente", ""))
     write_cell("B7", data.get("direccion", ""))
     write_cell("B8", data.get("proyecto", ""))
     write_cell("B9", data.get("ubicacion", ""))
-    write_cell("J6", data.get("recepcion_numero", ""))
-    write_cell("J7", data.get("ot_numero", ""))
+    write_cell("L6", data.get("recepcion_numero", ""))
+    write_cell("L7", data.get("ot_numero", ""))
     write_cell("B11", data.get("estructura", ""))
     fc_header = data.get("fc_kg_cm2")
     write_cell("B12", fc_header, is_num=True if isinstance(fc_header, (int, float)) else False)
-    write_cell("J10", _format_date(data.get("fecha_recepcion")))
-    write_cell("J11", _format_date(data.get("fecha_moldeo")))
+    write_cell("L10", _format_date(data.get("fecha_recepcion")))
+    write_cell("L11", _format_date(data.get("fecha_moldeo")))
     
     fecha_rotura = data.get("fecha_rotura")
     if not fecha_rotura and items:
         fecha_rotura = items[0].get("fecha_ensayo")
-    write_cell("J12", _format_date(fecha_rotura))
-    write_cell("J13", data.get("hora_moldeo", ""))
-    write_cell("J14", data.get("hora_rotura", ""))
+    write_cell("L12", _format_date(fecha_rotura))
+    write_cell("L13", data.get("hora_moldeo", ""))
+    write_cell("L14", data.get("hora_rotura", ""))
     
     densidad = data.get("densidad")
     if isinstance(densidad, bool): den_val = "Sí" if densidad else "No"
     else: den_val = str(densidad) if densidad else ""
-    write_cell("J15", den_val)
+    write_cell("L15", den_val)
 
     # Fill Items
     for i, item in enumerate(items):
@@ -258,7 +258,13 @@ def generate_informe_excel(data: dict) -> bytes:
         write_cell(f"L{r}", item.get("masa_muestra_aire"), is_num=True)
 
     # ── 3. Final Serialization & Structural Cleanup ──
-    
+
+    # Update dimension ref tag (CRITICAL to avoid corruption when adding rows)
+    max_row = data_start_row + num_items + 7 # + buffer for footers
+    dim_node = root.find(f'{{{ns}}}dimension')
+    if dim_node is not None:
+        dim_node.set('ref', f"A1:L{max_row}")
+
     # CRITICAL: Excel require row elements within sheetData to be in strictly ascending order
     # Shifting and duplication can leave the XML tree out of order.
     rows_list = list(sheet_data.findall(f'{{{ns}}}row'))
