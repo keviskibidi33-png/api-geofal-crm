@@ -241,7 +241,8 @@ def generate_compression_excel(data: CompressionExportRequest) -> io.BytesIO:
                 row_idx = 16 + idx
                 _set_cell_value(sheet_data, f'B{row_idx}', item.item, ns, is_number=True)
                 _set_cell_value(sheet_data, f'C{row_idx}', item.codigo_lem, ns)
-                _set_cell_value(sheet_data, f'D{row_idx}', item.fecha_ensayo.strftime('%d/%m/%Y') if item.fecha_ensayo else '', ns)
+                fecha_item = item.fecha_ensayo or item.fecha_ensayo_programado
+                _set_cell_value(sheet_data, f'D{row_idx}', fecha_item.strftime('%d/%m/%Y') if fecha_item else '', ns)
                 _set_cell_value(sheet_data, f'E{row_idx}', item.carga_maxima, ns, is_number=True)
                 _set_cell_value(sheet_data, f'F{row_idx}', item.tipo_fractura or '', ns)
                 _set_cell_value(sheet_data, f'G{row_idx}', item.defectos or '', ns)
