@@ -272,6 +272,18 @@ def _fill_sheet(
     _set_cell(sd, "J27", "X" if data.metodo_b else "")
 
     # ── Datos de ensayo (rows 31-39, col I) ────────────────────────────
+    # Reforzar columna UND para evitar pérdidas por cambios visuales de plantilla.
+    _set_cell(sd, "H30", "UND")
+    _set_cell(sd, "H31", "N°")
+    _set_cell(sd, "H32", "N°")
+    _set_cell(sd, "H33", "g")
+    _set_cell(sd, "H34", "g")
+    _set_cell(sd, "H35", "g")
+    _set_cell(sd, "H36", "g")
+    _set_cell(sd, "H37", "g")
+    _set_cell(sd, "H38", "g")
+    _set_cell(sd, "H39", "%")
+
     _set_cell(sd, "I31", data.numero_ensayo, is_number=True)
     _set_cell(sd, "I32", data.recipiente_numero)
     _set_cell(sd, "I33", data.masa_recipiente_muestra_humeda, is_number=True)
