@@ -211,7 +211,7 @@ def generate_informe_excel(data: dict) -> bytes:
     items = data.get("items", [])
     num_items = len(items)
     template_rows = 14
-    data_start_row = 18
+    data_start_row = 14
 
     # Dynamic row shifting for extra samples
     # User request: "agregale una fila de isntacia siempre" -> Add spacer row
@@ -223,23 +223,23 @@ def generate_informe_excel(data: dict) -> bytes:
     # Always shift to guarantee footer is pushed down correctly, adding buffer
     # If we have enough space in template, we don't strictly *need* to shift, but 
     # the user wants to ensure separation.
-    # Logic: 
-    # Template has 14 rows (18-31). Footer starts at 32.
-    # If we have 22 items. Ends at 18+22-1 = 39.
-    # We need footer at 41 (gap at 40).
-    # Original footer at 32. Shift needed: 41 - 32 = 9.
+    # Logic:
+    # Template has 14 rows (14-27). Footer starts at 28.
+    # If we have 22 items. Ends at 14+22-1 = 35.
+    # We need footer at 37 (gap at 36).
+    # Original footer at 28. Shift needed: 37 - 28 = 9.
     # Formula: shift = (data_start_row + num_items + 1) - (original_footer_row)
-    # original_footer_row = data_start_row + template_rows = 18 + 14 = 32
-    # shift = (18 + 22 + 1) - 32 = 41 - 32 = 9.
+    # original_footer_row = data_start_row + template_rows = 14 + 14 = 28
+    # shift = (14 + 22 + 1) - 28 = 37 - 28 = 9.
     # 9 = (22 - 14) + 1 = extra_rows + 1.
     
-    # If num_items <= template_rows (e.g. 5). Ends at 22.
-    # We want footer at 32 (default). Gap is 23-31. No shift needed.
+    # If num_items <= template_rows (e.g. 5). Ends at 18.
+    # We want footer at 28 (default). Gap is 19-27. No shift needed.
     
     shift_amount = 0
     if num_items > template_rows:
         shift_amount = extra_rows + 1 # +1 for spacer
-        shift_at = data_start_row + template_rows # Row 32
+        shift_at = data_start_row + template_rows # Row 28
         _shift_rows(sheet_data, shift_at, shift_amount, ns)
         _shift_merged_cells(root, shift_at, shift_amount, ns)
         
@@ -251,7 +251,7 @@ def generate_informe_excel(data: dict) -> bytes:
 
         
         # Replicate template rows for the new items
-        source_row = data_start_row + template_rows - 1 # Row 31 (last formatted item row)
+        source_row = data_start_row + template_rows - 1 # Row 27 (last formatted item row)
         
         # Create Item Rows
         for i in range(template_rows, num_items):
@@ -283,76 +283,65 @@ def generate_informe_excel(data: dict) -> bytes:
         if force_style and c_node is not None:
              c_node.set('s', force_style)
 
-
-    # Fill Header (Column L in Template)
-    # Row 8 Validation: B8 is "Proyecto". If merged, writing to top-left B8 is correct.
+    # Fill Header
+    # Row 6-9: values in Column B (labels remain in A in the template)
     write_cell("B6", data.get("cliente", ""))
     write_cell("B7", data.get("direccion", ""))
     write_cell("B8", data.get("proyecto", ""))
     write_cell("B9", data.get("ubicacion", ""))
-    write_cell("L6", data.get("recepcion_numero", ""))
-    write_cell("L7", data.get("ot_numero", ""))
-    write_cell("B11", data.get("estructura", ""))
-    fc_header = data.get("fc_kg_cm2")
-    write_cell("B12", fc_header, is_num=True if isinstance(fc_header, (int, float)) else False)
-    write_cell("L10", _format_date(data.get("fecha_recepcion")))
-    write_cell("L11", _format_date(data.get("fecha_moldeo")))
     
-    fecha_rotura = data.get("fecha_rotura")
-    if not fecha_rotura and items:
-        fecha_rotura = items[0].get("fecha_ensayo")
-    write_cell("L12", _format_date(fecha_rotura))
-    write_cell("L13", data.get("hora_moldeo", ""))
-    write_cell("L14", data.get("hora_rotura", ""))
+    # Row 6-7 and 10-11: values in Column P (labels remain in O in the template)
+    write_cell("P6", data.get("recepcion_numero", ""))
+    write_cell("P7", data.get("ot_numero", ""))
     
-    densidad = data.get("densidad")
-    if isinstance(densidad, bool): den_val = "Sí" if densidad else "No"
-    else: den_val = str(densidad) if densidad else ""
-    write_cell("L15", den_val)
+    # Row 10-11: Fecha & Densidad
+    write_cell("P10", _format_date(data.get("fecha_recepcion")))
+    densidad_val = data.get("densidad")
+    write_cell(
+        "P11",
+        "SI" if densidad_val is True else ("NO" if densidad_val is False else str(densidad_val or "")),
+    )
 
     # Clean the spacer row content if it was duplicated (it might have copied values if source had them, though usually source is empty template)
     # We want the spacer row to be empty but formatted
     if num_items > template_rows:
         spacer_r = data_start_row + num_items
-        for col_char in "ABCDEFGHIJKL":
-            # Overwrite with empty, forcing style 28 (Bordered Black)
-            write_cell(f"{col_char}{spacer_r}", "", force_style='28')
+        for col_char in "ABCDEFGHIJKLMNOP":
+            write_cell(f"{col_char}{spacer_r}", "")
 
     # Fill Items
     for i, item in enumerate(items):
         r = data_start_row + i
         
-        # Force Style 28 (Black Borders) on ALL columns to ensure borders
-        write_cell(f"A{r}", item.get("codigo_lem", ""), force_style='28')
-        write_cell(f"B{r}", item.get("estructura", ""), force_style='28')
-        write_cell(f"C{r}", item.get("fc_kg_cm2"), is_num=True, force_style='28')
-        write_cell(f"D{r}", item.get("codigo_cliente", ""), force_style='28')
-        write_cell(f"E{r}", item.get("diametro_1"), is_num=True, force_style='28')
-        write_cell(f"F{r}", item.get("diametro_2"), is_num=True, force_style='28')
-        write_cell(f"G{r}", item.get("longitud_1"), is_num=True, force_style='28')
-        write_cell(f"H{r}", item.get("longitud_2"), is_num=True, force_style='28')
-        write_cell(f"I{r}", item.get("longitud_3"), is_num=True, force_style='28')
-        write_cell(f"J{r}", item.get("carga_maxima"), is_num=True, force_style='28')
-        write_cell(f"K{r}", item.get("tipo_fractura", ""), force_style='28')
-        write_cell(f"L{r}", item.get("masa_muestra_aire"), is_num=True, force_style='28')
+        # New Column Mapping (A-P)
+        # Código LEM, Código cliente, Estructura, F'c (kg/cm2), Fecha Moldeo, Fecha Rotura, Hora moldeo, Hora rotura
+        # Diametro 1, Diametro 2, Longitud 1, Longitud 2, Longitud 3, Carga Máxima (kN), Tipo fractura, Masa muestra aire (g)
         
-    # Fill Footer (Equipment Code)
-    # Original footer start: 32
-    # New footer start: 32 + shift_amount
-    footer_start_row = 32 + shift_amount
-    codigo_equipo = data.get("codigo_equipo", "")
-    if codigo_equipo:
-        # Write to B column in the footer row (Equipment row)
-        # Assuming layout: A=Label, B=Code...
-        write_cell(f"B{footer_start_row}", codigo_equipo)
-
+        write_cell(f"A{r}", item.get("codigo_lem", ""))
+        write_cell(f"B{r}", item.get("codigo_cliente", ""))
+        write_cell(f"C{r}", item.get("estructura", ""))
+        write_cell(f"D{r}", item.get("fc_kg_cm2"), is_num=True)
+        write_cell(f"E{r}", _format_date(item.get("fecha_moldeo")))
+        write_cell(f"F{r}", _format_date(item.get("fecha_ensayo")))
+        write_cell(f"G{r}", item.get("hora_moldeo", ""))
+        write_cell(f"H{r}", item.get("hora_ensayo", ""))
+        
+        write_cell(f"I{r}", item.get("diametro_1"), is_num=True)
+        write_cell(f"J{r}", item.get("diametro_2"), is_num=True)
+        write_cell(f"K{r}", item.get("longitud_1"), is_num=True)
+        write_cell(f"L{r}", item.get("longitud_2"), is_num=True)
+        write_cell(f"M{r}", item.get("longitud_3"), is_num=True)
+        write_cell(f"N{r}", item.get("carga_maxima"), is_num=True)
+        write_cell(f"O{r}", item.get("tipo_fractura", ""))
+        write_cell(f"P{r}", item.get("masa_muestra_aire"), is_num=True)
+        
     # ── 3. Final Serialization & Structural Cleanup ──
 
     # Update dimension ref tag (CRITICAL to avoid corruption when adding rows)
     max_row = data_start_row + num_items + shift_amount + 7 
     dim_node = root.find(f'{{{ns}}}dimension')
     if dim_node is not None:
-        dim_node.set('ref', f"A1:L{max_row}")
+        dim_node.set('ref', f"A1:P{max_row}")
 
     # CRITICAL: Excel require row elements within sheetData to be in strictly ascending order
     # Shifting and duplication can leave the XML tree out of order.
