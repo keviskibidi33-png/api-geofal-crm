@@ -182,17 +182,41 @@ def generate_informe_excel(data: dict) -> bytes:
     data_start_row = 18
 
     # Dynamic row shifting for extra samples
+    # User request: "agregale una fila de isntacia siempre" -> Add spacer row
+    # We shift by extra_rows + 1 to ensure there is always at least one empty row between samples and footer
+    extra_rows = 0
     if num_items > template_rows:
         extra_rows = num_items - template_rows
-        shift_at = data_start_row + template_rows
-        _shift_rows(sheet_data, shift_at, extra_rows, ns)
-        _shift_merged_cells(root, shift_at, extra_rows, ns)
-        # Replicate template rows
-        source_row = data_start_row + template_rows - 1
+    
+    # Always shift to guarantee footer is pushed down correctly, adding buffer
+    # If we have enough space in template, we don't strictly *need* to shift, but 
+    # the user wants to ensure separation.
+    # Logic: 
+    # Template has 14 rows (18-31). Footer starts at 32.
+    # If we have 22 items. Ends at 18+22-1 = 39.
+    # We need footer at 41 (gap at 40).
+    # Original footer at 32. Shift needed: 41 - 32 = 9.
+    # Formula: shift = (data_start_row + num_items + 1) - (original_footer_row)
+    # original_footer_row = data_start_row + template_rows = 18 + 14 = 32
+    # shift = (18 + 22 + 1) - 32 = 41 - 32 = 9.
+    # 9 = (22 - 14) + 1 = extra_rows + 1.
+    
+    # If num_items <= template_rows (e.g. 5). Ends at 22.
+    # We want footer at 32 (default). Gap is 23-31. No shift needed.
+    
+    shift_amount = 0
+    if num_items > template_rows:
+        shift_amount = extra_rows + 1 # +1 for spacer
+        shift_at = data_start_row + template_rows # Row 32
+        _shift_rows(sheet_data, shift_at, shift_amount, ns)
+        _shift_merged_cells(root, shift_at, shift_amount, ns)
+        
+        # Replicate template rows for the new items
+        source_row = data_start_row + template_rows - 1 # Row 31 (last formatted item row)
         for i in range(template_rows, num_items):
-            _duplicate_row_xml(sheet_data, source_row, data_start_row + i, ns)
-
-    # Cache for performance
+             _duplicate_row_xml(sheet_data, source_row, data_start_row + i, ns)
+             
+    # Cache for performance (refresh after shift)
     rows_cache = {r.get('r'): r for r in sheet_data.findall(f'{{{ns}}}row')}
     def write_cell(ref, value, is_num=False):
         _, r_num = _parse_cell_ref(ref)
@@ -202,7 +226,9 @@ def generate_informe_excel(data: dict) -> bytes:
             rows_cache[str(r_num)] = row_el
         _set_cell_value_fast(row_el, ref, value, ns, is_num, get_string_idx)
 
+
     # Fill Header (Column L in Template)
+    # Row 8 Validation: B8 is "Proyecto". If merged, writing to top-left B8 is correct.
     write_cell("B6", data.get("cliente", ""))
     write_cell("B7", data.get("direccion", ""))
     write_cell("B8", data.get("proyecto", ""))
@@ -234,7 +260,6 @@ def generate_informe_excel(data: dict) -> bytes:
         write_cell(f"B{r}", item.get("estructura", ""))
         
         # Override Column C (FC) to strip custom style (suffix "-CO-26")
-        # Use Style 19 (General + Border + Center) found in styles.xml (Style 22 still had suffix)
         fc_ref = f"C{r}"
         fc_val = item.get("fc_kg_cm2")
         write_cell(fc_ref, fc_val, is_num=True)
@@ -256,11 +281,21 @@ def generate_informe_excel(data: dict) -> bytes:
         write_cell(f"J{r}", item.get("carga_maxima"), is_num=True)
         write_cell(f"K{r}", item.get("tipo_fractura", ""))
         write_cell(f"L{r}", item.get("masa_muestra_aire"), is_num=True)
+        
+    # Fill Footer (Equipment Code)
+    # Original footer start: 32
+    # New footer start: 32 + shift_amount
+    footer_start_row = 32 + shift_amount
+    codigo_equipo = data.get("codigo_equipo", "")
+    if codigo_equipo:
+        # Write to B column in the footer row (Equipment row)
+        # Assuming layout: A=Label, B=Code...
+        write_cell(f"B{footer_start_row}", codigo_equipo)
 
     # ── 3. Final Serialization & Structural Cleanup ──
 
     # Update dimension ref tag (CRITICAL to avoid corruption when adding rows)
-    max_row = data_start_row + num_items + 7 # + buffer for footers
+    max_row = data_start_row + num_items + shift_amount + 7 
     dim_node = root.find(f'{{{ns}}}dimension')
     if dim_node is not None:
         dim_node.set('ref', f"A1:L{max_row}")
@@ -293,8 +328,7 @@ def generate_informe_excel(data: dict) -> bytes:
     # 4. Handle Drawings (Line shift if extra rows)
     drawing_file = 'xl/drawings/drawing1.xml'
     modified_drawing = None
-    if num_items > template_rows:
-        shift = num_items - template_rows
+    if shift_amount > 0:
         with zipfile.ZipFile(TEMPLATE_PATH, 'r') as z:
             if drawing_file in z.namelist():
                 d_root = etree.fromstring(z.read(drawing_file))
@@ -302,9 +336,9 @@ def generate_informe_excel(data: dict) -> bytes:
                 for anchor in d_root.xpath('//xdr:twoCellAnchor | //xdr:oneCellAnchor', namespaces=d_ns):
                     frow = anchor.find('.//xdr:from/xdr:row', namespaces=d_ns)
                     trow = anchor.find('.//xdr:to/xdr:row', namespaces=d_ns)
-                    if frow is not None and int(frow.text) >= 32: # Usually footer starts around here
-                        frow.text = str(int(frow.text) + shift)
-                        if trow is not None: trow.text = str(int(trow.text) + shift)
+                    if frow is not None and int(frow.text) >= 31: # Footer area anchor
+                        frow.text = str(int(frow.text) + shift_amount)
+                        if trow is not None: trow.text = str(int(trow.text) + shift_amount)
                 modified_drawing = etree.tostring(d_root, encoding='utf-8', xml_declaration=True)
 
     # 5. Pack into ZIP

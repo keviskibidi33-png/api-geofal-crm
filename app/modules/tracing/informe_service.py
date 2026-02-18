@@ -195,6 +195,7 @@ class InformeService:
             "fecha_rotura": _extraer_fecha_rotura(compresion, m0) if compresion else (m0.fecha_rotura if m0 else ""),
             "hora_rotura": _extraer_hora_rotura(compresion),
             "densidad": m0.requiere_densidad if m0 else False,
+            "codigo_equipo": get_header_val("codigo_equipo"),
         }
 
         # ── 5. Indexar verificación y recepción por item_numero (1:1 match) ──
