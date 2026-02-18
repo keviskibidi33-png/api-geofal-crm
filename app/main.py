@@ -38,6 +38,7 @@ from app.modules.recepcion.models import Base as RecepcionBase
 from app.modules.verificacion.models import Base as VerificacionBase
 from app.modules.tracing.models import Trazabilidad
 from app.modules.compresion.models import EnsayoCompresion, ItemCompresion
+from app.modules.humedad.models import HumedadEnsayo
 from app.database import engine
 from app.auth import JWTAuthMiddleware
 

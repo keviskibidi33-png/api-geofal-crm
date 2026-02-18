@@ -4,6 +4,7 @@ Pydantic schemas for Humedad (Moisture Content) test — ASTM D2216-19.
 
 from pydantic import BaseModel, Field
 from typing import Optional, Literal
+from datetime import datetime
 
 
 class HumedadRequest(BaseModel):
@@ -90,3 +91,23 @@ class HumedadRequest(BaseModel):
     revisado_fecha: Optional[str] = Field(None, description="Fecha revisión (DD/MM/YYYY)")
     aprobado_por: Optional[str] = Field(None, description="Nombre de quien aprobó")
     aprobado_fecha: Optional[str] = Field(None, description="Fecha aprobación (DD/MM/YYYY)")
+
+
+class HumedadEnsayoResponse(BaseModel):
+    """Salida para el listado de ensayos del dashboard."""
+
+    id: int
+    numero_ensayo: str
+    numero_ot: str
+    cliente: Optional[str] = None
+    muestra: Optional[str] = None
+    fecha_documento: Optional[str] = None
+    estado: str
+    contenido_humedad: Optional[float] = None
+    bucket: Optional[str] = None
+    object_key: Optional[str] = None
+    fecha_creacion: Optional[datetime] = None
+    fecha_actualizacion: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
