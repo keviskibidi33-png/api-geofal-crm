@@ -78,7 +78,7 @@ async def buscar_recepcion(
                 {
                     "item_numero": m.item_numero,
                     "codigo_lem": m.codigo_muestra_lem or m.codigo_muestra,
-                    "tipo_testigo": m.estructura, # Mapping structure to testigo type if possible, or just defaults
+                    "tipo_testigo": "6in x 12in", # Default value as MuestraConcreto has no specific type field
                 } 
                 for m in recepcion.muestras
             ]
