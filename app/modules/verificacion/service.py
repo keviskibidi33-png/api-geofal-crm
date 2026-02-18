@@ -354,6 +354,33 @@ class VerificacionService:
             logger.error(f"Error eliminando verificación {verificacion_id}: {str(e)}")
             raise e
 
+    def _sanitize_muestra_dict(self, muestra_dict: dict) -> Optional[dict]:
+        """Normaliza vacíos/dashes a None en campos numéricos y descarta filas completamente vacías."""
+        if not muestra_dict:
+            return None
+
+        numeric_fields = [
+            'diametro_1_mm', 'diametro_2_mm', 'tolerancia_porcentaje',
+            'longitud_1_mm', 'longitud_2_mm', 'longitud_3_mm',
+            'masa_muestra_aire_g'
+        ]
+
+        cleaned = dict(muestra_dict)
+
+        for field in numeric_fields:
+            val = cleaned.get(field)
+            if val in ["", "-", None]:
+                cleaned[field] = None
+        # codigo_lem puede venir vacío; mantener string vacía permitida
+        cleaned['codigo_lem'] = cleaned.get('codigo_lem') or cleaned.get('codigo_cliente') or ""
+
+        # Si no hay código y todas las medidas numéricas están vacías, consideramos la fila fantasma
+        all_numeric_empty = all(cleaned.get(f) is None for f in numeric_fields)
+        if (not cleaned['codigo_lem']) and all_numeric_empty:
+            return None
+
+        return cleaned
+
     def actualizar_verificacion(self, verificacion_id: int, data: VerificacionMuestrasUpdate) -> Optional[VerificacionMuestras]:
         """Actualiza una verificación existente"""
         try:
@@ -370,40 +397,46 @@ class VerificacionService:
             if data.muestras_verificadas is not None:
                 # Borrar muestras existentes
                 self.db.query(MuestraVerificada).filter(MuestraVerificada.verificacion_id == verificacion_id).delete()
-                
+
                 # Crear nuevas muestras con item_numero re-secuenciado
-                for idx, muestra_dict in enumerate(data.muestras_verificadas, start=1):
+                item_idx = 0
+                for muestra_dict in data.muestras_verificadas:
+                    sanitized = self._sanitize_muestra_dict(muestra_dict)
+                    if not sanitized:
+                        continue  # descartar filas fantasma
+                    item_idx += 1
+
                     # El microfrontend envía los datos ya calculados, pero podemos recalcular si es necesario
                     # Para mantener robustez, manejamos mapeo de campos legacy
-                    
+
                     db_muestra = MuestraVerificada(
                         verificacion_id=verificacion_id,
-                        item_numero=idx,  # Re-sequence to ensure 1, 2, 3...
-                        codigo_lem=muestra_dict.get('codigo_lem') or muestra_dict.get('codigo_cliente') or "",
-                        tipo_testigo=muestra_dict.get('tipo_testigo'),
-                        diametro_1_mm=muestra_dict.get('diametro_1_mm'),
-                        diametro_2_mm=muestra_dict.get('diametro_2_mm'),
-                        tolerancia_porcentaje=muestra_dict.get('tolerancia_porcentaje'),
-                        aceptacion_diametro=muestra_dict.get('aceptacion_diametro'),
-                        perpendicularidad_sup1=muestra_dict.get('perpendicularidad_sup1') if muestra_dict.get('perpendicularidad_sup1') is not None else muestra_dict.get('perpendicularidad_p1'),
-                        perpendicularidad_sup2=muestra_dict.get('perpendicularidad_sup2') if muestra_dict.get('perpendicularidad_sup2') is not None else muestra_dict.get('perpendicularidad_p2'),
-                        perpendicularidad_inf1=muestra_dict.get('perpendicularidad_inf1') if muestra_dict.get('perpendicularidad_inf1') is not None else muestra_dict.get('perpendicularidad_p3'),
-                        perpendicularidad_inf2=muestra_dict.get('perpendicularidad_inf2') if muestra_dict.get('perpendicularidad_inf2') is not None else muestra_dict.get('perpendicularidad_p4'),
-                        perpendicularidad_medida=muestra_dict.get('perpendicularidad_medida') if muestra_dict.get('perpendicularidad_medida') is not None else muestra_dict.get('perpendicularidad_cumple'),
-                        planitud_medida=muestra_dict.get('planitud_medida'),
-                        planitud_superior_aceptacion=muestra_dict.get('planitud_superior_aceptacion'),
-                        planitud_inferior_aceptacion=muestra_dict.get('planitud_inferior_aceptacion'),
-                        planitud_depresiones_aceptacion=muestra_dict.get('planitud_depresiones_aceptacion'),
-                        accion_realizar=muestra_dict.get('accion_realizar'),
-                        conformidad=muestra_dict.get('conformidad'),
-                        longitud_1_mm=muestra_dict.get('longitud_1_mm'),
-                        longitud_2_mm=muestra_dict.get('longitud_2_mm'),
-                        longitud_3_mm=muestra_dict.get('longitud_3_mm'),
-                        masa_muestra_aire_g=muestra_dict.get('masa_muestra_aire_g'),
-                        pesar=muestra_dict.get('pesar')
+                        item_numero=item_idx,  # Re-sequence to ensure 1, 2, 3...
+                        codigo_lem=sanitized.get('codigo_lem'),
+                        tipo_testigo=sanitized.get('tipo_testigo'),
+                        diametro_1_mm=sanitized.get('diametro_1_mm'),
+                        diametro_2_mm=sanitized.get('diametro_2_mm'),
+                        tolerancia_porcentaje=sanitized.get('tolerancia_porcentaje'),
+                        aceptacion_diametro=sanitized.get('aceptacion_diametro'),
+                        perpendicularidad_sup1=sanitized.get('perpendicularidad_sup1') if sanitized.get('perpendicularidad_sup1') is not None else sanitized.get('perpendicularidad_p1'),
+                        perpendicularidad_sup2=sanitized.get('perpendicularidad_sup2') if sanitized.get('perpendicularidad_sup2') is not None else sanitized.get('perpendicularidad_p2'),
+                        perpendicularidad_inf1=sanitized.get('perpendicularidad_inf1') if sanitized.get('perpendicularidad_inf1') is not None else sanitized.get('perpendicularidad_p3'),
+                        perpendicularidad_inf2=sanitized.get('perpendicularidad_inf2') if sanitized.get('perpendicularidad_inf2') is not None else sanitized.get('perpendicularidad_p4'),
+                        perpendicularidad_medida=sanitized.get('perpendicularidad_medida') if sanitized.get('perpendicularidad_medida') is not None else sanitized.get('perpendicularidad_cumple'),
+                        planitud_medida=sanitized.get('planitud_medida'),
+                        planitud_superior_aceptacion=sanitized.get('planitud_superior_aceptacion'),
+                        planitud_inferior_aceptacion=sanitized.get('planitud_inferior_aceptacion'),
+                        planitud_depresiones_aceptacion=sanitized.get('planitud_depresiones_aceptacion'),
+                        accion_realizar=sanitized.get('accion_realizar'),
+                        conformidad=sanitized.get('conformidad'),
+                        longitud_1_mm=sanitized.get('longitud_1_mm'),
+                        longitud_2_mm=sanitized.get('longitud_2_mm'),
+                        longitud_3_mm=sanitized.get('longitud_3_mm'),
+                        masa_muestra_aire_g=sanitized.get('masa_muestra_aire_g'),
+                        pesar=sanitized.get('pesar')
                     )
                     self.db.add(db_muestra)
-            
+
             db_verificacion.fecha_actualizacion = datetime.now()
             self.db.commit()
             self.db.refresh(db_verificacion)
@@ -422,9 +455,9 @@ class VerificacionService:
                 
                 with open(local_path, "wb") as f:
                     f.write(excel_bytes)
-                
+
                 cloud_path = f"{year}/{filename}"
-                storage_path = self._upload_to_supabase_storage(io.BytesIO(excel_bytes), "verificacion_muestras", cloud_path)
+                storage_path = self._upload_to_supabase_storage(io.BytesIO(excel_bytes), "verificacion", cloud_path)
                 
                 db_verificacion.archivo_excel = str(local_path)
                 db_verificacion.object_key = storage_path
