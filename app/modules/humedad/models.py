@@ -15,7 +15,7 @@ class HumedadEnsayo(Base):
     cliente = Column(String(255), nullable=True)
     muestra = Column(String(255), nullable=True)
     fecha_documento = Column(String(20), nullable=True)
-    estado = Column(String(30), nullable=False, default="COMPLETADO")
+    estado = Column(String(30), nullable=False, default="EN PROCESO")
 
     contenido_humedad = Column(Float, nullable=True)
     bucket = Column(String(100), nullable=True)

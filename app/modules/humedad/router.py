@@ -144,6 +144,63 @@ def _calcular_contenido_humedad(payload: HumedadRequest) -> float | None:
     return humedad
 
 
+def _has_text_value(value: str | None) -> bool:
+    return value is not None and str(value).strip() != ""
+
+
+def _is_selected(value: str | None) -> bool:
+    return _has_text_value(value) and str(value).strip() != "-"
+
+
+def _is_payload_completo(payload: HumedadRequest, contenido_humedad: float | None) -> bool:
+    """
+    Determina si el registro puede marcarse como COMPLETO.
+    Si falta uno o más campos clave, queda EN PROCESO.
+    """
+    required_text_fields = [
+        payload.muestra,
+        payload.numero_ot,
+        payload.fecha_ensayo,
+        payload.realizado_por,
+        payload.tipo_muestra,
+        payload.condicion_muestra,
+        payload.tamano_maximo_particula,
+        payload.recipiente_numero,
+    ]
+    if not all(_has_text_value(v) for v in required_text_fields):
+        return False
+
+    required_selects = [
+        payload.condicion_masa_menor,
+        payload.condicion_capas,
+        payload.condicion_temperatura,
+        payload.condicion_excluido,
+        payload.equipo_balanza_01,
+        payload.equipo_balanza_001,
+        payload.equipo_horno,
+    ]
+    if not all(_is_selected(v) for v in required_selects):
+        return False
+
+    # Si se indicó material excluido = SI, la descripción pasa a ser obligatoria.
+    if payload.condicion_excluido == "SI" and not _has_text_value(payload.descripcion_material_excluido):
+        return False
+
+    # Al menos un método debe estar marcado.
+    if not payload.metodo_a and not payload.metodo_b:
+        return False
+
+    required_numeric = [
+        payload.numero_ensayo,
+        payload.masa_recipiente_muestra_humeda,
+        payload.masa_recipiente_muestra_seca,
+        payload.masa_recipiente_muestra_seca_constante,
+        payload.masa_recipiente,
+        contenido_humedad,
+    ]
+    return all(v is not None for v in required_numeric)
+
+
 def _build_numero_ensayo(payload: HumedadRequest) -> str:
     ensayo = payload.numero_ensayo if payload.numero_ensayo is not None else 1
     return f"{payload.numero_ot}-{ensayo}"
@@ -301,7 +358,7 @@ async def generar_excel_humedad(
             contenido_humedad=contenido_humedad,
             storage_object_key=storage_object_key,
             ensayo_id=ensayo_id,
-            estado="COMPLETADO" if download else "GUARDADO",
+            estado="COMPLETO" if _is_payload_completo(payload, contenido_humedad) else "EN PROCESO",
         )
 
         if not download:
