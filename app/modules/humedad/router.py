@@ -262,7 +262,7 @@ async def obtener_ensayo_humedad(
 @router.post("/excel")
 async def generar_excel_humedad(
     payload: HumedadRequest,
-    download: bool = Query(default=True, description="true=guardar+descargar, false=solo guardar"),
+    download: bool = Query(default=False, description="true=guardar+descargar, false=solo guardar"),
     ensayo_id: int | None = Query(default=None, ge=1, description="ID a editar (opcional)"),
     db: Session = Depends(get_db_session),
 ):
