@@ -354,6 +354,14 @@ def _fill_sheet(
     centered_style_general = _get_cell_style(sd, "I31")
     centered_style_numeric = _get_cell_style(sd, "I37") or centered_style_general
 
+    # ── Encabezado principal (fila 12) ──────────────────────────────────
+    # Nuevo mapeo sin rectángulos/shapes:
+    #   Muestra -> D12, N° OT -> E12, Fecha ensayo -> G12, Realizado -> I12
+    _set_cell(sd, "D12", data.muestra)
+    _set_cell(sd, "E12", data.numero_ot)
+    _set_cell(sd, "G12", data.fecha_ensayo)
+    _set_cell(sd, "I12", data.realizado_por)
+
     # ── Condiciones del ensayo (rows 18-21, col J) ─────────────────────
     _set_cell(sd, "J18", data.condicion_masa_menor)
     _set_cell(sd, "J19", data.condicion_capas)
@@ -454,28 +462,13 @@ def _fill_drawing(drawing_xml: bytes, data: HumedadRequest) -> bytes:
     de Revisado vs Aprobado (ambos tienen un label "Fecha:").
     """
     has_footer = any([data.revisado_por, data.revisado_fecha, data.aprobado_por, data.aprobado_fecha])
-    has_header = any([data.muestra, data.numero_ot, data.fecha_ensayo, data.realizado_por])
-    if not has_footer and not has_header:
+    if not has_footer:
         return drawing_xml
 
     NS = {"xdr": NS_DRAW, "a": NS_A}
     root = etree.fromstring(drawing_xml)
 
-    # Rectángulos de entrada del encabezado en Template_Humedad.xlsx
-    # Coordenadas: (from_col, from_row, to_col, to_row)
-    header_shape_values: dict[tuple[int, int, int, int], Any] = {
-        (0, 10, 3, 12): data.muestra,
-        (3, 10, 5, 12): data.numero_ot,
-        (5, 10, 8, 12): data.fecha_ensayo,
-        (8, 10, 10, 12): data.realizado_por,
-    }
-
     for anchor in root.findall(".//xdr:twoCellAnchor", NS):
-        bounds = _get_anchor_bounds(anchor)
-        if bounds in header_shape_values:
-            _set_anchor_value_text(anchor, header_shape_values[bounds])
-            continue
-
         # Recopilar todos los textos del anchor para identificarlo
         all_texts = [
             (t.text or "").strip()
