@@ -8,13 +8,15 @@ INSERT INTO storage.buckets (id, name, public)
 VALUES 
   ('verificacion', 'verificacion', true),
   ('compresiones', 'compresiones', true),
-  ('humedad', 'humedad', true)
+  ('humedad', 'humedad', true),
+  ('cbr', 'cbr', true)
 ON CONFLICT (id) DO UPDATE SET public = true;
 
 -- 2. Limpiar políticas previas para evitar duplicados
 DROP POLICY IF EXISTS "Public Access Verificacion" ON storage.objects;
 DROP POLICY IF EXISTS "Public Access Compresiones" ON storage.objects;
 DROP POLICY IF EXISTS "Public Access Humedad" ON storage.objects;
+DROP POLICY IF EXISTS "Public Access CBR" ON storage.objects;
 DROP POLICY IF EXISTS "All Access Recepciones" ON storage.objects;
 
 -- 3. Aplicar política "ALL" para acceso público (lectura y escritura)
@@ -36,6 +38,12 @@ ON storage.objects FOR ALL
 TO public
 USING (bucket_id = 'humedad')
 WITH CHECK (bucket_id = 'humedad');
+
+CREATE POLICY "Public Access CBR"
+ON storage.objects FOR ALL
+TO public
+USING (bucket_id = 'cbr')
+WITH CHECK (bucket_id = 'cbr');
 
 -- Reforzar Recepciones si es necesario
 DROP POLICY IF EXISTS "Public Access Recepciones" ON storage.objects;

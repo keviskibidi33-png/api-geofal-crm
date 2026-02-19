@@ -210,7 +210,7 @@ def _guardar_ensayo(
     ensayo.payload_json = payload_dump
 
     if storage_object_key:
-        ensayo.bucket = "humedad"
+        ensayo.bucket = "cbr"
         ensayo.object_key = storage_object_key
     elif ensayo_id is None:
         ensayo.bucket = None
@@ -304,7 +304,7 @@ async def generar_excel_cbr(
         storage_path = f"{today.year}/{storage_name}"
         storage_object_key = _upload_to_supabase_storage(
             file_bytes=excel_bytes,
-            bucket="humedad",
+            bucket="cbr",
             object_path=storage_path,
         )
 
