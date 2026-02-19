@@ -353,6 +353,13 @@ def _fill_sheet(
     # I31 suele ser centro para N° de ensayo y I37 centro para valores numéricos.
     centered_style_general = _get_cell_style(sd, "I31")
     centered_style_numeric = _get_cell_style(sd, "I37") or centered_style_general
+    # E10/G10/I10 son labels del encabezado con alineación centrada (sin bordes).
+    header_centered_style = (
+        _get_cell_style(sd, "E10")
+        or _get_cell_style(sd, "G10")
+        or _get_cell_style(sd, "I10")
+        or centered_style_general
+    )
 
     # ── Encabezado principal (fila 12) ──────────────────────────────────
     # Nuevo mapeo sin rectángulos/shapes:
@@ -361,6 +368,8 @@ def _fill_sheet(
     _set_cell(sd, "E12", data.numero_ot)
     _set_cell(sd, "G12", data.fecha_ensayo)
     _set_cell(sd, "I12", data.realizado_por)
+    for ref in ("D12", "E12", "G12", "I12"):
+        _set_cell_style(sd, ref, header_centered_style)
 
     # ── Condiciones del ensayo (rows 18-21, col J) ─────────────────────
     _set_cell(sd, "J18", data.condicion_masa_menor)
