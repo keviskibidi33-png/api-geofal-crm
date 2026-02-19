@@ -7,20 +7,27 @@ import logging
 import os
 import re
 import unicodedata
-from fastapi import APIRouter, HTTPException, Depends
-from fastapi.responses import Response
 from datetime import date
-from sqlalchemy import desc
-from sqlalchemy.orm import Session
+
 import requests
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
+from sqlalchemy import desc, text
+from sqlalchemy.orm import Session
 
 from app.database import get_db_session
-from .models import HumedadEnsayo
-from .schemas import HumedadRequest, HumedadEnsayoResponse
 from .excel import generate_humedad_excel
+from .models import HumedadEnsayo
+from .schemas import (
+    HumedadDetalleResponse,
+    HumedadEnsayoResponse,
+    HumedadRequest,
+    HumedadSaveResponse,
+)
 
 router = APIRouter(prefix="/api/humedad", tags=["Laboratorio Humedad"])
 logger = logging.getLogger(__name__)
+_PAYLOAD_COLUMN_READY = False
 
 
 def _safe_filename(base_name: str, extension: str = "xlsx") -> str:
@@ -71,6 +78,46 @@ def _upload_to_supabase_storage(file_bytes: bytes, bucket: str, object_path: str
         return None
 
 
+def _delete_from_supabase_storage(bucket: str, object_path: str) -> bool:
+    """Elimina objeto previo de Supabase Storage. Nunca lanza excepción."""
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
+
+    if not supabase_url or not supabase_key or not bucket or not object_path:
+        return False
+
+    delete_url = f"{supabase_url.rstrip('/')}/storage/v1/object/{bucket}/{object_path}"
+    try:
+        resp = requests.delete(
+            delete_url,
+            headers={"Authorization": f"Bearer {supabase_key}"},
+            timeout=20,
+        )
+        if resp.status_code in (200, 204):
+            return True
+        logger.warning(
+            "No se pudo eliminar objeto previo de humedad: %s/%s (%s)",
+            bucket,
+            object_path,
+            resp.status_code,
+        )
+        return False
+    except Exception as e:
+        logger.warning("Error eliminando objeto previo de humedad: %s", e)
+        return False
+
+
+def _ensure_payload_column(db: Session) -> None:
+    """Garantiza compatibilidad de esquema para payload_json en entornos existentes."""
+    global _PAYLOAD_COLUMN_READY
+    if _PAYLOAD_COLUMN_READY:
+        return
+
+    db.execute(text("ALTER TABLE humedad_ensayos ADD COLUMN IF NOT EXISTS payload_json JSON"))
+    db.flush()
+    _PAYLOAD_COLUMN_READY = True
+
+
 def _calcular_contenido_humedad(payload: HumedadRequest) -> float | None:
     """Replica la lógica de cálculo para persistir el valor final en DB."""
     masa_agua = payload.masa_agua
@@ -102,6 +149,86 @@ def _build_numero_ensayo(payload: HumedadRequest) -> str:
     return f"{payload.numero_ot}-{ensayo}"
 
 
+def _guardar_ensayo(
+    db: Session,
+    payload: HumedadRequest,
+    contenido_humedad: float | None,
+    storage_object_key: str | None,
+    ensayo_id: int | None,
+    estado: str,
+) -> HumedadEnsayo:
+    payload_dump = payload.model_dump(mode="json")
+    old_bucket: str | None = None
+    old_object_key: str | None = None
+
+    if ensayo_id is not None:
+        ensayo = db.query(HumedadEnsayo).filter(HumedadEnsayo.id == ensayo_id).first()
+        if not ensayo:
+            raise HTTPException(status_code=404, detail="Ensayo de humedad no encontrado para edición.")
+        old_bucket = ensayo.bucket
+        old_object_key = ensayo.object_key
+    else:
+        ensayo = HumedadEnsayo()
+        db.add(ensayo)
+
+    ensayo.numero_ensayo = _build_numero_ensayo(payload)
+    ensayo.numero_ot = payload.numero_ot
+    ensayo.cliente = payload.muestra or None
+    ensayo.muestra = payload.muestra
+    ensayo.fecha_documento = payload.fecha_ensayo
+    ensayo.estado = estado
+    ensayo.contenido_humedad = contenido_humedad
+    ensayo.payload_json = payload_dump
+
+    if storage_object_key:
+        ensayo.bucket = "humedad"
+        ensayo.object_key = storage_object_key
+    elif ensayo_id is None:
+        ensayo.bucket = None
+        ensayo.object_key = None
+
+    db.commit()
+    db.refresh(ensayo)
+
+    # Si fue edición y cambió el archivo en Storage, limpiar el objeto anterior
+    # para mantener una sola versión activa por registro.
+    if (
+        ensayo_id is not None
+        and storage_object_key
+        and old_bucket
+        and old_object_key
+        and (old_bucket != ensayo.bucket or old_object_key != ensayo.object_key)
+    ):
+        _delete_from_supabase_storage(old_bucket, old_object_key)
+
+    return ensayo
+
+
+def _to_detalle_response(ensayo: HumedadEnsayo) -> HumedadDetalleResponse:
+    payload = None
+    if ensayo.payload_json:
+        try:
+            payload = HumedadRequest.model_validate(ensayo.payload_json)
+        except Exception:
+            logger.warning("payload_json inválido en humedad_ensayos.id=%s", ensayo.id, exc_info=True)
+
+    return HumedadDetalleResponse(
+        id=ensayo.id,
+        numero_ensayo=ensayo.numero_ensayo,
+        numero_ot=ensayo.numero_ot,
+        cliente=ensayo.cliente,
+        muestra=ensayo.muestra,
+        fecha_documento=ensayo.fecha_documento,
+        estado=ensayo.estado,
+        contenido_humedad=ensayo.contenido_humedad,
+        bucket=ensayo.bucket,
+        object_key=ensayo.object_key,
+        fecha_creacion=ensayo.fecha_creacion,
+        fecha_actualizacion=ensayo.fecha_actualizacion,
+        payload=payload,
+    )
+
+
 @router.get("/", response_model=list[HumedadEnsayoResponse])
 async def listar_ensayos_humedad(
     skip: int = 0,
@@ -109,6 +236,7 @@ async def listar_ensayos_humedad(
     db: Session = Depends(get_db_session),
 ):
     """Listado para la tabla del dashboard CRM."""
+    _ensure_payload_column(db)
     return (
         db.query(HumedadEnsayo)
         .order_by(desc(HumedadEnsayo.fecha_creacion))
@@ -118,18 +246,37 @@ async def listar_ensayos_humedad(
     )
 
 
+@router.get("/{ensayo_id}", response_model=HumedadDetalleResponse)
+async def obtener_ensayo_humedad(
+    ensayo_id: int,
+    db: Session = Depends(get_db_session),
+):
+    """Retorna el detalle completo para ver/editar un ensayo guardado."""
+    _ensure_payload_column(db)
+    ensayo = db.query(HumedadEnsayo).filter(HumedadEnsayo.id == ensayo_id).first()
+    if not ensayo:
+        raise HTTPException(status_code=404, detail="Ensayo de humedad no encontrado.")
+    return _to_detalle_response(ensayo)
+
+
 @router.post("/excel")
 async def generar_excel_humedad(
     payload: HumedadRequest,
+    download: bool = Query(default=True, description="true=guardar+descargar, false=solo guardar"),
+    ensayo_id: int | None = Query(default=None, ge=1, description="ID a editar (opcional)"),
     db: Session = Depends(get_db_session),
 ):
     """
-    Genera y descarga el Excel de Contenido de Humedad (ASTM D2216-19).
-    
-    Recibe los datos del ensayo y devuelve el archivo .xlsx rellenado
+    Genera y/o guarda el Excel de Contenido de Humedad (ASTM D2216-19).
+
+    Recibe los datos del ensayo y devuelve:
+    - Archivo .xlsx cuando download=true
+    - JSON de confirmación cuando download=false
+
     sobre el template oficial Template_Humedad.xlsx.
     """
     try:
+        _ensure_payload_column(db)
         excel_bytes = generate_humedad_excel(payload)
 
         today = date.today()
@@ -148,27 +295,34 @@ async def generar_excel_humedad(
 
         # Persistir en tabla para que aparezca en el dashboard.
         contenido_humedad = _calcular_contenido_humedad(payload)
-        nuevo_ensayo = HumedadEnsayo(
-            numero_ensayo=_build_numero_ensayo(payload),
-            numero_ot=payload.numero_ot,
-            cliente=payload.muestra or None,  # El formulario actual no tiene campo cliente dedicado.
-            muestra=payload.muestra,
-            fecha_documento=payload.fecha_ensayo,
-            estado="COMPLETADO",
+        ensayo_guardado = _guardar_ensayo(
+            db=db,
+            payload=payload,
             contenido_humedad=contenido_humedad,
-            bucket="humedad" if storage_object_key else None,
-            object_key=storage_object_key,
+            storage_object_key=storage_object_key,
+            ensayo_id=ensayo_id,
+            estado="COMPLETADO" if download else "GUARDADO",
         )
-        db.add(nuevo_ensayo)
-        db.commit()
-        db.refresh(nuevo_ensayo)
+
+        if not download:
+            return HumedadSaveResponse(
+                id=ensayo_guardado.id,
+                numero_ensayo=ensayo_guardado.numero_ensayo,
+                numero_ot=ensayo_guardado.numero_ot,
+                estado=ensayo_guardado.estado,
+                contenido_humedad=ensayo_guardado.contenido_humedad,
+                bucket=ensayo_guardado.bucket,
+                object_key=ensayo_guardado.object_key,
+                fecha_creacion=ensayo_guardado.fecha_creacion,
+                fecha_actualizacion=ensayo_guardado.fecha_actualizacion,
+            )
 
         headers = {
             "Content-Disposition": f'attachment; filename="{filename}"',
         }
         if storage_object_key:
             headers["X-Storage-Object-Key"] = storage_object_key
-        headers["X-Humedad-Id"] = str(nuevo_ensayo.id)
+        headers["X-Humedad-Id"] = str(ensayo_guardado.id)
 
         return Response(
             content=excel_bytes,
@@ -178,6 +332,9 @@ async def generar_excel_humedad(
     except FileNotFoundError as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Template no encontrado: {e}")
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
         import traceback

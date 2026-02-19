@@ -113,6 +113,10 @@ class HumedadRequest(BaseModel):
         default="-",
         description="¿Se excluyó algún material?",
     )
+    descripcion_material_excluido: Optional[str] = Field(
+        None,
+        description="Descripción del material excluido de la muestra (A22).",
+    )
 
     # ── Descripción de la muestra (rows 25-27) ─────────────────────────
     tipo_muestra: Optional[str] = Field(None, description="Tipo de muestra (E-F 25)")
@@ -215,3 +219,23 @@ class HumedadEnsayoResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class HumedadDetalleResponse(HumedadEnsayoResponse):
+    """Detalle completo para edición/visualización del formulario guardado."""
+
+    payload: Optional[HumedadRequest] = None
+
+
+class HumedadSaveResponse(BaseModel):
+    """Respuesta de guardado sin descarga local."""
+
+    id: int
+    numero_ensayo: str
+    numero_ot: str
+    estado: str
+    contenido_humedad: Optional[float] = None
+    bucket: Optional[str] = None
+    object_key: Optional[str] = None
+    fecha_creacion: Optional[datetime] = None
+    fecha_actualizacion: Optional[datetime] = None

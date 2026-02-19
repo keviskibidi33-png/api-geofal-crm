@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Float
+from sqlalchemy import Column, Integer, String, DateTime, Float, JSON
 from sqlalchemy.sql import func
 
 from app.database import Base
@@ -20,6 +20,7 @@ class HumedadEnsayo(Base):
     contenido_humedad = Column(Float, nullable=True)
     bucket = Column(String(100), nullable=True)
     object_key = Column(String(500), nullable=True)
+    payload_json = Column(JSON, nullable=True)
 
     fecha_creacion = Column(DateTime(timezone=True), server_default=func.now())
     fecha_actualizacion = Column(DateTime(timezone=True), onupdate=func.now())

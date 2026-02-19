@@ -176,6 +176,82 @@ def _inject_shape_text(drawing_xml: bytes, labels: dict[str, str]) -> bytes:
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
+def _get_anchor_bounds(anchor: etree._Element) -> tuple[int, int, int, int] | None:
+    """Obtiene los límites (col,row) del anchor para ubicar shapes por posición."""
+    NS = {"xdr": NS_DRAW}
+    from_el = anchor.find("xdr:from", NS)
+    to_el = anchor.find("xdr:to", NS)
+    if from_el is None or to_el is None:
+        return None
+
+    def _read_int(parent: etree._Element, tag: str) -> int | None:
+        value_el = parent.find(f"xdr:{tag}", NS)
+        if value_el is None or value_el.text is None:
+            return None
+        try:
+            return int(value_el.text)
+        except ValueError:
+            return None
+
+    from_col = _read_int(from_el, "col")
+    from_row = _read_int(from_el, "row")
+    to_col = _read_int(to_el, "col")
+    to_row = _read_int(to_el, "row")
+
+    if None in (from_col, from_row, to_col, to_row):
+        return None
+    return from_col, from_row, to_col, to_row
+
+
+def _set_anchor_value_text(anchor: etree._Element, value: Any) -> bool:
+    """
+    Inserta texto en el txBody del shape.
+    Se usa para los rectángulos de entrada del encabezado (MUESTRA/OT/FECHA/REALIZADO).
+    """
+    if value is None:
+        return False
+    text = str(value).strip()
+    if not text:
+        return False
+
+    NS = {"xdr": NS_DRAW, "a": NS_A}
+    paragraph = anchor.find(".//xdr:txBody/a:p", NS)
+    if paragraph is None:
+        return False
+
+    # Limpiar runs previos para dejar un único valor.
+    run_tag = f"{{{NS_A}}}r"
+    field_tag = f"{{{NS_A}}}fld"
+    for child in list(paragraph):
+        if child.tag in (run_tag, field_tag):
+            paragraph.remove(child)
+
+    end_para = paragraph.find("a:endParaRPr", NS)
+
+    run = etree.Element(run_tag)
+    run_props = etree.SubElement(run, f"{{{NS_A}}}rPr")
+
+    # Reusar estilo tipográfico del párrafo para mantener consistencia visual.
+    if end_para is not None:
+        for attr, attr_val in end_para.attrib.items():
+            run_props.set(attr, attr_val)
+        for style_child in end_para:
+            run_props.append(etree.fromstring(etree.tostring(style_child)))
+    else:
+        run_props.set("lang", "es-PE")
+        run_props.set("sz", "900")
+
+    t_el = etree.SubElement(run, f"{{{NS_A}}}t")
+    t_el.text = text
+
+    if end_para is not None:
+        paragraph.insert(list(paragraph).index(end_para), run)
+    else:
+        paragraph.append(run)
+
+    return True
+
+
 # ── Generador principal ───────────────────────────────────────────────────────
 
 def generate_humedad_excel(data: HumedadRequest) -> bytes:
@@ -250,17 +326,13 @@ def _fill_sheet(
     if sd is None:
         return sheet_xml
 
-    # ── Encabezado (row 12) — shapes sin relleno, celdas visibles ──────
-    _set_cell(sd, "B12", data.muestra)
-    _set_cell(sd, "E12", data.numero_ot)
-    _set_cell(sd, "G12", data.fecha_ensayo)
-    _set_cell(sd, "J12", data.realizado_por)
-
     # ── Condiciones del ensayo (rows 18-21, col J) ─────────────────────
     _set_cell(sd, "J18", data.condicion_masa_menor)
     _set_cell(sd, "J19", data.condicion_capas)
     _set_cell(sd, "J20", data.condicion_temperatura)
     _set_cell(sd, "J21", data.condicion_excluido)
+    if data.descripcion_material_excluido:
+        _set_cell(sd, "A22", f"Descripción material excluido: {data.descripcion_material_excluido}")
 
     # ── Descripción muestra (rows 25-27, merged E-F) ──────────────────
     _set_cell(sd, "E25", data.tipo_muestra)
@@ -347,17 +419,29 @@ def _fill_drawing(drawing_xml: bytes, data: HumedadRequest) -> bytes:
     Usa inyección por-anchor para distinguir correctamente las fechas
     de Revisado vs Aprobado (ambos tienen un label "Fecha:").
     """
-    has_footer = any([
-        data.revisado_por, data.revisado_fecha,
-        data.aprobado_por, data.aprobado_fecha,
-    ])
-    if not has_footer:
+    has_footer = any([data.revisado_por, data.revisado_fecha, data.aprobado_por, data.aprobado_fecha])
+    has_header = any([data.muestra, data.numero_ot, data.fecha_ensayo, data.realizado_por])
+    if not has_footer and not has_header:
         return drawing_xml
 
     NS = {"xdr": NS_DRAW, "a": NS_A}
     root = etree.fromstring(drawing_xml)
 
+    # Rectángulos de entrada del encabezado en Template_Humedad.xlsx
+    # Coordenadas: (from_col, from_row, to_col, to_row)
+    header_shape_values: dict[tuple[int, int, int, int], Any] = {
+        (0, 10, 3, 12): data.muestra,
+        (3, 10, 5, 12): data.numero_ot,
+        (5, 10, 8, 12): data.fecha_ensayo,
+        (8, 10, 10, 12): data.realizado_por,
+    }
+
     for anchor in root.findall(".//xdr:twoCellAnchor", NS):
+        bounds = _get_anchor_bounds(anchor)
+        if bounds in header_shape_values:
+            _set_anchor_value_text(anchor, header_shape_values[bounds])
+            continue
+
         # Recopilar todos los textos del anchor para identificarlo
         all_texts = [
             (t.text or "").strip()

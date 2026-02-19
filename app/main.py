@@ -156,7 +156,7 @@ app.add_middleware(
     allow_credentials=_allow_creds,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
-    expose_headers=["Content-Disposition"],
+    expose_headers=["Content-Disposition", "X-Humedad-Id", "X-Storage-Object-Key"],
     max_age=3600,
 )
  
