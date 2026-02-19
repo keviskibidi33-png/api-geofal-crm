@@ -439,18 +439,33 @@ class ExcelLogic:
         }
 
         # Scan for anchors
+        import re
         max_row_scan = 100
         for row in ws.iter_rows(min_row=1, max_row=max_row_scan, max_col=20, values_only=False):
             for cell in row:
                 if isinstance(cell.value, str):
-                    val_clean = str(cell.value).strip().upper().replace(":", "").strip()
+                    # Fix: Use only first line for multiline cells (e.g. "Entregado por:\n(Cliente)")
+                    first_line = str(cell.value).split('\n')[0].strip()
+                    val_clean = first_line.upper().replace(":", " ").strip()
                     # Store anchor by exact match of keyword
                     for key in keywords:
                         clean_key = key.replace(":", "").strip()
-                        if clean_key in val_clean:
+                        
+                        # Paranoid check: "RUC" should NEVER match "ESTRUCTURA"
+                        if "RUC" in clean_key and "ESTRUCTURA" in val_clean:
+                            continue
+
+                        # Construct fuzzy regex for whole word match
+                        # Only add \b if the end is alphanumeric. 
+                        pattern = re.escape(clean_key)
+                        if clean_key and clean_key[0].isalnum(): pattern = r'\b' + pattern
+                        if clean_key and clean_key[-1].isalnum(): pattern = pattern + r'\b'
+
+                        # Use regex for whole word match to avoid substring matches
+                        if re.search(pattern, val_clean):
                              # Heuristic: If match is too long relative to key, it's likely a value, not a label
-                             # e.g. "CLIENTE" in "CLIENTE COTIZACION"
-                             if len(val_clean) > len(clean_key) + 10:
+                             # Relaxed from +15 to +40 for long footer labels
+                             if len(val_clean) > len(clean_key) + 40:
                                  continue
                                  
                              anchors[key] = (cell.column, cell.row) # Last found
@@ -469,17 +484,74 @@ class ExcelLogic:
 
         data = {}
 
+        # Fallback Coordinates (derived from "REC Nº 1000-26")
+        # Can be adjusted if more formats appear.
+        FALLBACK_COORDS = {
+            "RECEPCIÓN N°": (4, 6),      # D6
+            "COTIZACIÓN N°": (6, 6),     # F6
+            "OT N°": (8, 6),             # H6
+            "CLIENTE": (4, 10),          # D10 (Skip C10 which is ":")
+            "RUC": (4, 12),              # D12
+            "DOMICILIO LEGAL": (4, 11),  # D11
+            "PERSONA CONTACTO": (4, 13), # D13
+            "E-MAIL": (4, 14),           # D14
+            "TELÉFONO": (8, 14),         # H14
+            "SOLICITANTE": (4, 16),      # D16
+            "PROYECTO": (4, 18),         # D18
+            "UBICACIÓN": (4, 19),        # D19
+            "FECHA DE RECEPCIÓN": (10, 6) # J6
+        }
+
         # Extraction Helpers
-        def extract_right(anchor_name, offset_col=1, search_limit=3):
-            # Tries to find value to the right of the anchor
+        def extract_right(anchor_name, offset_col=1, search_limit=5):
+            # 1. Try Dynamic Anchor
+            val_found = ""
             if anchor_name in anchors:
                 col, row = anchors[anchor_name]
+                print(f"[DEBUG] Extracting right for {anchor_name} at ({row}, {col})")
+                
                 # Search next few columns for non-empty
                 for i in range(search_limit):
-                    val = get_val(row, col + offset_col + i)
+                    current_col = col + offset_col + i
+                    val = get_val(row, current_col)
+                    s_val = safe_str(val)
+                    
+                    print(f"  -> Check ({row}, {current_col}): '{s_val}' (Raw: {val})")
+                    
                     if val:
-                        return safe_str(val)
-            return ""
+                        # Skip if it's purely punctuation or very short non-alphanumeric
+                        if re.match(r'^[\W_]+$', s_val) or (s_val.strip().startswith(":") and len(s_val) < 5):
+                           print("     [SKIP] Punctuation-only")
+                           continue
+                        
+                        # NUCLEAR OPTION: If extraction is short and contains colon, KILL IT.
+                        if ":" in s_val and len(s_val) < 5:
+                            print(f"     [SKIP-NUCLEAR] Value '{s_val}' contains colon and is short.")
+                            continue
+                        
+                        # Fallback for short stuff that might sneak through
+                        if len(s_val) < 2 and not s_val.isalnum():
+                           print("     [SKIP] Short non-alnum")
+                           continue
+
+                        print(f"     [MATCH] '{s_val}'")
+                        val_found = s_val
+                        break # Found it
+            else:
+                print(f"[DEBUG] Anchor {anchor_name} NOT FOUND")
+            
+            # 2. Hybrid Fallback: If dynamic failed, try absolute coordinate
+            if not val_found and anchor_name in FALLBACK_COORDS:
+                f_col, f_row = FALLBACK_COORDS[anchor_name]
+                print(f"[DEBUG] Fallback used for {anchor_name} -> ({f_row}, {f_col})")
+                val = get_val(f_row, f_col)
+                s_val = safe_str(val)
+                # Apply same cleaning rules?
+                if s_val and not re.match(r'^[\W_]+$', s_val):
+                    print(f"     [FALLBACK MATCH] '{s_val}'")
+                    val_found = s_val
+
+            return val_found
 
         def extract_below(anchor_name, offset_row=1):
              if anchor_name in anchors:
@@ -494,8 +566,30 @@ class ExcelLogic:
         if not data['numero_cotizacion']: data['numero_cotizacion'] = extract_right("COTIZACIÓN N°", 2)
         
         data['numero_ot'] = extract_right("OT N°", 1)
+        # Fix: Handle float OT numbers like 340.26 → "340-26"
+        ot_val = data.get('numero_ot', '')
+        if ot_val and '.' in ot_val:
+            parts = ot_val.split('.')
+            if len(parts) == 2 and all(p.isdigit() for p in parts):
+                data['numero_ot'] = f"{parts[0]}-{parts[1]}"
         
         data['fecha_recepcion'] = extract_right("FECHA DE RECEPCIÓN", 1)
+        
+        # Fix: If numero_recepcion is just a number, append year suffix from fecha_recepcion
+        nr = data.get('numero_recepcion', '')
+        if nr and nr.replace(' ', '').isdigit():
+            fr = data.get('fecha_recepcion', '')
+            if fr:
+                # Try to extract year from fecha_recepcion (formats: DD/MM/YYYY or datetime)
+                year_suffix = ''
+                if '/' in fr:
+                    parts_date = fr.split('/')
+                    if len(parts_date) == 3 and len(parts_date[2]) >= 2:
+                        year_suffix = parts_date[2][-2:]
+                elif len(fr) >= 4 and fr[-4:].isdigit():
+                    year_suffix = fr[-2:]
+                if year_suffix:
+                    data['numero_recepcion'] = f"{nr.strip()}-{year_suffix}"
         
         data['cliente'] = extract_right("CLIENTE", 1)
         data['ruc'] = extract_right("RUC", 1)
@@ -508,20 +602,37 @@ class ExcelLogic:
             c_col, c_row = dl_locs[0]
             val = get_val(c_row, c_col + 1)
             if not val: val = get_val(c_row, c_col + 2)
+            if not val: val = get_val(c_row, c_col + 3)  # Fix: value may be 3 cols away (after ':')
             data['domicilio_legal'] = safe_str(val)
             
         if len(dl_locs) > 1:
             s_col, s_row = dl_locs[1]
             val = get_val(s_row, s_col + 1)
             if not val: val = get_val(s_row, s_col + 2)
+            if not val: val = get_val(s_row, s_col + 3)  # Fix: value may be 3 cols away
             data['domicilio_solicitante'] = safe_str(val)
         else:
-            # Fallback for domicilio solicitante
-             if "SOLICITANTE" in anchors:
-                 s_col, s_row = anchors["SOLICITANTE"]
-                 val = get_val(s_row + 1, s_col) # Below Solicitante label
-                 if not val: val = get_val(s_row + 1, s_col + 1)
-                 data['domicilio_solicitante'] = safe_str(val)
+            # Fallback: Get domicilio from row below CLIENTE / SOLICITANTE anchors
+            # This handles common typo "Domicilo legal" which doesn't match "DOMICILIO LEGAL"
+            if "CLIENTE" in anchors and not data.get('domicilio_legal'):
+                cl_col, cl_row = anchors["CLIENTE"]
+                # Domicilio is typically one row below the Client label
+                for col_off in [3, 2, 1]:
+                    val = get_val(cl_row + 1, cl_col + col_off)
+                    val_str = safe_str(val)
+                    if val_str and not re.match(r'^[\W_]+$', val_str) and len(val_str) > 5:
+                        data['domicilio_legal'] = val_str
+                        break
+            
+            if "SOLICITANTE" in anchors:
+                s_col, s_row = anchors["SOLICITANTE"]
+                # Domicilio solicitante is typically one row below the Solicitante label
+                for col_off in [3, 2, 1]:
+                    val = get_val(s_row + 1, s_col + col_off)
+                    val_str = safe_str(val)
+                    if val_str and not re.match(r'^[\W_]+$', val_str) and len(val_str) > 5:
+                        data['domicilio_solicitante'] = val_str
+                        break
 
         data['persona_contacto'] = extract_right("PERSONA CONTACTO", 1)
         data['email'] = extract_right("E-MAIL", 1)
@@ -533,73 +644,177 @@ class ExcelLogic:
         
         # Dates and Signatures
         data['fecha_estimada_culminacion'] = extract_right("FECHA ESTIMADA DE CULMINACIÓN", 1)
+        # Fix: fecha_estimada_culminacion often has the value BELOW the anchor, not to the right
+        if not data['fecha_estimada_culminacion']:
+            data['fecha_estimada_culminacion'] = extract_below("FECHA ESTIMADA DE CULMINACIÓN", 1)
+        # Also try with shorter keyword variant  
+        if not data['fecha_estimada_culminacion'] and "EMISIÓN DE INFORMES" in anchors:
+            em_col, em_row = anchors["EMISIÓN DE INFORMES"]
+            # Fecha estimated is typically at same row+1, further right
+            for c_off in range(3, 8):
+                val = get_val(em_row + 1, em_col + c_off)
+                if val:
+                    data['fecha_estimada_culminacion'] = safe_str(val)
+                    break
         
         data['entregado_por'] = extract_below("ENTREGADO POR", 1)
+        # Fix: Also try offset_row=2 since "Entregado por:\n(Cliente)" may have empty row between
+        if not data['entregado_por']:
+            data['entregado_por'] = extract_below("ENTREGADO POR", 2)
+        # Fix: Filter out URL/website text that sometimes bleeds into footer fields
+        ep = data.get('entregado_por', '')
+        if ep and ('www.' in ep.lower() or 'http' in ep.lower() or '@' in ep or 'laboratorio' in ep.lower()):
+            data['entregado_por'] = ''  # Discard, it's the footer, not a name
         data['recibido_por'] = extract_below("RECIBIDO POR", 1)
+        if not data['recibido_por']:
+            data['recibido_por'] = extract_below("RECIBIDO POR", 2)
+        rp = data.get('recibido_por', '')
+        if rp and ('www.' in rp.lower() or 'http' in rp.lower() or '@' in rp or 'laboratorio' in rp.lower()):
+            data['recibido_por'] = ''  # Discard, it's the footer
 
         # Muestras
         # Find header row for table, looks for "ITEM" or "CÓDIGO LEM"
         header_row = 0
-        for row in ws.iter_rows(min_row=15, max_row=30, values_only=False):
+        col_map = {}
+        
+        # Scan for header row and map columns
+        min_r = 15
+        for idx, row in enumerate(ws.iter_rows(min_row=min_r, max_row=40, values_only=False)):
+             current_row_idx = min_r + idx
+             row_values = []
+             col_map = {} # Reset per row
+             
              for cell in row:
-                 if str(cell.value).strip().upper() in ["ITEM", "CÓDIGO LEM", "DESCRIPCIÓN DE LA MUESTRA"]:
-                     header_row = cell.row
-                     break
-             if header_row > 0: break
+                 cval = str(cell.value).strip().upper()
+                 row_values.append(cval)
+                 
+                 # Map columns if header candidate found
+                 if "ITEM" in cval: 
+                     col_map["ITEM"] = cell.column
+                 if "CODIGO" in cval or "CÓDIGO" in cval or "LEM" in cval:
+                     col_map["LEM"] = cell.column
+                 if "DESCRIPCI" in cval or "IDENTIFICA" in cval:
+                     col_map["IDENT"] = cell.column
+                 if "ESTRUCTURA" in cval:
+                     col_map["ESTRUCTURA"] = cell.column
+                 if "F'C" in cval or "FC" in cval:
+                     col_map["FC"] = cell.column
+                 if "MOLDEO" in cval and "FECHA" in cval:
+                     col_map["FECHA_MOLDEO"] = cell.column
+                 if "MOLDEO" in cval and "HORA" in cval:
+                     col_map["HORA_MOLDEO"] = cell.column
+                 if "EDAD" in cval:
+                     col_map["EDAD"] = cell.column
+                 if "ROTURA" in cval:
+                     col_map["FECHA_ROTURA"] = cell.column
+                 if "DENSIDAD" in cval:
+                     col_map["DENSIDAD"] = cell.column
+
+             # Check if this row looks like a header (has critical fields)
+             if "ITEM" in col_map or "LEM" in col_map:
+                 header_row = current_row_idx
+                 print(f"[DEBUG] Found Table Header at Row {header_row}. Map: {col_map}")
+                 break
         
         muestras = []
         if header_row > 0:
             start_row = header_row + 1
+            
+            # Fix: Detect two-row headers (e.g. Row 21: N°/LEM, Row 22: Estructura/F'c/Edad)
+            # Check if start_row still contains header-like text instead of data
+            second_header_keywords = {"ESTRUCTURA", "CODIGO", "CÓDIGO", "EDAD", "F'C", "FC", "MOLDEO", "ROTURA", "DENSIDAD"}
+            is_second_header = False
+            sub_header_col_map = {}
+            for check_cell in ws.iter_rows(min_row=start_row, max_row=start_row, max_col=20, values_only=False):
+                for c in check_cell:
+                    if isinstance(c.value, str):
+                        v = str(c.value).strip().upper()
+                        for kw in second_header_keywords:
+                            if kw in v:
+                                is_second_header = True
+                                # Map columns from this sub-header row too
+                                if "ESTRUCTURA" in v:
+                                    sub_header_col_map["ESTRUCTURA"] = c.column
+                                if "F'C" in v or ("FC" in v and "IDENTIFICAC" not in v):
+                                    sub_header_col_map["FC"] = c.column
+                                if "MOLDEO" in v and "FECHA" in v:
+                                    sub_header_col_map["FECHA_MOLDEO"] = c.column
+                                if "MOLDEO" in v and "HORA" in v:
+                                    sub_header_col_map["HORA_MOLDEO"] = c.column
+                                if "EDAD" in v:
+                                    sub_header_col_map["EDAD"] = c.column
+                                if "ROTURA" in v:
+                                    sub_header_col_map["FECHA_ROTURA"] = c.column
+                                if "DENSIDAD" in v:
+                                    sub_header_col_map["DENSIDAD"] = c.column
+                                if "CODIGO" in v or "CÓDIGO" in v:
+                                    sub_header_col_map["IDENT"] = c.column
+                                break
+            
+            if is_second_header:
+                print(f"[DEBUG] Two-row header detected. Sub-header at Row {start_row}. Extra map: {sub_header_col_map}")
+                # Merge sub-header columns into main col_map (sub-header takes priority)
+                col_map.update(sub_header_col_map)
+                start_row += 1  # Skip the second header row
+            
+            # Default fallback columns if not mapped (legacy behavior)
+            # Layout assumption: B=2 (LEM), D=4 (Ident), E=5 (Estructura), F=6 (fc), G=7 (FM), H=8 (HM), I=9 (Edad), J=10 (FR), K=11 (Dens)
+            c_lem = col_map.get("LEM", 2)
+            c_ident = col_map.get("IDENT", 4)
+            c_est = col_map.get("ESTRUCTURA", 5)
+            c_fc = col_map.get("FC", 6)
+            c_fm = col_map.get("FECHA_MOLDEO", 7)
+            c_hm = col_map.get("HORA_MOLDEO", 8)
+            c_edad = col_map.get("EDAD", 9)
+            c_fr = col_map.get("FECHA_ROTURA", 10)
+            c_dens = col_map.get("DENSIDAD", 11)
+
             # Iterate until empty
             for r in range(start_row, 300):
-                # Standard Layout assumption:
-                # B: LEM
-                # D: Ident/Desc
-                # E: Estructura
-                # F: f'c
-                # G: Fecha Moldeo
-                # H: Hora Moldeo
-                # I: Edad
-                # J: Fecha Rotura
-                # K: Densidad
-                
-                lem = get_val(r, 2)
-                ident = get_val(r, 4)
+                lem = get_val(r, c_lem)
+                ident = get_val(r, c_ident)
                 
                 # Stop conditions
                 first_col_val = get_val(r, 1) or ""
-                if "NOTA" in str(first_col_val).upper(): break
-                if "OBSERVACIONES" in str(ident).upper(): break
+                # Check for Footer Labels
+                fcv_str = str(first_col_val).strip().upper()
+                if "NOTA" in fcv_str or "OBSERVACIONES" in fcv_str: break
                 
+                # Also check if Column 2 (LEM) has "NOTA" or "OBSERVACIONES" (sometimes merged)
+                lem_str = safe_str(lem).upper()
+                if "NOTA" in lem_str or "OBSERVACIONES" in lem_str: break
+
                 if not lem and not ident:
-                    # Check next row to be sure
-                    if not get_val(r+1, 4): break
+                    # Check next row to be sure (empty row tolerance)
+                    if not get_val(r+1, c_ident): break
                     continue
 
                 m = {
                     "codigo_muestra_lem": safe_str(lem),
                     "identificacion_muestra": safe_str(ident),
-                    "estructura": safe_str(get_val(r, 5)),
+                    "estructura": safe_str(get_val(r, c_est)),
                     "fc_kg_cm2": 210, # Default
-                    "fecha_moldeo": safe_str(get_val(r, 7)),
-                    "hora_moldeo": safe_str(get_val(r, 8)),
+                    "fecha_moldeo": safe_str(get_val(r, c_fm)),
+                    "hora_moldeo": safe_str(get_val(r, c_hm)),
                     "edad": 7, # Default
-                    "fecha_rotura": safe_str(get_val(r, 10)),
-                    "requiere_densidad": "SI" in safe_str(get_val(r, 11)).upper()
+                    "fecha_rotura": safe_str(get_val(r, c_fr)),
+                    "requiere_densidad": "SI" in safe_str(get_val(r, c_dens)).upper()
                 }
                 
                 # Parse numbers safely
                 try: 
-                    v = get_val(r, 6)
+                    v = get_val(r, c_fc)
                     if v: m["fc_kg_cm2"] = float(v)
                 except: pass
                 
                 try:
-                    v = get_val(r, 9)
+                    v = get_val(r, c_edad)
                     if v: m["edad"] = int(v)
                 except: pass
                 
                 muestras.append(m)
+        else:
+            print("[DEBUG] Table Header NOT FOUND")
         
         data['muestras'] = muestras
         return data
