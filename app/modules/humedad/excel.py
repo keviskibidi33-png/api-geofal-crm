@@ -149,6 +149,29 @@ def _set_cell(
         cell.set("s", style)
 
 
+def _get_cell_style(sheet_data: etree._Element, ref: str) -> str | None:
+    """Obtiene style id (atributo s) de una celda existente."""
+    ns = NS_SHEET
+    col, row_num = _parse_cell_ref(ref)
+    for row in sheet_data.findall(f"{{{ns}}}row"):
+        if row.get("r") != str(row_num):
+            continue
+        for cell in row.findall(f"{{{ns}}}c"):
+            if cell.get("r") == ref:
+                return cell.get("s")
+    return None
+
+
+def _set_cell_style(sheet_data: etree._Element, ref: str, style_id: str | None) -> None:
+    """Aplica style id a una celda (la crea si no existe)."""
+    if not style_id:
+        return
+    _, row_num = _parse_cell_ref(ref)
+    row = _find_or_create_row(sheet_data, row_num)
+    cell = _find_or_create_cell(row, ref)
+    cell.set("s", style_id)
+
+
 # ── Shape text injection ──────────────────────────────────────────────────────
 
 def _inject_shape_text(drawing_xml: bytes, labels: dict[str, str]) -> bytes:
@@ -326,6 +349,11 @@ def _fill_sheet(
     if sd is None:
         return sheet_xml
 
+    # Tomar estilos centrados del template para reutilizarlos sin hardcode.
+    # I31 suele ser centro para N° de ensayo y I37 centro para valores numéricos.
+    centered_style_general = _get_cell_style(sd, "I31")
+    centered_style_numeric = _get_cell_style(sd, "I37") or centered_style_general
+
     # ── Condiciones del ensayo (rows 18-21, col J) ─────────────────────
     _set_cell(sd, "J18", data.condicion_masa_menor)
     _set_cell(sd, "J19", data.condicion_capas)
@@ -378,6 +406,12 @@ def _fill_sheet(
         _set_cell(sd, "I39", humedad, is_number=True)
     else:
         _set_cell(sd, "I39", "-")
+
+    # Forzar centrado visual en la columna ENSAYO (I31:I39).
+    # El template trae I32:I36 con alineación derecha; aquí los homogeneizamos.
+    _set_cell_style(sd, "I31", centered_style_general)
+    for ref in ("I32", "I33", "I34", "I35", "I36", "I37", "I38", "I39"):
+        _set_cell_style(sd, ref, centered_style_numeric)
 
     # ── Método A — Tamaños (rows 43-45) ────────────────────────────────
     _set_cell(sd, "B43", data.metodo_a_tamano_1)
