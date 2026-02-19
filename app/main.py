@@ -34,11 +34,13 @@ from app.modules.verificacion.router import router as verificacion_router
 from app.modules.compresion.router import router as compresion_router
 from app.modules.tracing.router import router as tracing_router
 from app.modules.humedad.router import router as humedad_router
+from app.modules.cbr.router import router as cbr_router
 from app.modules.recepcion.models import Base as RecepcionBase
 from app.modules.verificacion.models import Base as VerificacionBase
 from app.modules.tracing.models import Trazabilidad
 from app.modules.compresion.models import EnsayoCompresion, ItemCompresion
 from app.modules.humedad.models import HumedadEnsayo
+from app.modules.cbr.models import CBREnsayo
 from app.database import engine
 from app.auth import JWTAuthMiddleware
 
@@ -123,6 +125,7 @@ def _get_cors_origins() -> list[str]:
         "https://compresion.geofal.com.pe",
         "https://laboratorio.geofal.com.pe", # Added just in case
         "https://humedad.geofal.com.pe",
+        "https://cbr.geofal.com.pe",
     ]
     raw = os.getenv("QUOTES_CORS_ORIGINS")
     if raw:
@@ -156,7 +159,7 @@ app.add_middleware(
     allow_credentials=_allow_creds,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
-    expose_headers=["Content-Disposition", "X-Humedad-Id", "X-Storage-Object-Key"],
+    expose_headers=["Content-Disposition", "X-Humedad-Id", "X-CBR-Id", "X-Storage-Object-Key"],
     max_age=3600,
 )
  
@@ -231,6 +234,7 @@ app.include_router(verificacion_router)
 app.include_router(compresion_router)
 app.include_router(tracing_router)
 app.include_router(humedad_router)
+app.include_router(cbr_router)
 
 # Note: All legacy endpoints for Quotes and Programacion have been moved to their respective modules.
 # Check app/modules/cotizacion and app/modules/programacion.
