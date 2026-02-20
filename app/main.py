@@ -2,6 +2,7 @@ from __future__ import annotations
  
 import io
 import json # Added by user
+import logging
 import os
 import re
 import zipfile
@@ -43,6 +44,8 @@ from app.modules.humedad.models import HumedadEnsayo
 from app.modules.cbr.models import CBREnsayo
 from app.database import engine
 from app.auth import JWTAuthMiddleware
+
+logger = logging.getLogger(__name__)
 
 # Ensure tables are created
 RecepcionBase.metadata.create_all(bind=engine)
@@ -145,8 +148,7 @@ _allow_creds = "*" not in _origins and len(_origins) > 0
 # Regex to allow any geofal subdomain (prod)
 _origin_regex = r"https://.*\.geofal\.com\.pe"
 
-print(f"DEBUG: CORS Origins: {_origins}")
-print(f"DEBUG: Allow Credentials: {_allow_creds}")
+logger.info("CORS configured: origins=%s allow_credentials=%s", _origins, _allow_creds)
 
 # JWT Auth Middleware
 app.add_middleware(JWTAuthMiddleware)

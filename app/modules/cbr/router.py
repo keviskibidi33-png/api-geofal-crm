@@ -350,6 +350,5 @@ async def generar_excel_cbr(
         raise
     except Exception as e:
         db.rollback()
-        import traceback
-        traceback.print_exc()
+        logger.exception("Error inesperado en generar_excel_cbr")
         raise HTTPException(status_code=500, detail=f"Error generando Excel CBR: {str(e)}")

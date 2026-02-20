@@ -14,6 +14,7 @@ All other routes require a valid Supabase JWT token.
 from __future__ import annotations
 
 import os
+import logging
 from typing import Optional
 
 import jwt
@@ -58,6 +59,7 @@ PUBLIC_PREFIXES = (
 # ── Bearer token extractor ─────────────────────────────────────────
 
 security = HTTPBearer(auto_error=False)
+logger = logging.getLogger(__name__)
 
 
 def _decode_token(token: str) -> dict:
@@ -65,7 +67,7 @@ def _decode_token(token: str) -> dict:
     secret = _get_jwt_secret()
     if not secret:
         if _allow_insecure_dev_auth():
-            print("[AUTH] WARNING: SUPABASE_JWT_SECRET not set — insecure dev auth bypass enabled")
+            logger.warning("SUPABASE_JWT_SECRET not set — insecure dev auth bypass enabled")
             return {"sub": "anonymous", "role": "anon"}
         raise HTTPException(
             status_code=500,
@@ -127,7 +129,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         secret = _get_jwt_secret()
         if not secret:
             if _allow_insecure_dev_auth():
-                print("[AUTH] WARNING: SUPABASE_JWT_SECRET not set — insecure dev auth bypass enabled")
+                logger.warning("SUPABASE_JWT_SECRET not set — insecure dev auth bypass enabled")
                 return await call_next(request)
             return JSONResponse(
                 status_code=500,
