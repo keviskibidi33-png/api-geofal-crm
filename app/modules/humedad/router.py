@@ -226,10 +226,11 @@ def _normalize_footer_text(value: str | None, fallback: str) -> str:
 
 
 def _apply_footer_defaults(payload: HumedadRequest) -> None:
+    fecha_base = _normalize_footer_text(payload.fecha_ensayo, "")
     payload.revisado_por = _normalize_footer_text(payload.revisado_por, "FABIAN LA ROSA")
-    payload.revisado_fecha = _normalize_footer_text(payload.revisado_fecha, "-")
+    payload.revisado_fecha = _normalize_footer_text(payload.revisado_fecha, fecha_base)
     payload.aprobado_por = _normalize_footer_text(payload.aprobado_por, "IRMA COAQUIRA")
-    payload.aprobado_fecha = _normalize_footer_text(payload.aprobado_fecha, "-")
+    payload.aprobado_fecha = _normalize_footer_text(payload.aprobado_fecha, fecha_base)
 
 
 def _guardar_ensayo(
