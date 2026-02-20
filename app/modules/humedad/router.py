@@ -152,6 +152,19 @@ def _is_selected(value: str | None) -> bool:
     return _has_text_value(value) and str(value).strip() != "-"
 
 
+def _resolve_metodo_prueba(payload: HumedadRequest) -> str:
+    metodo = (payload.metodo_prueba or "-").strip().upper()
+    if metodo in {"A", "B"}:
+        return metodo
+    if payload.metodo_a and not payload.metodo_b:
+        return "A"
+    if payload.metodo_b and not payload.metodo_a:
+        return "B"
+    if payload.metodo_a and payload.metodo_b:
+        return "A"
+    return "-"
+
+
 def _is_payload_completo(payload: HumedadRequest, contenido_humedad: float | None) -> bool:
     """
     Determina si el registro puede marcarse como COMPLETO.
@@ -165,6 +178,7 @@ def _is_payload_completo(payload: HumedadRequest, contenido_humedad: float | Non
         payload.tipo_muestra,
         payload.condicion_muestra,
         payload.tamano_maximo_particula,
+        payload.forma_particula,
         payload.recipiente_numero,
     ]
     if not all(_has_text_value(v) for v in required_text_fields):
@@ -186,8 +200,8 @@ def _is_payload_completo(payload: HumedadRequest, contenido_humedad: float | Non
     if payload.condicion_excluido == "SI" and not _has_text_value(payload.descripcion_material_excluido):
         return False
 
-    # Al menos un método debe estar marcado.
-    if not payload.metodo_a and not payload.metodo_b:
+    # Método de prueba debe seleccionarse (A/B).
+    if _resolve_metodo_prueba(payload) not in {"A", "B"}:
         return False
 
     required_numeric = [

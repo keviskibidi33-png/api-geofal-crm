@@ -3,7 +3,7 @@ Pydantic schemas for Humedad (Moisture Content) test — ASTM D2216-19.
 """
 
 import re
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional, Literal
 from datetime import datetime
 
@@ -87,10 +87,19 @@ def _normalize_numero_ot(raw: str) -> str:
     return value
 
 
+def _normalize_alnum_text(raw: str) -> str:
+    """Permite solo letras, números y espacios (incluye caracteres en español)."""
+    value = raw.strip()
+    if not value:
+        return value
+    cleaned = re.sub(r"[^0-9A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s]", "", value)
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
 class HumedadRequest(BaseModel):
     """Payload para generar el Excel de Contenido de Humedad."""
 
-    # ── Encabezado (row 12 — dentro de shapes sin relleno) ─────────────
+    # ── Encabezado (row 11) ─────────────────────────────────────────────
     muestra: str = Field(..., description="Identificación de la muestra")
     numero_ot: str = Field(..., description="Número de Orden de Trabajo")
     fecha_ensayo: str = Field(..., description="Fecha del ensayo (DD/MM/YYYY)")
@@ -118,12 +127,14 @@ class HumedadRequest(BaseModel):
         description="Descripción del material excluido de la muestra (A22).",
     )
 
-    # ── Descripción de la muestra (rows 25-27) ─────────────────────────
+    # ── Descripción de la muestra (rows 25-28) ─────────────────────────
     tipo_muestra: Optional[str] = Field(None, description="Tipo de muestra (E-F 25)")
     condicion_muestra: Optional[str] = Field(None, description="Condición de la muestra (E-F 26)")
     tamano_maximo_particula: Optional[str] = Field(None, description="Tamaño máx. partícula visual (in) (E-F 27)")
+    forma_particula: Optional[str] = Field(None, description="Forma de la partícula (E-F 28)")
 
-    # ── Método - Marque X (rows 26-27, col J) ──────────────────────────
+    # ── Método de prueba (row 26, col J) ───────────────────────────────
+    metodo_prueba: Literal["-", "A", "B"] = Field(default="-", description='Método seleccionado en J26 ("A" o "B")')
     metodo_a: bool = Field(default=False, description="Marcar X en Método A")
     metodo_b: bool = Field(default=False, description="Marcar X en Método B")
 
@@ -190,6 +201,13 @@ class HumedadRequest(BaseModel):
             return value
         return _normalize_numero_ot(str(value))
 
+    @field_validator("forma_particula", mode="before")
+    @classmethod
+    def normalize_forma_particula(cls, value):
+        if value is None:
+            return value
+        return _normalize_alnum_text(str(value))
+
     @field_validator("fecha_ensayo", "revisado_fecha", "aprobado_fecha", mode="before")
     @classmethod
     def normalize_fechas(cls, value):
@@ -199,6 +217,25 @@ class HumedadRequest(BaseModel):
         if not text:
             return text
         return _normalize_flexible_date(text)
+
+    @model_validator(mode="after")
+    def sync_metodo_flags(self):
+        """Mantiene consistencia entre dropdown metodo_prueba y flags legacy metodo_a/metodo_b."""
+        metodo = (self.metodo_prueba or "-").upper()
+        if metodo not in {"A", "B"}:
+            if self.metodo_a and not self.metodo_b:
+                metodo = "A"
+            elif self.metodo_b and not self.metodo_a:
+                metodo = "B"
+            elif self.metodo_a and self.metodo_b:
+                metodo = "A"
+            else:
+                metodo = "-"
+
+        self.metodo_prueba = metodo
+        self.metodo_a = metodo == "A"
+        self.metodo_b = metodo == "B"
+        return self
 
 
 class HumedadEnsayoResponse(BaseModel):

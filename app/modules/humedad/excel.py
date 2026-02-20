@@ -172,6 +172,19 @@ def _set_cell_style(sheet_data: etree._Element, ref: str, style_id: str | None) 
     cell.set("s", style_id)
 
 
+def _resolve_metodo_value(data: HumedadRequest) -> str:
+    metodo = (data.metodo_prueba or "-").strip().upper()
+    if metodo in {"A", "B"}:
+        return metodo
+    if data.metodo_a and not data.metodo_b:
+        return "A"
+    if data.metodo_b and not data.metodo_a:
+        return "B"
+    if data.metodo_a and data.metodo_b:
+        return "A"
+    return ""
+
+
 # ── Shape text injection ──────────────────────────────────────────────────────
 
 def _inject_shape_text(drawing_xml: bytes, labels: dict[str, str]) -> bytes:
@@ -353,23 +366,13 @@ def _fill_sheet(
     # I31 suele ser centro para N° de ensayo y I37 centro para valores numéricos.
     centered_style_general = _get_cell_style(sd, "I31")
     centered_style_numeric = _get_cell_style(sd, "I37") or centered_style_general
-    # E10/G10/I10 son labels del encabezado con alineación centrada (sin bordes).
-    header_centered_style = (
-        _get_cell_style(sd, "E10")
-        or _get_cell_style(sd, "G10")
-        or _get_cell_style(sd, "I10")
-        or centered_style_general
-    )
 
-    # ── Encabezado principal (fila 12) ──────────────────────────────────
-    # Nuevo mapeo sin rectángulos/shapes:
-    #   Muestra -> D12, N° OT -> E12, Fecha ensayo -> G12, Realizado -> I12
-    _set_cell(sd, "D12", data.muestra)
-    _set_cell(sd, "E12", data.numero_ot)
-    _set_cell(sd, "G12", data.fecha_ensayo)
-    _set_cell(sd, "I12", data.realizado_por)
-    for ref in ("D12", "E12", "G12", "I12"):
-        _set_cell_style(sd, ref, header_centered_style)
+    # ── Encabezado principal (fila 11) ──────────────────────────────────
+    #   Muestra -> D11, N° OT -> E11, Fecha ensayo -> G11, Realizado -> I11
+    _set_cell(sd, "D11", data.muestra)
+    _set_cell(sd, "E11", data.numero_ot)
+    _set_cell(sd, "G11", data.fecha_ensayo)
+    _set_cell(sd, "I11", data.realizado_por)
 
     # ── Condiciones del ensayo (rows 18-21, col J) ─────────────────────
     _set_cell(sd, "J18", data.condicion_masa_menor)
@@ -379,14 +382,16 @@ def _fill_sheet(
     if data.descripcion_material_excluido:
         _set_cell(sd, "A22", f"Descripción material excluido: {data.descripcion_material_excluido}")
 
-    # ── Descripción muestra (rows 25-27, merged E-F) ──────────────────
+    # ── Descripción muestra (rows 25-28, merged E-F) ──────────────────
     _set_cell(sd, "E25", data.tipo_muestra)
     _set_cell(sd, "E26", data.condicion_muestra)
     _set_cell(sd, "E27", data.tamano_maximo_particula)
+    _set_cell(sd, "E28", data.forma_particula)
 
-    # ── Método — Marque X (rows 26-27, col J) ─────────────────────────
-    _set_cell(sd, "J26", "X" if data.metodo_a else "")
-    _set_cell(sd, "J27", "X" if data.metodo_b else "")
+    # ── Método — "A" o "B" (row 26, col J) ────────────────────────────
+    _set_cell(sd, "J26", _resolve_metodo_value(data))
+    # J27 quedó fuera del nuevo diseño; se limpia para evitar residuos visuales.
+    _set_cell(sd, "J27", "")
 
     # ── Datos de ensayo (rows 31-39, col I) ────────────────────────────
     # Reforzar columna UND para evitar pérdidas por cambios visuales de plantilla.
