@@ -206,6 +206,18 @@ def _build_numero_ensayo(payload: HumedadRequest) -> str:
     return f"{payload.numero_ot}-{ensayo}"
 
 
+def _normalize_footer_text(value: str | None, fallback: str) -> str:
+    text = (value or "").replace("\t", "\n").strip()
+    return text or fallback
+
+
+def _apply_footer_defaults(payload: HumedadRequest) -> None:
+    payload.revisado_por = _normalize_footer_text(payload.revisado_por, "FABIAN LA ROSA")
+    payload.revisado_fecha = _normalize_footer_text(payload.revisado_fecha, "-")
+    payload.aprobado_por = _normalize_footer_text(payload.aprobado_por, "IRMA COAQUIRA")
+    payload.aprobado_fecha = _normalize_footer_text(payload.aprobado_fecha, "-")
+
+
 def _guardar_ensayo(
     db: Session,
     payload: HumedadRequest,
@@ -334,6 +346,7 @@ async def generar_excel_humedad(
     """
     try:
         _ensure_payload_column(db)
+        _apply_footer_defaults(payload)
         excel_bytes = generate_humedad_excel(payload)
 
         today = date.today()

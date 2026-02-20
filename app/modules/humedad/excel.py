@@ -512,6 +512,8 @@ def _fill_drawing(drawing_xml: bytes, data: HumedadRequest) -> bytes:
                 continue
             text = t_el.text.strip()
             if text in replacements and replacements[text]:
-                t_el.text = f"{text} {replacements[text]}"
+                # Keep label and value on separate lines (Enter), avoiding inline/tab-like rendering.
+                t_el.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+                t_el.text = f"{text}\n{replacements[text]}"
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
