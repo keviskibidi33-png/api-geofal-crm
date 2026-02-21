@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Response, UploadFile, File, Query
 from psycopg2.extras import RealDictCursor
-from datetime import date, datetime
+from datetime import date
 from typing import List, Optional
 import io
 import json
@@ -378,43 +378,24 @@ async def update_quote(quote_id: str, payload: QuoteExportRequest):
             if not existing:
                 raise HTTPException(status_code=404, detail="Quote not found")
         
-        # 2. Texts
-        condiciones_textos = get_condiciones_textos(payload.condiciones_ids) if payload.condiciones_ids else []
-        
-        # 3. Generate Excel
-        export_data = {
-            "cotizacion_numero": existing['numero'],
-            "fecha_emision": payload.fecha_emision or datetime.now().strftime("%Y-%m-%d"),
-            "fecha_solicitud": payload.fecha_solicitud or datetime.now().strftime("%Y-%m-%d"),
-            "cliente": payload.cliente or "",
-            "ruc": payload.ruc or "",
-            "contacto": payload.contacto or "",
-            "telefono": payload.telefono_contacto or "",
-            "telefono_contacto": payload.telefono_contacto or "",
-            "email": payload.correo or "",
-            "correo": payload.correo_vendedor or payload.correo or "",
-            "proyecto": payload.proyecto or "",
-            "ubicacion": payload.ubicacion or "",
-            "personal_comercial": payload.personal_comercial or "",
-            "telefono_comercial": payload.telefono_comercial or "",
-            "plazo_dias": payload.plazo_dias or 0,
-            "condicion_pago": payload.condicion_pago or "",
-            "condiciones_textos": condiciones_textos,
-            "items": [
-                {
-                    "codigo": it.codigo or "",
-                    "descripcion": it.descripcion or "",
-                    "norma": it.norma or "",
-                    "acreditado": it.acreditado or "NO",
-                    "cantidad": it.cantidad,
-                    "costo_unitario": it.costo_unitario,
-                }
-                for it in payload.items
-            ],
-            'include_igv': payload.include_igv,
-            'igv_rate': payload.igv_rate,
-        }
-        
+        # 2. Resolver número de cotización editable en modo actualización.
+        target_numero = (payload.cotizacion_numero or "").strip() or existing["numero"]
+        if target_numero != existing["numero"]:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT id FROM cotizaciones WHERE year = %s AND numero = %s AND id <> %s LIMIT 1",
+                    (existing["year"], target_numero, quote_id),
+                )
+                duplicate = cur.fetchone()
+            if duplicate:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Ya existe una cotización con número {target_numero} en el año {existing['year']}.",
+                )
+
+        # El exportador toma este valor para el encabezado y nombre del archivo.
+        payload.cotizacion_numero = target_numero
+
         # 3. Generate Excel
         xlsx_bytes = generate_quote_excel(payload)
         
@@ -428,7 +409,7 @@ async def update_quote(quote_id: str, payload: QuoteExportRequest):
         year = existing['year']
         year_folder = QUOTES_FOLDER / str(year)
         year_folder.mkdir(parents=True, exist_ok=True)
-        filepath = year_folder / f"COT-{year}-{existing['numero']}.xlsx"
+        filepath = year_folder / f"COT-{year}-{target_numero}.xlsx"
         
         xlsx_bytes.seek(0)
         with open(filepath, "wb") as f:
@@ -436,9 +417,9 @@ async def update_quote(quote_id: str, payload: QuoteExportRequest):
             
         # 5. DB Update (Sanitize key)
         safe_cliente_cloud = _get_safe_filename(payload.cliente or "S-N", None)
-        cloud_path = f"{year}/COT-{year}-{existing['numero']}-{safe_cliente_cloud}.xlsx"
+        cloud_path = f"{year}/COT-{year}-{target_numero}-{safe_cliente_cloud}.xlsx"
         
-        await asyncio.to_thread(update_quote_db, quote_id, payload, str(filepath), cloud_path)
+        await asyncio.to_thread(update_quote_db, quote_id, payload, str(filepath), cloud_path, target_numero)
         
         # 6. Storage Update (best-effort)
         try:
@@ -446,10 +427,19 @@ async def update_quote(quote_id: str, payload: QuoteExportRequest):
             await asyncio.to_thread(
                 _upload_to_supabase_storage, xlsx_bytes, "cotizaciones", cloud_path
             )
+            old_object_key = existing.get("object_key")
+            if old_object_key and old_object_key != cloud_path:
+                await asyncio.to_thread(_delete_from_supabase_storage, "cotizaciones", old_object_key)
         except Exception as e:
             print(f"Error updating storage: {e}")
                 
-        return {"success": True, "message": "Quote updated successfully", "quote_id": quote_id}
+        return {
+            "success": True,
+            "message": "Quote updated successfully",
+            "quote_id": quote_id,
+            "numero": target_numero,
+            "year": year,
+        }
             
     except HTTPException:
         raise

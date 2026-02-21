@@ -287,7 +287,13 @@ def register_quote_in_db(cotizacion_numero: str, year: int, cliente: str, filepa
     finally:
         conn.close()
 
-def update_quote_db(quote_id: str, payload: QuoteExportRequest, filepath: str, object_key: str = None):
+def update_quote_db(
+    quote_id: str,
+    payload: QuoteExportRequest,
+    filepath: str,
+    object_key: str = None,
+    numero: str | None = None,
+):
     if not _has_database_url():
         return
     
@@ -311,7 +317,8 @@ def update_quote_db(quote_id: str, payload: QuoteExportRequest, filepath: str, o
         with conn.cursor() as cur:
             cur.execute("""
                 UPDATE cotizaciones
-                SET cliente_nombre = %s, cliente_ruc = %s, cliente_contacto = %s, cliente_telefono = %s, cliente_email = %s,
+                SET numero = %s,
+                    cliente_nombre = %s, cliente_ruc = %s, cliente_contacto = %s, cliente_telefono = %s, cliente_email = %s,
                     proyecto = %s, ubicacion = %s, personal_comercial = %s, telefono_comercial = %s,
                     items_json = %s, total = %s,
                     fecha_emision = %s, fecha_solicitud = %s, archivo_path = %s,
@@ -321,6 +328,7 @@ def update_quote_db(quote_id: str, payload: QuoteExportRequest, filepath: str, o
                     object_key = %s
                 WHERE id = %s
             """, (
+                (numero or payload.cotizacion_numero or ""),
                 payload.cliente, payload.ruc, payload.contacto, payload.telefono_contacto, payload.correo,
                 payload.proyecto, payload.ubicacion, payload.personal_comercial, payload.telefono_comercial,
                 items_json, total,
