@@ -465,7 +465,24 @@ def _fill_sheet(
     # ── Observaciones (D52) ────────────────────────────────────────────
     _set_cell(sd, "D52", data.observaciones)
 
+    _strip_interactive_validations(root)
+
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
+def _strip_interactive_validations(worksheet_root: etree._Element) -> None:
+    """
+    El reporte exportado debe quedar sin dropdowns de validación.
+    Se eliminan dataValidations heredadas del template para evitar
+    botones de selección en el Excel final.
+    """
+    if worksheet_root is None:
+        return
+
+    for validation_node in worksheet_root.xpath(".//*[local-name()='dataValidations']"):
+        parent = validation_node.getparent()
+        if parent is not None:
+            parent.remove(validation_node)
 
 
 def _fill_drawing(drawing_xml: bytes, data: HumedadRequest) -> bytes:
