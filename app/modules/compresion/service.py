@@ -3,7 +3,7 @@ import requests
 import io
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
-from typing import List, Optional
+from typing import Any, List, Optional
 from datetime import datetime
 from .models import EnsayoCompresion, ItemCompresion
 from .schemas import EnsayoCompresionCreate, EnsayoCompresionUpdate, CompressionExportRequest, CompressionItem
@@ -58,6 +58,70 @@ class CompresionService:
         except Exception as e:
             print(f"Upload error: {e}")
             return None
+
+    @staticmethod
+    def _item_to_dict(item: Any) -> dict:
+        if isinstance(item, dict):
+            return dict(item)
+        if hasattr(item, "model_dump"):
+            return item.model_dump()
+        if hasattr(item, "dict"):
+            return item.dict()
+        return {}
+
+    @staticmethod
+    def _is_placeholder_codigo_lem(codigo: Optional[str]) -> bool:
+        normalized = (codigo or "").strip().upper()
+        if normalized in {"", "-", "NA", "N/A"}:
+            return True
+        return bool(re.fullmatch(r"X{2,}(?:-CO(?:-\d{2})?)?", normalized))
+
+    @classmethod
+    def _item_tiene_datos(cls, item: Any) -> bool:
+        data = cls._item_to_dict(item)
+        if not data:
+            return False
+
+        codigo = (data.get("codigo_lem") or "").strip().upper()
+        tiene_codigo_util = not cls._is_placeholder_codigo_lem(codigo)
+
+        text_fields = [
+            "fecha_ensayo_programado",
+            "fecha_ensayo",
+            "hora_ensayo",
+            "tipo_fractura",
+            "defectos",
+            "realizado",
+            "revisado",
+            "fecha_revisado",
+            "aprobado",
+            "fecha_aprobado",
+        ]
+
+        tiene_texto = any((str(data.get(field) or "").strip() != "") for field in text_fields)
+        if tiene_codigo_util or tiene_texto:
+            return True
+
+        numeric_fields = ["carga_maxima", "diametro", "area"]
+        return any(
+            data.get(field) is not None and str(data.get(field)).strip() != ""
+            for field in numeric_fields
+        )
+
+    @classmethod
+    def _sanitize_items(cls, items_data: Optional[List[Any]]) -> List[dict]:
+        sanitized: List[dict] = []
+
+        for item in (items_data or []):
+            data = cls._item_to_dict(item)
+            if not cls._item_tiene_datos(data):
+                continue
+
+            data["item"] = len(sanitized) + 1
+            data["codigo_lem"] = (data.get("codigo_lem") or "").strip().upper()
+            sanitized.append(data)
+
+        return sanitized
     
     @staticmethod
     def _calcular_estado(items_data) -> str:
@@ -95,10 +159,12 @@ class CompresionService:
     def crear_ensayo(self, db: Session, ensayo_data: EnsayoCompresionCreate) -> EnsayoCompresion:
         """Create new compression test"""
         try:
+            sanitized_items = self._sanitize_items(ensayo_data.items)
+            if not sanitized_items:
+                raise ValueError("Debe registrar al menos un item válido de ensayo")
+
             # Auto-calculate state from items data
-            estado_calculado = self._calcular_estado(
-                [item.dict() if hasattr(item, 'dict') else item for item in ensayo_data.items]
-            )
+            estado_calculado = self._calcular_estado(sanitized_items)
 
             # Create main ensayo
             ensayo = EnsayoCompresion(
@@ -118,22 +184,22 @@ class CompresionService:
             db.flush()  # Get the ID
             
             # Create items
-            for item_data in ensayo_data.items:
+            for item_data in sanitized_items:
                 item = ItemCompresion(
                     ensayo_id=ensayo.id,
-                    item=item_data.item,
-                    codigo_lem=item_data.codigo_lem,
-                    fecha_ensayo_programado=item_data.fecha_ensayo_programado,
-                    fecha_ensayo=item_data.fecha_ensayo,
-                    hora_ensayo=item_data.hora_ensayo,
-                    carga_maxima=item_data.carga_maxima,
-                    tipo_fractura=item_data.tipo_fractura,
-                    defectos=item_data.defectos,
-                    realizado=item_data.realizado,
-                    revisado=item_data.revisado,
-                    fecha_revisado=item_data.fecha_revisado,
-                    aprobado=item_data.aprobado,
-                    fecha_aprobado=item_data.fecha_aprobado
+                    item=item_data.get("item"),
+                    codigo_lem=item_data.get("codigo_lem"),
+                    fecha_ensayo_programado=item_data.get("fecha_ensayo_programado"),
+                    fecha_ensayo=item_data.get("fecha_ensayo"),
+                    hora_ensayo=item_data.get("hora_ensayo"),
+                    carga_maxima=item_data.get("carga_maxima"),
+                    tipo_fractura=item_data.get("tipo_fractura"),
+                    defectos=item_data.get("defectos"),
+                    realizado=item_data.get("realizado"),
+                    revisado=item_data.get("revisado"),
+                    fecha_revisado=item_data.get("fecha_revisado"),
+                    aprobado=item_data.get("aprobado"),
+                    fecha_aprobado=item_data.get("fecha_aprobado")
                 )
                 db.add(item)
             
@@ -142,7 +208,7 @@ class CompresionService:
                 export_request = CompressionExportRequest(
                     recepcion_numero=ensayo_data.numero_recepcion,
                     ot_numero=ensayo_data.numero_ot,
-                    items=[CompressionItem(**item.dict()) for item in ensayo_data.items],
+                    items=[CompressionItem(**item_data) for item_data in sanitized_items],
                     codigo_equipo=ensayo_data.codigo_equipo,
                     otros=ensayo_data.otros,
                     nota=ensayo_data.nota
@@ -193,34 +259,39 @@ class CompresionService:
         
         # Handle items update if provided
         if ensayo_data.items is not None:
+            sanitized_items = self._sanitize_items(ensayo_data.items)
+            if not sanitized_items:
+                raise ValueError("Debe registrar al menos un item válido de ensayo")
+
             # Delete existing items
             db.query(ItemCompresion).filter(ItemCompresion.ensayo_id == ensayo_id).delete()
             
             # Create new items
-            for item_data in ensayo_data.items:
+            for item_data in sanitized_items:
                 item = ItemCompresion(
                     ensayo_id=ensayo_id,
-                    item=item_data.item,
-                    codigo_lem=item_data.codigo_lem,
-                    fecha_ensayo_programado=item_data.fecha_ensayo_programado,
-                    fecha_ensayo=item_data.fecha_ensayo,
-                    hora_ensayo=item_data.hora_ensayo,
-                    carga_maxima=item_data.carga_maxima,
-                    tipo_fractura=item_data.tipo_fractura,
-                    defectos=item_data.defectos,
-                    realizado=item_data.realizado,
-                    revisado=item_data.revisado,
-                    fecha_revisado=item_data.fecha_revisado,
-                    aprobado=item_data.aprobado,
-                    fecha_aprobado=item_data.fecha_aprobado
+                    item=item_data.get("item"),
+                    codigo_lem=item_data.get("codigo_lem"),
+                    fecha_ensayo_programado=item_data.get("fecha_ensayo_programado"),
+                    fecha_ensayo=item_data.get("fecha_ensayo"),
+                    hora_ensayo=item_data.get("hora_ensayo"),
+                    carga_maxima=item_data.get("carga_maxima"),
+                    tipo_fractura=item_data.get("tipo_fractura"),
+                    defectos=item_data.get("defectos"),
+                    realizado=item_data.get("realizado"),
+                    revisado=item_data.get("revisado"),
+                    fecha_revisado=item_data.get("fecha_revisado"),
+                    aprobado=item_data.get("aprobado"),
+                    fecha_aprobado=item_data.get("fecha_aprobado")
                 )
                 db.add(item)
-        
-        # Recalculate estado based on current items
-        db.flush()  # Ensure items are written
-        estado_nuevo = self._calcular_estado(
-            [{"carga_maxima": i.carga_maxima, "tipo_fractura": i.tipo_fractura} for i in ensayo.items]
-        )
+
+            estado_nuevo = self._calcular_estado(sanitized_items)
+        else:
+            estado_nuevo = self._calcular_estado(
+                [{"carga_maxima": i.carga_maxima, "tipo_fractura": i.tipo_fractura} for i in ensayo.items]
+            )
+
         ensayo.estado = estado_nuevo
 
         db.commit()

@@ -30,6 +30,8 @@ async def crear_ensayo(
         except Exception as e:
             print(f"Error sync trazabilidad: {e}")
         return new_ensayo
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -214,9 +216,19 @@ async def actualizar_ensayo(
     db: Session = Depends(get_db_session)
 ):
     """Actualizar ensayo de compresión"""
-    ensayo = compresion_service.actualizar_ensayo(db, ensayo_id, ensayo_data)
+    try:
+        ensayo = compresion_service.actualizar_ensayo(db, ensayo_id, ensayo_data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     if not ensayo:
         raise HTTPException(status_code=404, detail="Ensayo no encontrado")
+
+    try:
+        from app.modules.tracing.service import TracingService
+        TracingService.actualizar_trazabilidad(db, ensayo.numero_recepcion)
+    except Exception as e:
+        print(f"Error sync trazabilidad on update: {e}")
+
     return ensayo
 
 
