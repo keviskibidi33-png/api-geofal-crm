@@ -155,8 +155,8 @@ def _fill_sheet(sheet_xml: bytes, data: CBRRequest) -> bytes:
     # Encabezado principal (fila 9)
     _set_cell(sd, "D9", data.muestra)
     _set_cell(sd, "F9", data.numero_ot)
-    _set_cell(sd, "I9", data.fecha_ensayo)
-    _set_cell(sd, "L9", data.realizado_por)
+    _set_cell(sd, "H9", data.fecha_ensayo)
+    _set_cell(sd, "K9", data.realizado_por)
 
     # Condiciones generales
     _set_cell(sd, "E14", data.sobretamano_porcentaje, is_number=True)
