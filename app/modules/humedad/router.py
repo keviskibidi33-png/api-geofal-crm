@@ -374,6 +374,38 @@ async def obtener_ensayo_humedad(
     return _to_detalle_response(ensayo)
 
 
+@router.delete("/{ensayo_id}")
+async def eliminar_ensayo_humedad(
+    ensayo_id: int,
+    db: Session = Depends(get_db_session),
+):
+    """
+    Elimina un ensayo de humedad del historial del dashboard y limpia su archivo
+    en Storage cuando existe referencia de bucket/object_key.
+    """
+    _ensure_payload_column(db)
+
+    ensayo = db.query(HumedadEnsayo).filter(HumedadEnsayo.id == ensayo_id).first()
+    if not ensayo:
+        raise HTTPException(status_code=404, detail="Ensayo de humedad no encontrado.")
+
+    bucket = ensayo.bucket
+    object_key = ensayo.object_key
+
+    try:
+        db.delete(ensayo)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Error eliminando ensayo de humedad id=%s", ensayo_id)
+        raise HTTPException(status_code=500, detail="No se pudo eliminar el ensayo de humedad.")
+
+    if bucket and object_key:
+        _delete_from_supabase_storage(bucket, object_key)
+
+    return {"message": "Ensayo de humedad eliminado correctamente", "id": ensayo_id}
+
+
 @router.post("/excel")
 async def generar_excel_humedad(
     payload: HumedadRequest,
