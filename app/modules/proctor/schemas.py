@@ -211,7 +211,7 @@ class ProctorRequest(BaseModel):
     clasificacion_sucs_visual: Optional[str] = None
 
     # Condiciones del ensayo
-    metodo_ensayo: Literal["-", "A", "B"] = "-"
+    metodo_ensayo: Literal["-", "A", "B", "C"] = "-"
     metodo_preparacion: Literal["-", "HUMEDO", "SECO"] = "-"
     tipo_apisonador: Literal["-", "MANUAL", "MECANICO"] = "-"
     contenido_humedad_natural_pct: Optional[float] = None
