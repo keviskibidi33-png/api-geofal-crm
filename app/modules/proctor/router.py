@@ -350,6 +350,38 @@ async def obtener_ensayo_proctor(
     return _to_detalle_response(ensayo)
 
 
+@router.delete("/{ensayo_id}")
+async def eliminar_ensayo_proctor(
+    ensayo_id: int,
+    db: Session = Depends(get_db_session),
+):
+    """
+    Elimina un ensayo de Proctor del historial del dashboard y limpia su archivo
+    en Storage cuando existe referencia de bucket/object_key.
+    """
+    _ensure_payload_column(db)
+
+    ensayo = db.query(ProctorEnsayo).filter(ProctorEnsayo.id == ensayo_id).first()
+    if not ensayo:
+        raise HTTPException(status_code=404, detail="Ensayo Proctor no encontrado.")
+
+    bucket = ensayo.bucket
+    object_key = ensayo.object_key
+
+    try:
+        db.delete(ensayo)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Error eliminando ensayo de Proctor id=%s", ensayo_id)
+        raise HTTPException(status_code=500, detail="No se pudo eliminar el ensayo de Proctor.")
+
+    if bucket and object_key:
+        _delete_from_supabase_storage(bucket, object_key)
+
+    return {"message": "Ensayo de Proctor eliminado correctamente", "id": ensayo_id}
+
+
 @router.post("/excel")
 async def generar_excel_proctor(
     payload: ProctorRequest,
