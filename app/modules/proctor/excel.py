@@ -8,7 +8,6 @@ styles and formulas of the official template.
 import io
 import logging
 import zipfile
-from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -145,61 +144,24 @@ def _get_cell_style_id(sheet_root: etree._Element, ref: str) -> int | None:
     return None
 
 
-def _clone_centered_style(styles_root: etree._Element, source_style_id: int, cache: dict[int, int]) -> int:
-    if source_style_id in cache:
-        return cache[source_style_id]
-
-    cell_xfs = styles_root.find(f".//{{{NS_SHEET}}}cellXfs")
-    if cell_xfs is None:
-        cache[source_style_id] = source_style_id
-        return source_style_id
-
-    if source_style_id < 0 or source_style_id >= len(cell_xfs):
-        cache[source_style_id] = source_style_id
-        return source_style_id
-
-    source_xf = cell_xfs[source_style_id]
-    alignment = source_xf.find(f"{{{NS_SHEET}}}alignment")
-    if alignment is not None and alignment.get("horizontal") == "center" and alignment.get("vertical") == "center":
-        cache[source_style_id] = source_style_id
-        return source_style_id
-
-    cloned_xf = deepcopy(source_xf)
-    for child in list(cloned_xf):
-        if child.tag == f"{{{NS_SHEET}}}alignment":
-            cloned_xf.remove(child)
-
-    aligned = etree.SubElement(cloned_xf, f"{{{NS_SHEET}}}alignment")
-    aligned.set("horizontal", "center")
-    aligned.set("vertical", "center")
-    cloned_xf.set("applyAlignment", "1")
-
-    cell_xfs.append(cloned_xf)
-    new_style_id = len(cell_xfs) - 1
-    cell_xfs.set("count", str(len(cell_xfs)))
-    cache[source_style_id] = new_style_id
-    return new_style_id
-
-
-def _prepare_centered_styles(sheet_xml: bytes, styles_xml: bytes) -> tuple[bytes, dict[str, int]]:
+def _resolve_centered_styles(sheet_xml: bytes) -> dict[str, int]:
     sheet_root = etree.fromstring(sheet_xml)
-    styles_root = etree.fromstring(styles_xml)
-
-    source_by_ref: dict[str, int | None] = {
-        "I41": _get_cell_style_id(sheet_root, "I41") or _get_cell_style_id(sheet_root, "H41"),
-        "H44": _get_cell_style_id(sheet_root, "H44"),
-        "H45": _get_cell_style_id(sheet_root, "H45"),
-    }
-
-    style_cache: dict[int, int] = {}
     style_by_ref: dict[str, int] = {}
-    for ref, source_style_id in source_by_ref.items():
-        if source_style_id is None:
-            continue
-        style_by_ref[ref] = _clone_centered_style(styles_root, source_style_id, style_cache)
 
-    styles_with_centering = etree.tostring(styles_root, xml_declaration=True, encoding="UTF-8", standalone=True)
-    return styles_with_centering, style_by_ref
+    # Reuse existing style ids from template instead of rewriting xl/styles.xml.
+    i41_style = _get_cell_style_id(sheet_root, "H41") or _get_cell_style_id(sheet_root, "I41")
+    if i41_style is not None:
+        style_by_ref["I41"] = i41_style
+
+    h44_style = _get_cell_style_id(sheet_root, "H44")
+    if h44_style is not None:
+        style_by_ref["H44"] = h44_style
+
+    h45_style = _get_cell_style_id(sheet_root, "H45")
+    if h45_style is not None:
+        style_by_ref["H45"] = h45_style
+
+    return style_by_ref
 
 
 def _round(value: float | None, decimals: int = 2) -> float | None:
@@ -222,15 +184,12 @@ def generate_proctor_excel(data: ProctorRequest) -> bytes:
 
     with zipfile.ZipFile(io.BytesIO(template_bytes), "r") as zin, zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zout:
         sheet_original = zin.read("xl/worksheets/sheet1.xml")
-        styles_original = zin.read("xl/styles.xml")
-        styles_xml, centered_style_map = _prepare_centered_styles(sheet_original, styles_original)
+        centered_style_map = _resolve_centered_styles(sheet_original)
         sheet_xml = _fill_sheet(sheet_original, data, centered_style_map)
 
         for item in zin.infolist():
             if item.filename == "xl/worksheets/sheet1.xml":
                 raw = sheet_xml
-            elif item.filename == "xl/styles.xml":
-                raw = styles_xml
             else:
                 raw = zin.read(item.filename)
 
