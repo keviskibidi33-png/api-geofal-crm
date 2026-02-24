@@ -120,6 +120,23 @@ def _set_cell(sheet_data: etree._Element, ref: str, value: Any, is_number: bool 
     t_el.text = text
 
 
+def _set_cell_formula(sheet_data: etree._Element, ref: str, formula: str) -> None:
+    if not formula:
+        return
+
+    ns = NS_SHEET
+    _, row_num = _parse_cell_ref(ref)
+    row = _find_or_create_row(sheet_data, row_num)
+    cell = _find_or_create_cell(row, ref)
+
+    for child in list(cell):
+        cell.remove(child)
+
+    cell.attrib.pop("t", None)
+    f_el = etree.SubElement(cell, f"{{{ns}}}f")
+    f_el.text = formula.lstrip("=")
+
+
 def _set_cell_style(sheet_data: etree._Element, ref: str, style_id: int | None) -> None:
     if style_id is None:
         return
@@ -290,35 +307,25 @@ def _fill_sheet(sheet_xml: bytes, data: ProctorRequest, centered_style_map: dict
 
     # Sieves
     sieve_mass = list(data.tamiz_masa_retenida_g)
-    sieve_pct = list(data.tamiz_porcentaje_retenido)
-    sieve_pct_acc = list(data.tamiz_porcentaje_retenido_acumulado)
-
     if sieve_mass[4] is None and all(value is not None for value in sieve_mass[:4]):
         sieve_mass[4] = _round(sum(value for value in sieve_mass[:4] if value is not None), 2)
 
-    total_index = len(sieve_mass) - 1
-    total_mass = sieve_mass[total_index] if sieve_mass[total_index] not in (None, 0) else None
-    if total_mass:
-        running = 0.0
-        for idx in range(total_index):
-            value = sieve_mass[idx]
-            if value is not None and sieve_pct[idx] is None:
-                sieve_pct[idx] = _round((value / total_mass) * 100, 2)
-
-            if sieve_pct[idx] is not None:
-                running += sieve_pct[idx] or 0
-                if sieve_pct_acc[idx] is None:
-                    sieve_pct_acc[idx] = _round(running, 2)
-
-        if sieve_pct[total_index] is None:
-            sieve_pct[total_index] = 100.0
-        if sieve_pct_acc[total_index] is None:
-            sieve_pct_acc[total_index] = 100.0
-
-    for idx, row_num in enumerate(SIEVE_ROWS):
+    for idx, row_num in enumerate(SIEVE_ROWS[:4]):
         _set_cell(sd, f"G{row_num}", sieve_mass[idx], is_number=True)
-        _set_cell(sd, f"H{row_num}", sieve_pct[idx], is_number=True)
-        _set_cell(sd, f"I{row_num}", sieve_pct_acc[idx], is_number=True)
+    _set_cell_formula(sd, "G41", "SUM(G37:G40)")
+
+    # Formula-driven sieve table (rows 37-41), aligned to the official sheet:
+    # H37:H40 = Gx/G41*100, H41 = SUM(H37:H40)
+    # I37 = H37, I38 = I37+H38, I39 = I38+H39, I40 = I39+H40, I41 = I40
+    for row_num in SIEVE_ROWS[:4]:
+        _set_cell_formula(sd, f"H{row_num}", f"IF(G41=0,0,G{row_num}/G41*100)")
+    _set_cell_formula(sd, "H41", "SUM(H37:H40)")
+
+    _set_cell_formula(sd, "I37", "H37")
+    _set_cell_formula(sd, "I38", "I37+H38")
+    _set_cell_formula(sd, "I39", "I38+H39")
+    _set_cell_formula(sd, "I40", "I39+H40")
+    _set_cell_formula(sd, "I41", "I40")
 
     # Equipment used (codes)
     _set_cell(sd, "H44", data.tamiz_utilizado_metodo_codigo)
