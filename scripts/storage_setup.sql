@@ -1,5 +1,5 @@
 -- =========================================================
--- CONFIGURACIÓN DE STORAGE: VERIFICACION, COMPRESIONES, HUMEDAD, CBR, PROCTOR
+-- CONFIGURACIÓN DE STORAGE: VERIFICACION, COMPRESIONES, HUMEDAD, CBR, PROCTOR, LLP
 -- =========================================================
 
 -- 1. Asegurar que los buckets existen y son públicos
@@ -10,7 +10,8 @@ VALUES
   ('compresiones', 'compresiones', true),
   ('humedad', 'humedad', true),
   ('cbr', 'cbr', true),
-  ('proctor', 'proctor', true)
+  ('proctor', 'proctor', true),
+  ('llp', 'llp', true)
 ON CONFLICT (id) DO UPDATE SET public = true;
 
 -- 2. Limpiar políticas previas para evitar duplicados
@@ -19,6 +20,7 @@ DROP POLICY IF EXISTS "Public Access Compresiones" ON storage.objects;
 DROP POLICY IF EXISTS "Public Access Humedad" ON storage.objects;
 DROP POLICY IF EXISTS "Public Access CBR" ON storage.objects;
 DROP POLICY IF EXISTS "Public Access Proctor" ON storage.objects;
+DROP POLICY IF EXISTS "Public Access LLP" ON storage.objects;
 DROP POLICY IF EXISTS "All Access Recepciones" ON storage.objects;
 
 -- 3. Aplicar política "ALL" para acceso público (lectura y escritura)
@@ -52,6 +54,12 @@ ON storage.objects FOR ALL
 TO public
 USING (bucket_id = 'proctor')
 WITH CHECK (bucket_id = 'proctor');
+
+CREATE POLICY "Public Access LLP"
+ON storage.objects FOR ALL
+TO public
+USING (bucket_id = 'llp')
+WITH CHECK (bucket_id = 'llp');
 
 -- Reforzar Recepciones si es necesario
 DROP POLICY IF EXISTS "Public Access Recepciones" ON storage.objects;

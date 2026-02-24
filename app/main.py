@@ -37,6 +37,7 @@ from app.modules.tracing.router import router as tracing_router
 from app.modules.humedad.router import router as humedad_router
 from app.modules.cbr.router import router as cbr_router
 from app.modules.proctor.router import router as proctor_router
+from app.modules.llp.router import router as llp_router
 from app.modules.recepcion.models import Base as RecepcionBase
 from app.modules.verificacion.models import Base as VerificacionBase
 from app.modules.tracing.models import Trazabilidad
@@ -44,6 +45,7 @@ from app.modules.compresion.models import EnsayoCompresion, ItemCompresion
 from app.modules.humedad.models import HumedadEnsayo
 from app.modules.cbr.models import CBREnsayo
 from app.modules.proctor.models import ProctorEnsayo
+from app.modules.llp.models import LLPEnsayo
 from app.database import engine
 from app.auth import JWTAuthMiddleware
 
@@ -75,6 +77,7 @@ class RolePermissions(BaseModel):
     humedad: ModulePermission | None = None
     cbr: ModulePermission | None = None
     proctor: ModulePermission | None = None
+    llp: ModulePermission | None = None
     usuarios: ModulePermission | None = None
     auditoria: ModulePermission | None = None
     configuracion: ModulePermission | None = None
@@ -124,14 +127,18 @@ def _get_cors_origins() -> list[str]:
         "http://localhost:3006",
         "http://localhost:3007",
         "http://localhost:3009", # Proctor CRM (Vite local)
+        "http://localhost:3010", # LLP CRM (Vite local)
         "http://localhost:5173", # Cotizador
         "http://localhost:5174",
         "http://localhost:5175", # Compresion (Vite)
+        "http://localhost:5176", # LLP CRM (Vite local alternate)
         "http://127.0.0.1:3000", 
         "http://127.0.0.1:3009",
+        "http://127.0.0.1:3010",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:5174",
         "http://127.0.0.1:5175",
+        "http://127.0.0.1:5176",
         "https://crm.geofal.com.pe",
         "https://recepcion.geofal.com.pe",
         "https://cotizador.geofal.com.pe",
@@ -141,6 +148,7 @@ def _get_cors_origins() -> list[str]:
         "https://humedad.geofal.com.pe",
         "https://cbr.geofal.com.pe",
         "https://proctor.geofal.com.pe",
+        "https://llp.geofal.com.pe",
     ]
     raw = os.getenv("QUOTES_CORS_ORIGINS")
     if raw:
@@ -173,7 +181,7 @@ app.add_middleware(
     allow_credentials=_allow_creds,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
-    expose_headers=["Content-Disposition", "X-Humedad-Id", "X-CBR-Id", "X-Proctor-Id", "X-Storage-Object-Key"],
+    expose_headers=["Content-Disposition", "X-Humedad-Id", "X-CBR-Id", "X-Proctor-Id", "X-LLP-Id", "X-Storage-Object-Key"],
     max_age=3600,
 )
  
@@ -250,6 +258,7 @@ app.include_router(tracing_router)
 app.include_router(humedad_router)
 app.include_router(cbr_router)
 app.include_router(proctor_router)
+app.include_router(llp_router)
 
 # Note: All legacy endpoints for Quotes and Programacion have been moved to their respective modules.
 # Check app/modules/cotizacion and app/modules/programacion.
@@ -704,6 +713,7 @@ async def get_roles():
                         "humedad": {"read": True, "write": True, "delete": True},
                         "cbr": {"read": True, "write": True, "delete": True},
                         "proctor": {"read": True, "write": True, "delete": True},
+                        "llp": {"read": True, "write": True, "delete": True},
                         "usuarios": {"read": True, "write": True, "delete": True},
                         "auditoria": {"read": True, "write": True, "delete": True},
                         "configuracion": {"read": True, "write": True, "delete": True},
@@ -730,6 +740,7 @@ async def get_roles():
                         "humedad": {"read": False, "write": False, "delete": False},
                         "cbr": {"read": False, "write": False, "delete": False},
                         "proctor": {"read": False, "write": False, "delete": False},
+                        "llp": {"read": False, "write": False, "delete": False},
                         "usuarios": {"read": False, "write": False, "delete": False},
                         "auditoria": {"read": False, "write": False, "delete": False},
                         "configuracion": {"read": False, "write": False, "delete": False},
@@ -756,6 +767,7 @@ async def get_roles():
                         "humedad": {"read": True, "write": True, "delete": False},
                         "cbr": {"read": True, "write": True, "delete": False},
                         "proctor": {"read": True, "write": True, "delete": False},
+                        "llp": {"read": True, "write": True, "delete": False},
                         "usuarios": {"read": False, "write": False, "delete": False},
                         "auditoria": {"read": False, "write": False, "delete": False},
                         "configuracion": {"read": False, "write": False, "delete": False},
