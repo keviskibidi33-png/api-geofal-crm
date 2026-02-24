@@ -16,6 +16,20 @@ VALUES
   ('gran-agregado', 'gran-agregado', true)
 ON CONFLICT (id) DO UPDATE SET public = true;
 
+-- 1.1 Normalizar bucket legacy duplicado por mayúsculas/minúsculas
+-- Canonico: 'proctor' (minúscula)
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM storage.buckets WHERE id = 'Proctor') THEN
+    IF EXISTS (SELECT 1 FROM storage.objects WHERE bucket_id = 'Proctor') THEN
+      RAISE WARNING 'Bucket legacy "Proctor" contiene archivos. No se elimina automáticamente.';
+    ELSE
+      DELETE FROM storage.buckets WHERE id = 'Proctor';
+      RAISE NOTICE 'Bucket legacy vacío "Proctor" eliminado. Se usa solo "proctor".';
+    END IF;
+  END IF;
+END $$;
+
 -- 2. Limpiar políticas previas para evitar duplicados
 DROP POLICY IF EXISTS "Public Access Verificacion" ON storage.objects;
 DROP POLICY IF EXISTS "Public Access Compresiones" ON storage.objects;
