@@ -298,7 +298,7 @@ def _fill_sheet(
     set_cell("K31", data.masa_retenida_plato_cpmrpan_g, is_number=True)
     set_cell("K32", data.perdida_cpl_pct, is_number=True)
     set_cell("K33", data.masa_subespecimen_lavado_fina_g, is_number=True)
-    set_cell("K34", data.masa_seca_muestra_perdida_smd_g, is_number=True)
+    # K34 pertenece al texto de criterio de aceptabilidad (no debe llenarse con datos).
 
     # Clasificación / incidencias
     set_cell("B31", data.clasificacion_visual_simbolo)
