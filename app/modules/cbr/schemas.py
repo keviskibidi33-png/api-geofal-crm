@@ -191,9 +191,12 @@ class CBRRequest(BaseModel):
     # Lectura de penetracion (rows 40-51, 12 filas)
     lecturas_penetracion: list[CBRLecturaPenetracionRow] = Field(default_factory=list)
 
-    # Hinchamiento (rows 40-45, 6 filas)
+    # Hinchamiento (rows 40-44, 5 filas)
     hinchamiento: list[CBRHinchamientoRow] = Field(default_factory=list)
 
+    # Hendidura: 3 celdas en la fila 53 (E53:G53:I53 en top-left)
+    profundidad_hendidura_mm_por_celda: list[Optional[float]] = Field(default_factory=lambda: [None] * 3)
+    # Compatibilidad con payloads antiguos (1 solo valor)
     profundidad_hendidura_mm: Optional[float] = None
 
     # Equipos (rows 47-53)
@@ -266,6 +269,16 @@ class CBRRequest(BaseModel):
     def normalize_numeric_lists(cls, value):
         return _normalize_numeric_list(value, 6, _coerce_float)
 
+    @field_validator("profundidad_hendidura_mm_por_celda", mode="before")
+    @classmethod
+    def normalize_hendidura_list(cls, value):
+        return _normalize_numeric_list(value, 3, _coerce_float)
+
+    @field_validator("profundidad_hendidura_mm", mode="before")
+    @classmethod
+    def normalize_hendidura_single(cls, value):
+        return _coerce_float(value)
+
     @model_validator(mode="after")
     def ensure_fixed_lengths(self):
         self.golpes_por_especimen = [*self.golpes_por_especimen[:3], *([None] * (3 - len(self.golpes_por_especimen)))]
@@ -290,9 +303,20 @@ class CBRRequest(BaseModel):
         while len(self.lecturas_penetracion) < 12:
             self.lecturas_penetracion.append(CBRLecturaPenetracionRow())
 
-        self.hinchamiento = self.hinchamiento[:6]
-        while len(self.hinchamiento) < 6:
+        self.hinchamiento = self.hinchamiento[:5]
+        while len(self.hinchamiento) < 5:
             self.hinchamiento.append(CBRHinchamientoRow())
+
+        self.profundidad_hendidura_mm_por_celda = [
+            *self.profundidad_hendidura_mm_por_celda[:3],
+            *([None] * (3 - len(self.profundidad_hendidura_mm_por_celda))),
+        ]
+        if (
+            all(v is None for v in self.profundidad_hendidura_mm_por_celda)
+            and self.profundidad_hendidura_mm is not None
+        ):
+            self.profundidad_hendidura_mm_por_celda[0] = self.profundidad_hendidura_mm
+        self.profundidad_hendidura_mm = self.profundidad_hendidura_mm_por_celda[0]
 
         return self
 
