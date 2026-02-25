@@ -21,6 +21,7 @@ class CBREnsayo(Base):
     bucket = Column(String(100), nullable=True)
     object_key = Column(String(500), nullable=True)
     payload_json = Column(JSON, nullable=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
 
     fecha_creacion = Column(DateTime(timezone=True), server_default=func.now())
     fecha_actualizacion = Column(DateTime(timezone=True), onupdate=func.now())

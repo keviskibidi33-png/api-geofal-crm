@@ -7,7 +7,7 @@ import logging
 import os
 import re
 import unicodedata
-from datetime import date
+from datetime import date, datetime
 
 import requests
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -101,12 +101,77 @@ def _delete_from_supabase_storage(bucket: str, object_path: str) -> bool:
         return False
 
 
+def _build_trash_object_key(object_path: str) -> str:
+    clean_path = (object_path or "").strip().lstrip("/")
+    base_name = os.path.basename(clean_path) or "archivo.xlsx"
+    stem, ext = os.path.splitext(base_name)
+    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
+    safe_stem = _safe_filename(stem, extension="")[:80] or "archivo"
+    return f"trash/{datetime.utcnow().year}/{safe_stem}_{timestamp}{ext}"
+
+
+def _move_to_supabase_trash(bucket: str, object_path: str) -> str | None:
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
+
+    if not supabase_url or not supabase_key or not bucket or not object_path:
+        return None
+
+    base_url = supabase_url.rstrip("/")
+    destination_key = _build_trash_object_key(object_path)
+    auth_headers = {"Authorization": f"Bearer {supabase_key}"}
+
+    move_url = f"{base_url}/storage/v1/object/move"
+    try:
+        resp = requests.post(
+            move_url,
+            headers={**auth_headers, "Content-Type": "application/json"},
+            json={
+                "bucketId": bucket,
+                "sourceKey": object_path,
+                "destinationKey": destination_key,
+            },
+            timeout=20,
+        )
+        if resp.status_code in (200, 201):
+            return destination_key
+    except Exception as exc:
+        logger.warning("Error moviendo CBR a trash con move API: %s", exc)
+
+    source_url = f"{base_url}/storage/v1/object/{bucket}/{object_path}"
+    upload_url = f"{base_url}/storage/v1/object/{bucket}/{destination_key}"
+    try:
+        source_resp = requests.get(source_url, headers=auth_headers, timeout=20)
+        if source_resp.status_code != 200:
+            return None
+
+        content_type = (
+            source_resp.headers.get("Content-Type")
+            or "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        upload_resp = requests.post(
+            upload_url,
+            headers={**auth_headers, "Content-Type": content_type, "x-upsert": "true"},
+            data=source_resp.content,
+            timeout=30,
+        )
+        if upload_resp.status_code not in (200, 201):
+            return None
+
+        _delete_from_supabase_storage(bucket, object_path)
+        return destination_key
+    except Exception as exc:
+        logger.warning("Error en fallback copy+delete para trash CBR: %s", exc)
+        return None
+
+
 def _ensure_payload_column(db: Session) -> None:
     global _PAYLOAD_COLUMN_READY
     if _PAYLOAD_COLUMN_READY:
         return
 
     db.execute(text("ALTER TABLE cbr_ensayos ADD COLUMN IF NOT EXISTS payload_json JSON"))
+    db.execute(text("ALTER TABLE cbr_ensayos ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ"))
     db.flush()
     _PAYLOAD_COLUMN_READY = True
 
@@ -203,7 +268,14 @@ def _guardar_ensayo(
     old_object_key: str | None = None
 
     if ensayo_id is not None:
-        ensayo = db.query(CBREnsayo).filter(CBREnsayo.id == ensayo_id).first()
+        ensayo = (
+            db.query(CBREnsayo)
+            .filter(
+                CBREnsayo.id == ensayo_id,
+                CBREnsayo.deleted_at.is_(None),
+            )
+            .first()
+        )
         if not ensayo:
             raise HTTPException(status_code=404, detail="Ensayo CBR no encontrado para edición.")
         old_bucket = ensayo.bucket
@@ -277,6 +349,7 @@ async def listar_ensayos_cbr(
     _ensure_payload_column(db)
     return (
         db.query(CBREnsayo)
+        .filter(CBREnsayo.deleted_at.is_(None))
         .order_by(desc(CBREnsayo.fecha_creacion))
         .offset(skip)
         .limit(limit)
@@ -290,10 +363,61 @@ async def obtener_ensayo_cbr(
     db: Session = Depends(get_db_session),
 ):
     _ensure_payload_column(db)
-    ensayo = db.query(CBREnsayo).filter(CBREnsayo.id == ensayo_id).first()
+    ensayo = (
+        db.query(CBREnsayo)
+        .filter(
+            CBREnsayo.id == ensayo_id,
+            CBREnsayo.deleted_at.is_(None),
+        )
+        .first()
+    )
     if not ensayo:
         raise HTTPException(status_code=404, detail="Ensayo CBR no encontrado.")
     return _to_detalle_response(ensayo)
+
+
+@router.delete("/{ensayo_id}")
+async def eliminar_ensayo_cbr(
+    ensayo_id: int,
+    db: Session = Depends(get_db_session),
+):
+    _ensure_payload_column(db)
+
+    ensayo = (
+        db.query(CBREnsayo)
+        .filter(
+            CBREnsayo.id == ensayo_id,
+            CBREnsayo.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if not ensayo:
+        raise HTTPException(status_code=404, detail="Ensayo CBR no encontrado.")
+
+    bucket = ensayo.bucket
+    object_key = ensayo.object_key
+    trash_object_key: str | None = None
+
+    if bucket and object_key:
+        trash_object_key = _move_to_supabase_trash(bucket, object_key)
+
+    try:
+        ensayo.deleted_at = datetime.utcnow()
+        ensayo.estado = "ELIMINADO"
+        if trash_object_key:
+            ensayo.object_key = trash_object_key
+        db.commit()
+        db.refresh(ensayo)
+    except Exception:
+        db.rollback()
+        logger.exception("Error enviando ensayo CBR a papelera id=%s", ensayo_id)
+        raise HTTPException(status_code=500, detail="No se pudo enviar el ensayo CBR a papelera.")
+
+    return {
+        "message": "Ensayo CBR movido a papelera correctamente",
+        "id": ensayo_id,
+        "deleted_at": ensayo.deleted_at.isoformat() if ensayo.deleted_at else None,
+    }
 
 
 @router.post("/excel")
