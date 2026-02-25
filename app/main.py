@@ -40,6 +40,7 @@ from app.modules.proctor.router import router as proctor_router
 from app.modules.llp.router import router as llp_router
 from app.modules.gran_suelo.router import router as gran_suelo_router
 from app.modules.gran_agregado.router import router as gran_agregado_router
+from app.modules.equi_arena.router import router as equi_arena_router
 from app.modules.recepcion.models import Base as RecepcionBase
 from app.modules.verificacion.models import Base as VerificacionBase
 from app.modules.tracing.models import Trazabilidad
@@ -50,6 +51,7 @@ from app.modules.proctor.models import ProctorEnsayo
 from app.modules.llp.models import LLPEnsayo
 from app.modules.gran_suelo.models import GranSueloEnsayo
 from app.modules.gran_agregado.models import GranAgregadoEnsayo
+from app.modules.equi_arena.models import EquiArenaEnsayo
 from app.database import engine
 from app.auth import JWTAuthMiddleware
 
@@ -84,6 +86,7 @@ class RolePermissions(BaseModel):
     llp: ModulePermission | None = None
     gran_suelo: ModulePermission | None = None
     gran_agregado: ModulePermission | None = None
+    equi_arena: ModulePermission | None = None
     usuarios: ModulePermission | None = None
     auditoria: ModulePermission | None = None
     configuracion: ModulePermission | None = None
@@ -136,6 +139,7 @@ def _get_cors_origins() -> list[str]:
         "http://localhost:3010", # LLP CRM (Vite local)
         "http://localhost:3011", # Gran Suelo CRM (Vite local)
         "http://localhost:3012", # Gran Agregado CRM (Vite local)
+        "http://localhost:3013", # EquiArena CRM (Vite local)
         "http://localhost:5173", # Cotizador
         "http://localhost:5174",
         "http://localhost:5175", # Compresion (Vite)
@@ -145,6 +149,7 @@ def _get_cors_origins() -> list[str]:
         "http://127.0.0.1:3010",
         "http://127.0.0.1:3011",
         "http://127.0.0.1:3012",
+        "http://127.0.0.1:3013",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:5174",
         "http://127.0.0.1:5175",
@@ -161,6 +166,8 @@ def _get_cors_origins() -> list[str]:
         "https://llp.geofal.com.pe",
         "https://gran-suelo.geofal.com.pe",
         "https://gran-agregado.geofal.com.pe",
+        "https://equiarena.geofal.com.pe",
+        "https://equi-arena.geofal.com.pe",
     ]
     raw = os.getenv("QUOTES_CORS_ORIGINS")
     if raw:
@@ -201,6 +208,7 @@ app.add_middleware(
         "X-LLP-Id",
         "X-Gran-Suelo-Id",
         "X-Gran-Agregado-Id",
+        "X-Equi-Arena-Id",
         "X-Storage-Object-Key",
     ],
     max_age=3600,
@@ -282,6 +290,7 @@ app.include_router(proctor_router)
 app.include_router(llp_router)
 app.include_router(gran_suelo_router)
 app.include_router(gran_agregado_router)
+app.include_router(equi_arena_router)
 
 # Note: All legacy endpoints for Quotes and Programacion have been moved to their respective modules.
 # Check app/modules/cotizacion and app/modules/programacion.
@@ -739,6 +748,7 @@ async def get_roles():
                         "llp": {"read": True, "write": True, "delete": True},
                         "gran_suelo": {"read": True, "write": True, "delete": True},
                         "gran_agregado": {"read": True, "write": True, "delete": True},
+                        "equi_arena": {"read": True, "write": True, "delete": True},
                         "usuarios": {"read": True, "write": True, "delete": True},
                         "auditoria": {"read": True, "write": True, "delete": True},
                         "configuracion": {"read": True, "write": True, "delete": True},
@@ -768,6 +778,7 @@ async def get_roles():
                         "llp": {"read": False, "write": False, "delete": False},
                         "gran_suelo": {"read": False, "write": False, "delete": False},
                         "gran_agregado": {"read": False, "write": False, "delete": False},
+                        "equi_arena": {"read": False, "write": False, "delete": False},
                         "usuarios": {"read": False, "write": False, "delete": False},
                         "auditoria": {"read": False, "write": False, "delete": False},
                         "configuracion": {"read": False, "write": False, "delete": False},
@@ -797,6 +808,7 @@ async def get_roles():
                         "llp": {"read": True, "write": True, "delete": False},
                         "gran_suelo": {"read": True, "write": True, "delete": False},
                         "gran_agregado": {"read": True, "write": True, "delete": False},
+                        "equi_arena": {"read": True, "write": True, "delete": False},
                         "usuarios": {"read": False, "write": False, "delete": False},
                         "auditoria": {"read": False, "write": False, "delete": False},
                         "configuracion": {"read": False, "write": False, "delete": False},
