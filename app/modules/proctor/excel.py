@@ -137,6 +137,31 @@ def _set_cell_formula(sheet_data: etree._Element, ref: str, formula: str) -> Non
     f_el.text = formula.lstrip("=")
 
 
+def _set_cell_formula_with_cached_value(
+    sheet_data: etree._Element,
+    ref: str,
+    formula: str,
+    cached_value: float | int | None,
+) -> None:
+    if not formula:
+        return
+
+    ns = NS_SHEET
+    _, row_num = _parse_cell_ref(ref)
+    row = _find_or_create_row(sheet_data, row_num)
+    cell = _find_or_create_cell(row, ref)
+
+    for child in list(cell):
+        cell.remove(child)
+
+    cell.attrib.pop("t", None)
+    f_el = etree.SubElement(cell, f"{{{ns}}}f")
+    f_el.text = formula.lstrip("=")
+    if cached_value is not None:
+        v_el = etree.SubElement(cell, f"{{{ns}}}v")
+        v_el.text = str(cached_value)
+
+
 def _set_cell_style(sheet_data: etree._Element, ref: str, style_id: int | None) -> None:
     if style_id is None:
         return
@@ -187,6 +212,16 @@ def _round(value: float | None, decimals: int = 2) -> float | None:
     return round(value, decimals)
 
 
+def _force_full_calc_on_open(workbook_xml: bytes) -> bytes:
+    root = etree.fromstring(workbook_xml)
+    calc = root.find(f".//{{{NS_SHEET}}}calcPr")
+    if calc is None:
+        calc = etree.SubElement(root, f"{{{NS_SHEET}}}calcPr")
+    calc.set("fullCalcOnLoad", "1")
+    calc.set("calcOnSave", "1")
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
 def generate_proctor_excel(data: ProctorRequest) -> bytes:
     """Generates the Proctor Excel file from the template."""
     logger.info("Generating Proctor Excel - ASTM D1557-12(2021)")
@@ -209,6 +244,9 @@ def generate_proctor_excel(data: ProctorRequest) -> bytes:
                 raw = sheet_xml
             else:
                 raw = zin.read(item.filename)
+
+            if item.filename == "xl/workbook.xml":
+                raw = _force_full_calc_on_open(raw)
 
             if item.filename == "xl/drawings/drawing1.xml":
                 raw = _fill_drawing(raw, data)
@@ -312,20 +350,33 @@ def _fill_sheet(sheet_xml: bytes, data: ProctorRequest, centered_style_map: dict
 
     for idx, row_num in enumerate(SIEVE_ROWS[:4]):
         _set_cell(sd, f"G{row_num}", sieve_mass[idx], is_number=True)
-    _set_cell_formula(sd, "G41", "SUM(G37:G40)")
+    total_sieve = _round(sum(value for value in sieve_mass[:4] if value is not None), 2)
+    _set_cell_formula_with_cached_value(sd, "G41", "SUM(G37:G40)", total_sieve)
 
     # Formula-driven sieve table (rows 37-41), aligned to the official sheet:
     # H37:H40 = Gx/G41*100, H41 = SUM(H37:H40)
     # I37 = H37, I38 = I37+H38, I39 = I38+H39, I40 = I39+H40, I41 = I40
+    h_values: list[float] = []
     for row_num in SIEVE_ROWS[:4]:
-        _set_cell_formula(sd, f"H{row_num}", f"IF(G41=0,0,G{row_num}/G41*100)")
-    _set_cell_formula(sd, "H41", "SUM(H37:H40)")
+        mass = sieve_mass[row_num - SIEVE_ROWS[0]]
+        cached_pct = 0.0
+        if total_sieve not in (None, 0) and mass is not None:
+            cached_pct = _round((mass / total_sieve) * 100, 2) or 0.0
+        h_values.append(cached_pct)
+        _set_cell_formula_with_cached_value(sd, f"H{row_num}", f"IF(G41=0,0,G{row_num}/G41*100)", cached_pct)
 
-    _set_cell_formula(sd, "I37", "H37")
-    _set_cell_formula(sd, "I38", "I37+H38")
-    _set_cell_formula(sd, "I39", "I38+H39")
-    _set_cell_formula(sd, "I40", "I39+H40")
-    _set_cell_formula(sd, "I41", "I40")
+    h_total = _round(sum(h_values), 2) or 0.0
+    _set_cell_formula_with_cached_value(sd, "H41", "SUM(H37:H40)", h_total)
+
+    i37 = h_values[0] if len(h_values) > 0 else 0.0
+    i38 = _round(i37 + (h_values[1] if len(h_values) > 1 else 0.0), 2) or 0.0
+    i39 = _round(i38 + (h_values[2] if len(h_values) > 2 else 0.0), 2) or 0.0
+    i40 = _round(i39 + (h_values[3] if len(h_values) > 3 else 0.0), 2) or 0.0
+    _set_cell_formula_with_cached_value(sd, "I37", "H37", i37)
+    _set_cell_formula_with_cached_value(sd, "I38", "I37+H38", i38)
+    _set_cell_formula_with_cached_value(sd, "I39", "I38+H39", i39)
+    _set_cell_formula_with_cached_value(sd, "I40", "I39+H40", i40)
+    _set_cell_formula_with_cached_value(sd, "I41", "I40", i40)
 
     # Equipment used (codes)
     _set_cell(sd, "H44", data.tamiz_utilizado_metodo_codigo)

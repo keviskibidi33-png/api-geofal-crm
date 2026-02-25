@@ -60,15 +60,8 @@ def _normalize_flexible_date(raw: str) -> str:
 
 
 def _normalize_muestra(raw: str) -> str:
-    value = raw.strip().upper()
-    if not value:
-        return value
-
-    compact = re.sub(r"\s+", "", value)
-    match = re.match(r"^(\d+)(?:-SU)?(?:-(\d{2}))?$", compact)
-    if match:
-        return f"{match.group(1)}-SU-{match.group(2) or _year_short()}"
-    return value
+    # No reescritura de código (SU/AG): respetar el texto digitado por operación.
+    return raw.strip().upper()
 
 
 def _normalize_numero_ot(raw: str) -> str:
