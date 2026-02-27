@@ -176,6 +176,13 @@ class LLPRequest(BaseModel):
     contenido_humedad_muestra_inicial_pct: Optional[float] = None
     proceso_seleccion_muestra: Optional[str] = None
     metodo_preparacion_muestra: Literal["-", "HUMEDO", "SECADO AL AIRE", "SECADO AL HORNO"] = "-"
+    metodo_eliminacion_particulas_tamiz_40: Literal[
+        "-",
+        "LAVADO POR EL TAMIZ NO. 40",
+        "TAMIZADO EN SECO POR EL TAMIZ NO. 40",
+        "MECANICAMENTE EMPUJADO A TRAVES DEL TAMIZ NO. 40",
+        "MEZCLADO EN PLACA DE VIDRIO Y ELIMINACION DE PARTICULAS DE ARENA MEDIANAS",
+    ] = "-"
 
     # Descripcion de la muestra
     tipo_muestra: Optional[str] = None
@@ -298,4 +305,3 @@ class LLPSaveResponse(BaseModel):
     object_key: Optional[str] = None
     fecha_creacion: Optional[datetime] = None
     fecha_actualizacion: Optional[datetime] = None
-

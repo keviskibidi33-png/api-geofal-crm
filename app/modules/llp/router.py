@@ -248,6 +248,7 @@ def _is_payload_completo(payload: LLPRequest) -> bool:
         payload.dispositivo_limite_liquido,
         payload.metodo_laminacion_limite_plastico,
         payload.metodo_preparacion_muestra,
+        payload.metodo_eliminacion_particulas_tamiz_40,
         payload.balanza_001g_codigo,
         payload.horno_110_codigo,
         payload.copa_casagrande_codigo,
@@ -527,4 +528,3 @@ async def generar_excel_llp(
         db.rollback()
         logger.exception("Error inesperado en generar_excel_llp")
         raise HTTPException(status_code=500, detail=f"Error generando Excel LLP: {str(exc)}")
-

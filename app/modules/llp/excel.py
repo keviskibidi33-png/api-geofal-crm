@@ -42,6 +42,12 @@ def _find_template() -> str:
 
 TEMPLATE_PATH = _find_template()
 POINT_COLS = ["G", "I", "J", "K", "L"]
+ELIMINACION_PARTICULAS_CELL_MAP = {
+    "LAVADO POR EL TAMIZ NO. 40": "B25",
+    "TAMIZADO EN SECO POR EL TAMIZ NO. 40": "B26",
+    "MECANICAMENTE EMPUJADO A TRAVES DEL TAMIZ NO. 40": "H25",
+    "MEZCLADO EN PLACA DE VIDRIO Y ELIMINACION DE PARTICULAS DE ARENA MEDIANAS": "H26",
+}
 
 
 def _parse_cell_ref(ref: str) -> tuple[str, int]:
@@ -121,6 +127,13 @@ def _set_cell(sheet_data: etree._Element, ref: str, value: Any, is_number: bool 
     t_el.text = text
 
 
+def _set_eliminacion_particulas_marker(sheet_data: etree._Element, metodo: str) -> None:
+    ref = ELIMINACION_PARTICULAS_CELL_MAP.get((metodo or "").strip())
+    if not ref:
+        return
+    _set_cell(sheet_data, ref, "X")
+
+
 def generate_llp_excel(data: LLPRequest) -> bytes:
     """Generates the LLP Excel file from template."""
     logger.info("Generating LLP Excel - ASTM D4318-17e1")
@@ -171,6 +184,7 @@ def _fill_sheet(sheet_xml: bytes, data: LLPRequest) -> bytes:
     _set_cell(sd, "J21", data.contenido_humedad_muestra_inicial_pct, is_number=True)
     _set_cell(sd, "J22", data.proceso_seleccion_muestra)
     _set_cell(sd, "J23", data.metodo_preparacion_muestra)
+    _set_eliminacion_particulas_marker(sd, data.metodo_eliminacion_particulas_tamiz_40)
 
     # Descripcion de la muestra
     _set_cell(sd, "J29", data.tipo_muestra)
@@ -251,4 +265,3 @@ def _fill_drawing(drawing_xml: bytes, data: LLPRequest) -> bytes:
                     t_el.text = f"{text}\n{replacements[text]}"
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
-
