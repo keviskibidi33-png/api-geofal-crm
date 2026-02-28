@@ -11,6 +11,7 @@ import io
 import logging
 import math
 import zipfile
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -423,14 +424,28 @@ def _fill_drawing(drawing_xml: bytes, data: LLPRequest) -> bytes:
     root = etree.fromstring(drawing_xml)
 
     def _set_or_create_paragraph_text(paragraph: etree._Element, text: str) -> None:
-        # Keep paragraph-level styling and only replace textual runs.
-        for child in list(paragraph):
-            if etree.QName(child).localname in {"r", "fld", "br"}:
-                paragraph.remove(child)
+        # Reuse existing run when present to preserve exact template typography.
+        existing_t = paragraph.find("a:r/a:t", ns)
+        if existing_t is not None:
+            existing_t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+            existing_t.text = text
+            return
 
         run = etree.SubElement(paragraph, f"{{{NS_A}}}r")
         run_props = etree.SubElement(run, f"{{{NS_A}}}rPr")
-        run_props.set("lang", "es-PE")
+
+        # Copy style from paragraph end style if available (template-consistent size/font).
+        source_rpr = paragraph.find("a:endParaRPr", ns)
+        if source_rpr is not None:
+            for attr, value in source_rpr.attrib.items():
+                run_props.set(attr, value)
+            for child in source_rpr:
+                run_props.append(deepcopy(child))
+        else:
+            run_props.set("lang", "es-PE")
+            run_props.set("sz", "1000")
+            run_props.set("b", "0")
+
         t_el = etree.SubElement(run, f"{{{NS_A}}}t")
         t_el.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
         t_el.text = text
