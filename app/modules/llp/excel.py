@@ -423,12 +423,15 @@ def _fill_drawing(drawing_xml: bytes, data: LLPRequest) -> bytes:
     ns = {"xdr": NS_DRAW, "a": NS_A}
     root = etree.fromstring(drawing_xml)
 
-    def _set_or_create_paragraph_text(paragraph: etree._Element, text: str) -> None:
+    def _set_or_create_paragraph_text(paragraph: etree._Element, text: str, font_sz: str = "800") -> None:
         # Reuse existing run when present to preserve exact template typography.
         existing_t = paragraph.find("a:r/a:t", ns)
         if existing_t is not None:
             existing_t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
             existing_t.text = text
+            existing_rpr = paragraph.find("a:r/a:rPr", ns)
+            if existing_rpr is not None:
+                existing_rpr.set("sz", font_sz)
             return
 
         run = etree.SubElement(paragraph, f"{{{NS_A}}}r")
@@ -443,8 +446,8 @@ def _fill_drawing(drawing_xml: bytes, data: LLPRequest) -> bytes:
                 run_props.append(deepcopy(child))
         else:
             run_props.set("lang", "es-PE")
-            run_props.set("sz", "1000")
             run_props.set("b", "0")
+        run_props.set("sz", font_sz)
 
         t_el = etree.SubElement(run, f"{{{NS_A}}}t")
         t_el.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
