@@ -434,7 +434,7 @@ def _fill_drawing(drawing_xml: bytes, data: LLPRequest) -> bytes:
                 existing_rpr.set("sz", font_sz)
             return
 
-        run = etree.SubElement(paragraph, f"{{{NS_A}}}r")
+        run = etree.Element(f"{{{NS_A}}}r")
         run_props = etree.SubElement(run, f"{{{NS_A}}}rPr")
 
         # Copy style from paragraph end style if available (template-consistent size/font).
@@ -452,6 +452,14 @@ def _fill_drawing(drawing_xml: bytes, data: LLPRequest) -> bytes:
         t_el = etree.SubElement(run, f"{{{NS_A}}}t")
         t_el.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
         t_el.text = text
+
+        # In DrawingML, endParaRPr must be the last child of a:p.
+        end_para_rpr = paragraph.find("a:endParaRPr", ns)
+        if end_para_rpr is not None:
+            children = list(paragraph)
+            paragraph.insert(children.index(end_para_rpr), run)
+        else:
+            paragraph.append(run)
 
     def _inject_footer_in_template_layout(anchor: etree._Element, nombre: str, fecha: str) -> bool:
         tx_body = anchor.find(".//xdr:txBody", ns)
