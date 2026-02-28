@@ -422,6 +422,38 @@ def _fill_drawing(drawing_xml: bytes, data: LLPRequest) -> bytes:
     ns = {"xdr": NS_DRAW, "a": NS_A}
     root = etree.fromstring(drawing_xml)
 
+    def _set_or_create_paragraph_text(paragraph: etree._Element, text: str) -> None:
+        # Keep paragraph-level styling and only replace textual runs.
+        for child in list(paragraph):
+            if etree.QName(child).localname in {"r", "fld", "br"}:
+                paragraph.remove(child)
+
+        run = etree.SubElement(paragraph, f"{{{NS_A}}}r")
+        run_props = etree.SubElement(run, f"{{{NS_A}}}rPr")
+        run_props.set("lang", "es-PE")
+        t_el = etree.SubElement(run, f"{{{NS_A}}}t")
+        t_el.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+        t_el.text = text
+
+    def _inject_footer_in_template_layout(anchor: etree._Element, nombre: str, fecha: str) -> bool:
+        tx_body = anchor.find(".//xdr:txBody", ns)
+        if tx_body is None:
+            return False
+
+        paragraphs = tx_body.findall("a:p", ns)
+        if len(paragraphs) < 2:
+            return False
+
+        # Template structure:
+        # p1: "Revisado:" / "Aprobado:"
+        # p2: value line
+        # p3: spacer (kept as-is)
+        # p4: "Fecha:" line
+        _set_or_create_paragraph_text(paragraphs[1], nombre)
+        if len(paragraphs) >= 4:
+            _set_or_create_paragraph_text(paragraphs[3], f"Fecha: {fecha}")
+        return True
+
     for anchor in root.findall(".//xdr:twoCellAnchor", ns):
         all_texts = [(node.text or "").strip() for node in anchor.findall(".//a:t", ns)]
         text_blob = " ".join(all_texts)
@@ -432,16 +464,25 @@ def _fill_drawing(drawing_xml: bytes, data: LLPRequest) -> bytes:
             continue
 
         replacements: dict[str, str] = {}
+        nombre = "-"
+        fecha = data.fecha_ensayo or "-"
         if is_revisado:
-            if data.revisado_por:
-                replacements["Revisado:"] = data.revisado_por
-            if data.revisado_fecha:
-                replacements["Fecha:"] = data.revisado_fecha
+            nombre = data.revisado_por or "-"
+            fecha = data.revisado_fecha or data.fecha_ensayo or "-"
         elif is_aprobado:
-            if data.aprobado_por:
-                replacements["Aprobado:"] = data.aprobado_por
-            if data.aprobado_fecha:
-                replacements["Fecha:"] = data.aprobado_fecha
+            nombre = data.aprobado_por or "-"
+            fecha = data.aprobado_fecha or data.fecha_ensayo or "-"
+
+        if _inject_footer_in_template_layout(anchor, nombre, fecha):
+            continue
+
+        # Fallback for non-standard template shapes.
+        if is_revisado:
+            replacements["Revisado:"] = f"Revisado: {nombre}"
+            replacements["Fecha:"] = f"Fecha: {fecha}"
+        else:
+            replacements["Aprobado:"] = f"Aprobado: {nombre}"
+            replacements["Fecha:"] = f"Fecha: {fecha}"
 
         for run in anchor.findall(".//a:r", ns):
             t_el = run.find("a:t", ns)
@@ -450,9 +491,6 @@ def _fill_drawing(drawing_xml: bytes, data: LLPRequest) -> bytes:
             text = t_el.text.strip()
             if text in replacements and replacements[text]:
                 t_el.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
-                if text == "Fecha:":
-                    t_el.text = f"{text} {replacements[text]}"
-                else:
-                    t_el.text = f"{text}\n{replacements[text]}"
+                t_el.text = replacements[text]
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
