@@ -477,7 +477,7 @@ def _fill_drawing(drawing_xml: bytes, data: LLPRequest) -> bytes:
         # p4: "Fecha:" line
         _set_or_create_paragraph_text(paragraphs[1], nombre)
         if len(paragraphs) >= 4:
-            _set_or_create_paragraph_text(paragraphs[3], f"Fecha: {fecha}")
+            _set_or_create_paragraph_text(paragraphs[3], f"Fecha: {fecha}", font_sz="1000")
         return True
 
     for anchor in root.findall(".//xdr:twoCellAnchor", ns):
