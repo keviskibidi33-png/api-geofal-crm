@@ -1,5 +1,5 @@
 -- =========================================================
--- CONFIGURACIÓN DE STORAGE: VERIFICACION, COMPRESIONES, HUMEDAD, CBR, PROCTOR, LLP, GRAN SUELO, GRAN AGREGADO
+-- CONFIGURACIÓN DE STORAGE: VERIFICACION, COMPRESIONES, HUMEDAD, CBR, PROCTOR, LLP, GRAN SUELO, GRAN AGREGADO, GE FINO, GE GRUESO
 -- =========================================================
 
 -- 1. Asegurar que los buckets existen y son públicos
@@ -13,7 +13,9 @@ VALUES
   ('proctor', 'proctor', true),
   ('llp', 'llp', true),
   ('gran-suelo', 'gran-suelo', true),
-  ('gran-agregado', 'gran-agregado', true)
+  ('gran-agregado', 'gran-agregado', true),
+  ('ge-fino', 'ge-fino', true),
+  ('ge-grueso', 'ge-grueso', true)
 ON CONFLICT (id) DO UPDATE SET public = true;
 
 -- 1.1 Normalizar bucket legacy duplicado por mayúsculas/minúsculas
@@ -39,6 +41,8 @@ DROP POLICY IF EXISTS "Public Access Proctor" ON storage.objects;
 DROP POLICY IF EXISTS "Public Access LLP" ON storage.objects;
 DROP POLICY IF EXISTS "Public Access Gran Suelo" ON storage.objects;
 DROP POLICY IF EXISTS "Public Access Gran Agregado" ON storage.objects;
+DROP POLICY IF EXISTS "Public Access GE Fino" ON storage.objects;
+DROP POLICY IF EXISTS "Public Access GE Grueso" ON storage.objects;
 DROP POLICY IF EXISTS "All Access Recepciones" ON storage.objects;
 
 -- 3. Aplicar política "ALL" para acceso público (lectura y escritura)
@@ -90,6 +94,18 @@ ON storage.objects FOR ALL
 TO public
 USING (bucket_id = 'gran-agregado')
 WITH CHECK (bucket_id = 'gran-agregado');
+
+CREATE POLICY "Public Access GE Fino"
+ON storage.objects FOR ALL
+TO public
+USING (bucket_id = 'ge-fino')
+WITH CHECK (bucket_id = 'ge-fino');
+
+CREATE POLICY "Public Access GE Grueso"
+ON storage.objects FOR ALL
+TO public
+USING (bucket_id = 'ge-grueso')
+WITH CHECK (bucket_id = 'ge-grueso');
 
 -- Reforzar Recepciones si es necesario
 DROP POLICY IF EXISTS "Public Access Recepciones" ON storage.objects;
