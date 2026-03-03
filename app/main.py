@@ -42,6 +42,7 @@ from app.modules.gran_suelo.router import router as gran_suelo_router
 from app.modules.gran_agregado.router import router as gran_agregado_router
 from app.modules.abra.router import router as abra_router
 from app.modules.peso_unitario.router import router as peso_unitario_router
+from app.modules.tamiz.router import router as tamiz_router
 from app.modules.equi_arena.router import router as equi_arena_router
 from app.modules.ge_fino.router import router as ge_fino_router
 from app.modules.ge_grueso.router import router as ge_grueso_router
@@ -57,6 +58,7 @@ from app.modules.gran_suelo.models import GranSueloEnsayo
 from app.modules.gran_agregado.models import GranAgregadoEnsayo
 from app.modules.abra.models import AbraEnsayo
 from app.modules.peso_unitario.models import PesoUnitarioEnsayo
+from app.modules.tamiz.models import TamizEnsayo
 from app.modules.equi_arena.models import EquiArenaEnsayo
 from app.modules.ge_fino.models import GeFinoEnsayo
 from app.modules.ge_grueso.models import GeGruesoEnsayo
@@ -96,6 +98,7 @@ class RolePermissions(BaseModel):
     gran_agregado: ModulePermission | None = None
     abra: ModulePermission | None = None
     peso_unitario: ModulePermission | None = None
+    tamiz: ModulePermission | None = None
     equi_arena: ModulePermission | None = None
     ge_fino: ModulePermission | None = None
     ge_grueso: ModulePermission | None = None
@@ -156,6 +159,7 @@ def _get_cors_origins() -> list[str]:
         "http://localhost:3015", # GE Grueso CRM (Vite local)
         "http://localhost:3016", # ABRA CRM (Vite local)
         "http://localhost:3017", # Peso Unitario CRM (Vite local)
+        "http://localhost:3018", # Tamiz CRM (Vite local)
         "http://localhost:5173", # Cotizador
         "http://localhost:5174",
         "http://localhost:5175", # Compresion (Vite)
@@ -170,6 +174,7 @@ def _get_cors_origins() -> list[str]:
         "http://127.0.0.1:3015",
         "http://127.0.0.1:3016",
         "http://127.0.0.1:3017",
+        "http://127.0.0.1:3018",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:5174",
         "http://127.0.0.1:5175",
@@ -192,6 +197,7 @@ def _get_cors_origins() -> list[str]:
         "https://ge-grueso.geofal.com.pe",
         "https://abra.geofal.com.pe",
         "https://peso-unitario.geofal.com.pe",
+        "https://tamiz.geofal.com.pe",
     ]
     raw = os.getenv("QUOTES_CORS_ORIGINS")
     if raw:
@@ -234,6 +240,7 @@ app.add_middleware(
         "X-Gran-Agregado-Id",
         "X-ABRA-Id",
         "X-Peso-Unitario-Id",
+        "X-Tamiz-Id",
         "X-Equi-Arena-Id",
         "X-Ge-Fino-Id",
         "X-Ge-Grueso-Id",
@@ -320,6 +327,7 @@ app.include_router(gran_suelo_router)
 app.include_router(gran_agregado_router)
 app.include_router(abra_router)
 app.include_router(peso_unitario_router)
+app.include_router(tamiz_router)
 app.include_router(equi_arena_router)
 app.include_router(ge_fino_router)
 app.include_router(ge_grueso_router)
@@ -782,6 +790,7 @@ async def get_roles():
                         "gran_agregado": {"read": True, "write": True, "delete": True},
                         "abra": {"read": True, "write": True, "delete": True},
                         "peso_unitario": {"read": True, "write": True, "delete": True},
+                        "tamiz": {"read": True, "write": True, "delete": True},
                         "equi_arena": {"read": True, "write": True, "delete": True},
                         "ge_fino": {"read": True, "write": True, "delete": True},
                         "ge_grueso": {"read": True, "write": True, "delete": True},
@@ -816,6 +825,7 @@ async def get_roles():
                         "gran_agregado": {"read": False, "write": False, "delete": False},
                         "abra": {"read": False, "write": False, "delete": False},
                         "peso_unitario": {"read": False, "write": False, "delete": False},
+                        "tamiz": {"read": False, "write": False, "delete": False},
                         "equi_arena": {"read": False, "write": False, "delete": False},
                         "ge_fino": {"read": False, "write": False, "delete": False},
                         "ge_grueso": {"read": False, "write": False, "delete": False},
@@ -850,6 +860,7 @@ async def get_roles():
                         "gran_agregado": {"read": True, "write": True, "delete": False},
                         "abra": {"read": True, "write": True, "delete": False},
                         "peso_unitario": {"read": True, "write": True, "delete": False},
+                        "tamiz": {"read": True, "write": True, "delete": False},
                         "equi_arena": {"read": True, "write": True, "delete": False},
                         "ge_fino": {"read": True, "write": True, "delete": False},
                         "ge_grueso": {"read": True, "write": True, "delete": False},
