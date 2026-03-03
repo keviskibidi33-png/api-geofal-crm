@@ -40,6 +40,7 @@ from app.modules.proctor.router import router as proctor_router
 from app.modules.llp.router import router as llp_router
 from app.modules.gran_suelo.router import router as gran_suelo_router
 from app.modules.gran_agregado.router import router as gran_agregado_router
+from app.modules.abra.router import router as abra_router
 from app.modules.equi_arena.router import router as equi_arena_router
 from app.modules.ge_fino.router import router as ge_fino_router
 from app.modules.ge_grueso.router import router as ge_grueso_router
@@ -53,6 +54,7 @@ from app.modules.proctor.models import ProctorEnsayo
 from app.modules.llp.models import LLPEnsayo
 from app.modules.gran_suelo.models import GranSueloEnsayo
 from app.modules.gran_agregado.models import GranAgregadoEnsayo
+from app.modules.abra.models import AbraEnsayo
 from app.modules.equi_arena.models import EquiArenaEnsayo
 from app.modules.ge_fino.models import GeFinoEnsayo
 from app.modules.ge_grueso.models import GeGruesoEnsayo
@@ -90,6 +92,7 @@ class RolePermissions(BaseModel):
     llp: ModulePermission | None = None
     gran_suelo: ModulePermission | None = None
     gran_agregado: ModulePermission | None = None
+    abra: ModulePermission | None = None
     equi_arena: ModulePermission | None = None
     ge_fino: ModulePermission | None = None
     ge_grueso: ModulePermission | None = None
@@ -148,6 +151,7 @@ def _get_cors_origins() -> list[str]:
         "http://localhost:3013", # EquiArena CRM (Vite local)
         "http://localhost:3014", # GE Fino CRM (Vite local)
         "http://localhost:3015", # GE Grueso CRM (Vite local)
+        "http://localhost:3016", # ABRA CRM (Vite local)
         "http://localhost:5173", # Cotizador
         "http://localhost:5174",
         "http://localhost:5175", # Compresion (Vite)
@@ -160,6 +164,7 @@ def _get_cors_origins() -> list[str]:
         "http://127.0.0.1:3013",
         "http://127.0.0.1:3014",
         "http://127.0.0.1:3015",
+        "http://127.0.0.1:3016",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:5174",
         "http://127.0.0.1:5175",
@@ -180,6 +185,7 @@ def _get_cors_origins() -> list[str]:
         "https://equi-arena.geofal.com.pe",
         "https://ge-fino.geofal.com.pe",
         "https://ge-grueso.geofal.com.pe",
+        "https://abra.geofal.com.pe",
     ]
     raw = os.getenv("QUOTES_CORS_ORIGINS")
     if raw:
@@ -220,6 +226,7 @@ app.add_middleware(
         "X-LLP-Id",
         "X-Gran-Suelo-Id",
         "X-Gran-Agregado-Id",
+        "X-ABRA-Id",
         "X-Equi-Arena-Id",
         "X-Ge-Fino-Id",
         "X-Ge-Grueso-Id",
@@ -304,6 +311,7 @@ app.include_router(proctor_router)
 app.include_router(llp_router)
 app.include_router(gran_suelo_router)
 app.include_router(gran_agregado_router)
+app.include_router(abra_router)
 app.include_router(equi_arena_router)
 app.include_router(ge_fino_router)
 app.include_router(ge_grueso_router)
@@ -764,6 +772,7 @@ async def get_roles():
                         "llp": {"read": True, "write": True, "delete": True},
                         "gran_suelo": {"read": True, "write": True, "delete": True},
                         "gran_agregado": {"read": True, "write": True, "delete": True},
+                        "abra": {"read": True, "write": True, "delete": True},
                         "equi_arena": {"read": True, "write": True, "delete": True},
                         "ge_fino": {"read": True, "write": True, "delete": True},
                         "ge_grueso": {"read": True, "write": True, "delete": True},
@@ -796,6 +805,7 @@ async def get_roles():
                         "llp": {"read": False, "write": False, "delete": False},
                         "gran_suelo": {"read": False, "write": False, "delete": False},
                         "gran_agregado": {"read": False, "write": False, "delete": False},
+                        "abra": {"read": False, "write": False, "delete": False},
                         "equi_arena": {"read": False, "write": False, "delete": False},
                         "ge_fino": {"read": False, "write": False, "delete": False},
                         "ge_grueso": {"read": False, "write": False, "delete": False},
@@ -828,6 +838,7 @@ async def get_roles():
                         "llp": {"read": True, "write": True, "delete": False},
                         "gran_suelo": {"read": True, "write": True, "delete": False},
                         "gran_agregado": {"read": True, "write": True, "delete": False},
+                        "abra": {"read": True, "write": True, "delete": False},
                         "equi_arena": {"read": True, "write": True, "delete": False},
                         "ge_fino": {"read": True, "write": True, "delete": False},
                         "ge_grueso": {"read": True, "write": True, "delete": False},
