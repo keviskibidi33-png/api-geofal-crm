@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, File
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from typing import List
 import unicodedata
 import re
@@ -151,9 +152,22 @@ async def actualizar_recepcion(
     recepcion = recepcion_service.obtener_recepcion(db, recepcion_id)
     if not recepcion:
         raise HTTPException(status_code=404, detail="Recepción no encontrada")
+    old_numero_recepcion = recepcion.numero_recepcion
 
     # 2. Preparar datos
     update_data = recepcion_update.dict(exclude_unset=True)
+
+    if "numero_ot" in update_data and update_data["numero_ot"] is not None:
+        numero_ot = str(update_data["numero_ot"]).strip()
+        if not numero_ot:
+            raise HTTPException(status_code=400, detail="numero_ot no puede estar vacío")
+        update_data["numero_ot"] = numero_ot
+
+    if "numero_recepcion" in update_data and update_data["numero_recepcion"] is not None:
+        numero_recepcion = str(update_data["numero_recepcion"]).strip()
+        if not numero_recepcion:
+            raise HTTPException(status_code=400, detail="numero_recepcion no puede estar vacío")
+        update_data["numero_recepcion"] = numero_recepcion
     
     # 3. Parsear fechas si existen (Lógica espejada de crear_recepcion)
     from datetime import datetime
@@ -176,10 +190,22 @@ async def actualizar_recepcion(
         update_data['fecha_estimada_culminacion'] = parse_date(update_data['fecha_estimada_culminacion'])
 
     # 4. Actualizar
-    updated_recepcion = recepcion_service.actualizar_recepcion(db, recepcion_id, update_data)
+    try:
+        updated_recepcion = recepcion_service.actualizar_recepcion(db, recepcion_id, update_data)
+    except IntegrityError as e:
+        db.rollback()
+        raw_message = str(getattr(e, "orig", e)).lower()
+        if "numero_ot" in raw_message or "recepcion_numero_ot_key" in raw_message:
+            raise HTTPException(status_code=409, detail="Ya existe una recepción con ese número OT")
+        if "numero_recepcion" in raw_message:
+            raise HTTPException(status_code=409, detail="Ya existe una recepción con ese número de recepción")
+        raise HTTPException(status_code=400, detail="Datos inválidos para actualizar recepción")
     
     # 5. Sincronizar trazabilidad si hubo cambios relevantes (opcional pero recomendado)
     try:
+        if old_numero_recepcion and old_numero_recepcion != updated_recepcion.numero_recepcion:
+            # Limpia trazabilidad fantasma del número anterior si quedó huérfana tras el cambio.
+            TracingService.actualizar_trazabilidad(db, old_numero_recepcion)
         TracingService.actualizar_trazabilidad(db, updated_recepcion.numero_recepcion)
     except Exception:
         pass # No bloquear respuesta por error en traza

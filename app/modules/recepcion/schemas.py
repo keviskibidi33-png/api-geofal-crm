@@ -141,6 +141,8 @@ class MuestraConcretoUpdate(BaseModel):
 
 class RecepcionMuestraUpdate(BaseModel):
     """Esquema para actualizar una recepción de muestra"""
+    numero_ot: Optional[str] = None
+    numero_recepcion: Optional[str] = None
     numero_cotizacion: Optional[str] = None
     cliente: Optional[str] = None
     domicilio_legal: Optional[str] = None
