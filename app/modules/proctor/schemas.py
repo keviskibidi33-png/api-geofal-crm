@@ -122,6 +122,48 @@ def _normalize_text(value: object | None) -> str | None:
     return text or None
 
 
+def _normalize_tamiz_metodo_a(value: object | None) -> str:
+    text = (_normalize_text(value) or "").upper()
+    if not text or text == "-":
+        return "-"
+    return "INS-0053 (No 4)" if "0053" in text else "-"
+
+
+def _normalize_tamiz_metodo_b(value: object | None) -> str:
+    text = (_normalize_text(value) or "").upper()
+    if not text or text == "-":
+        return "-"
+    return "INS-0052 (3/8in)" if "0052" in text else "-"
+
+
+def _normalize_tamiz_metodo_c(value: object | None) -> str:
+    text = (_normalize_text(value) or "").upper()
+    if not text or text == "-":
+        return "-"
+    return "INS-0050 (3/4in)" if "0050" in text else "-"
+
+
+def _infer_tamiz_metodos_from_combined(value: object | None) -> tuple[str, str, str]:
+    text = (_normalize_text(value) or "").upper()
+    if not text or text == "-":
+        return "-", "-", "-"
+    return (
+        "INS-0053 (No 4)" if "0053" in text else "-",
+        "INS-0052 (3/8in)" if "0052" in text else "-",
+        "INS-0050 (3/4in)" if "0050" in text else "-",
+    )
+
+
+def _compose_tamiz_metodo_codigo(a_code: str | None, b_code: str | None, c_code: str | None) -> str:
+    parts = [
+        (_normalize_text(c_code) or ""),
+        (_normalize_text(a_code) or ""),
+        (_normalize_text(b_code) or ""),
+    ]
+    filtered = [part for part in parts if part and part != "-"]
+    return ", ".join(filtered) if filtered else "-"
+
+
 class ProctorPuntoRow(BaseModel):
     """Valores de un punto/columna de compactacion (hasta 5 puntos)."""
 
@@ -216,6 +258,9 @@ class ProctorRequest(BaseModel):
     tamiz_porcentaje_retenido_acumulado: list[Optional[float]] = Field(default_factory=lambda: [None] * 5)
 
     # Equipo utilizado
+    tamiz_metodo_a_codigo: Optional[str] = "-"
+    tamiz_metodo_b_codigo: Optional[str] = "-"
+    tamiz_metodo_c_codigo: Optional[str] = "-"
     tamiz_utilizado_metodo_codigo: Optional[str] = "-"
     balanza_1g_codigo: Optional[str] = "-"
     balanza_codigo: Optional[str] = "-"
@@ -289,7 +334,19 @@ class ProctorRequest(BaseModel):
         self.forma_particula = _normalize_text(self.forma_particula)
         self.clasificacion_sucs_visual = _normalize_text(self.clasificacion_sucs_visual)
 
-        self.tamiz_utilizado_metodo_codigo = _normalize_text(self.tamiz_utilizado_metodo_codigo) or "-"
+        inferred_a, inferred_b, inferred_c = _infer_tamiz_metodos_from_combined(self.tamiz_utilizado_metodo_codigo)
+        a_normalized = _normalize_tamiz_metodo_a(self.tamiz_metodo_a_codigo)
+        b_normalized = _normalize_tamiz_metodo_b(self.tamiz_metodo_b_codigo)
+        c_normalized = _normalize_tamiz_metodo_c(self.tamiz_metodo_c_codigo)
+
+        self.tamiz_metodo_a_codigo = inferred_a if a_normalized == "-" and inferred_a != "-" else a_normalized
+        self.tamiz_metodo_b_codigo = inferred_b if b_normalized == "-" and inferred_b != "-" else b_normalized
+        self.tamiz_metodo_c_codigo = inferred_c if c_normalized == "-" and inferred_c != "-" else c_normalized
+        self.tamiz_utilizado_metodo_codigo = _compose_tamiz_metodo_codigo(
+            self.tamiz_metodo_a_codigo,
+            self.tamiz_metodo_b_codigo,
+            self.tamiz_metodo_c_codigo,
+        )
         self.balanza_1g_codigo = _normalize_text(self.balanza_1g_codigo) or "-"
         self.balanza_codigo = _normalize_text(self.balanza_codigo) or "-"
         self.horno_110_codigo = _normalize_text(self.horno_110_codigo) or "-"

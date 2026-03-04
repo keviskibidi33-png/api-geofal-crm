@@ -121,6 +121,15 @@ def _normalize_text(value: object | None) -> str | None:
     return text or None
 
 
+def _normalize_ranurador_codigo(value: object | None) -> str:
+    text = (_normalize_text(value) or "-").upper()
+    if text in {"-", ""}:
+        return "-"
+    if "0107" in text:
+        return "INS-0107"
+    return text
+
+
 class LLPPuntoRow(BaseModel):
     """
     Una columna de la tabla principal:
@@ -254,7 +263,7 @@ class LLPRequest(BaseModel):
         self.balanza_001g_codigo = _normalize_text(self.balanza_001g_codigo) or "-"
         self.horno_110_codigo = _normalize_text(self.horno_110_codigo) or "-"
         self.copa_casagrande_codigo = _normalize_text(self.copa_casagrande_codigo) or "-"
-        self.ranurador_codigo = _normalize_text(self.ranurador_codigo) or "-"
+        self.ranurador_codigo = _normalize_ranurador_codigo(self.ranurador_codigo)
 
         self.observaciones = _normalize_text(self.observaciones)
         self.revisado_por = _normalize_text(self.revisado_por)

@@ -379,7 +379,15 @@ def _fill_sheet(sheet_xml: bytes, data: ProctorRequest, centered_style_map: dict
     _set_cell_formula_with_cached_value(sd, "I41", "I40", i40)
 
     # Equipment used (codes)
-    _set_cell(sd, "H44", data.tamiz_utilizado_metodo_codigo)
+    tamiz_rows: list[str] = []
+    if data.tamiz_metodo_c_codigo and data.tamiz_metodo_c_codigo != "-":
+        tamiz_rows.append(f"{data.tamiz_metodo_c_codigo} - METODO C")
+    if data.tamiz_metodo_a_codigo and data.tamiz_metodo_a_codigo != "-":
+        tamiz_rows.append(f"{data.tamiz_metodo_a_codigo} - METODO A")
+    if data.tamiz_metodo_b_codigo and data.tamiz_metodo_b_codigo != "-":
+        tamiz_rows.append(f"{data.tamiz_metodo_b_codigo} - METODO B")
+    tamiz_display = " | ".join(tamiz_rows) if tamiz_rows else data.tamiz_utilizado_metodo_codigo
+    _set_cell(sd, "H44", tamiz_display)
     _set_cell(sd, "H45", data.balanza_1g_codigo)
     _set_cell(sd, "H46", data.balanza_codigo)
     _set_cell(sd, "H47", data.horno_110_codigo)
