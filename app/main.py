@@ -36,6 +36,7 @@ from app.modules.compresion.router import router as compresion_router
 from app.modules.tracing.router import router as tracing_router
 from app.modules.humedad.router import router as humedad_router
 from app.modules.cont_humedad.router import router as cont_humedad_router
+from app.modules.planas.router import router as planas_router
 from app.modules.cbr.router import router as cbr_router
 from app.modules.proctor.router import router as proctor_router
 from app.modules.llp.router import router as llp_router
@@ -54,6 +55,7 @@ from app.modules.tracing.models import Trazabilidad
 from app.modules.compresion.models import EnsayoCompresion, ItemCompresion
 from app.modules.humedad.models import HumedadEnsayo
 from app.modules.cont_humedad.models import ContHumedadEnsayo
+from app.modules.planas.models import PlanasEnsayo
 from app.modules.cbr.models import CBREnsayo
 from app.modules.proctor.models import ProctorEnsayo
 from app.modules.llp.models import LLPEnsayo
@@ -96,6 +98,7 @@ class RolePermissions(BaseModel):
     tracing: ModulePermission | None = None
     humedad: ModulePermission | None = None
     cont_humedad: ModulePermission | None = None
+    planas: ModulePermission | None = None
     cbr: ModulePermission | None = None
     proctor: ModulePermission | None = None
     llp: ModulePermission | None = None
@@ -168,6 +171,7 @@ def _get_cors_origins() -> list[str]:
         "http://localhost:3018", # Tamiz CRM (Vite local)
         "http://localhost:3019", # ABRASS CRM (Vite local)
         "http://localhost:3020", # Contenido Humedad CRM (Vite local)
+        "http://localhost:3021", # Planas CRM (Vite local)
         "http://localhost:5173", # Cotizador
         "http://localhost:5174",
         "http://localhost:5175", # Compresion (Vite)
@@ -185,6 +189,7 @@ def _get_cors_origins() -> list[str]:
         "http://127.0.0.1:3018",
         "http://127.0.0.1:3019",
         "http://127.0.0.1:3020",
+        "http://127.0.0.1:3021",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:5174",
         "http://127.0.0.1:5175",
@@ -210,6 +215,7 @@ def _get_cors_origins() -> list[str]:
         "https://peso-unitario.geofal.com.pe",
         "https://tamiz.geofal.com.pe",
         "https://contenido-humedad.geofal.com.pe",
+        "https://planas.geofal.com.pe",
     ]
     raw = os.getenv("QUOTES_CORS_ORIGINS")
     if raw:
@@ -246,6 +252,7 @@ app.add_middleware(
         "Content-Disposition",
         "X-Humedad-Id",
         "X-Cont-Humedad-Id",
+        "X-Planas-Id",
         "X-CBR-Id",
         "X-Proctor-Id",
         "X-LLP-Id",
@@ -335,6 +342,7 @@ app.include_router(compresion_router)
 app.include_router(tracing_router)
 app.include_router(humedad_router)
 app.include_router(cont_humedad_router)
+app.include_router(planas_router)
 app.include_router(cbr_router)
 app.include_router(proctor_router)
 app.include_router(llp_router)
@@ -800,6 +808,7 @@ async def get_roles():
                         "tracing": {"read": True, "write": True, "delete": True},
                         "humedad": {"read": True, "write": True, "delete": True},
                         "cont_humedad": {"read": True, "write": True, "delete": True},
+                        "planas": {"read": True, "write": True, "delete": True},
                         "cbr": {"read": True, "write": True, "delete": True},
                         "proctor": {"read": True, "write": True, "delete": True},
                         "llp": {"read": True, "write": True, "delete": True},
@@ -837,6 +846,7 @@ async def get_roles():
                         "tracing": {"read": False, "write": False, "delete": False},
                         "humedad": {"read": False, "write": False, "delete": False},
                         "cont_humedad": {"read": False, "write": False, "delete": False},
+                        "planas": {"read": False, "write": False, "delete": False},
                         "cbr": {"read": False, "write": False, "delete": False},
                         "proctor": {"read": False, "write": False, "delete": False},
                         "llp": {"read": False, "write": False, "delete": False},
@@ -874,6 +884,7 @@ async def get_roles():
                         "tracing": {"read": True, "write": True, "delete": False},
                         "humedad": {"read": True, "write": True, "delete": False},
                         "cont_humedad": {"read": True, "write": True, "delete": False},
+                        "planas": {"read": True, "write": True, "delete": False},
                         "cbr": {"read": True, "write": True, "delete": False},
                         "proctor": {"read": True, "write": True, "delete": False},
                         "llp": {"read": True, "write": True, "delete": False},
