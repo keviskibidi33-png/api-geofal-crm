@@ -43,6 +43,7 @@ Thumbs.db
 !Template_Compresion.xlsx
 !Template_Verificacion.xlsx
 !Template_Humedad.xlsx
+!Template_ContHumedad.xlsx
 !Template_Proctor.xlsx
 !Template_LLP.xlsx
 !Template_GranSuelo.xlsx
@@ -59,6 +60,7 @@ Thumbs.db
 !app/templates/Template_ABRASCRM.xlsx
 !app/templates/Template_PesoUni.xlsx
 !app/templates/Template_Tamiz.xlsx
+!app/templates/Template_ContHumedad.xlsx
 !Temp_CBR_ASTM.xlsx
 !app/templates/Temp_CBR_ASTM.xlsx
 !Resumen N-XXX-26 Compresion.xlsx
