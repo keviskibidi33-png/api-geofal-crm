@@ -219,12 +219,14 @@ def export_programacion_comercial_xlsx(template_path: str, items: list[dict]) ->
     RECEP.N: B
     FECHA RECEPCIÓN: C
     CLIENTE: D
-    COTIZACION: E
-    FECHA SOLICITUD: F
-    FECHA ENTREGA: G
-    EVIDENCIA SOLICITUD - ENVIO - ACEPTACION COTIZ: H
-    DIAS ATRASO ENVIO COTIZ.: I
-    MOTIVO DIAS ATRASO: J
+    PROYECTO: E
+    COTIZACION: F
+    FACTURACION: G
+    FECHA SOLICITUD: H
+    FECHA ENTREGA: I
+    EVIDENCIA SOLICITUD - ENVIO - ACEPTACION COTIZ: J
+    DIAS ATRASO ENVIO COTIZ.: K
+    MOTIVO DIAS ATRASO: L
     
     Data starts at Row 9.
     """
@@ -294,18 +296,23 @@ def export_programacion_comercial_xlsx(template_path: str, items: list[dict]) ->
             _set_cell_value(sheet_data, f'C{row}', item.get('fecha_recepcion', ''), ns, get_string_idx=get_string_idx)
             # D: CLIENTE
             _set_cell_value(sheet_data, f'D{row}', item.get('cliente_nombre', ''), ns, get_string_idx=get_string_idx)
-            # E: COTIZACION
-            _set_cell_value(sheet_data, f'E{row}', item.get('cotizacion_lab', ''), ns, get_string_idx=get_string_idx)
-            # F: FECHA SOLICITUD
-            _set_cell_value(sheet_data, f'F{row}', item.get('fecha_solicitud_com', ''), ns, get_string_idx=get_string_idx)
-            # G: FECHA ENTREGA
-            _set_cell_value(sheet_data, f'G{row}', item.get('fecha_entrega_com', ''), ns, get_string_idx=get_string_idx)
-            # H: EVIDENCIA
-            _set_cell_value(sheet_data, f'H{row}', item.get('evidencia_solicitud_envio', ''), ns, get_string_idx=get_string_idx)
-            # I: DIAS ATRASO
-            _set_cell_value(sheet_data, f'I{row}', item.get('dias_atraso_envio_coti', ''), ns, is_number=True)
-            # J: MOTIVO
-            _set_cell_value(sheet_data, f'J{row}', item.get('motivo_dias_atraso_com', ''), ns, get_string_idx=get_string_idx)
+            # E: PROYECTO
+            _set_cell_value(sheet_data, f'E{row}', item.get('proyecto', ''), ns, get_string_idx=get_string_idx)
+            # F: COTIZACION
+            _set_cell_value(sheet_data, f'F{row}', item.get('cotizacion_lab', ''), ns, get_string_idx=get_string_idx)
+            # G: FACTURACION
+            facturacion_val = item.get('numero_factura') or item.get('facturacion', '')
+            _set_cell_value(sheet_data, f'G{row}', facturacion_val, ns, get_string_idx=get_string_idx)
+            # H: FECHA SOLICITUD
+            _set_cell_value(sheet_data, f'H{row}', item.get('fecha_solicitud_com', ''), ns, get_string_idx=get_string_idx)
+            # I: FECHA ENTREGA
+            _set_cell_value(sheet_data, f'I{row}', item.get('fecha_entrega_com', ''), ns, get_string_idx=get_string_idx)
+            # J: EVIDENCIA
+            _set_cell_value(sheet_data, f'J{row}', item.get('evidencia_solicitud_envio', ''), ns, get_string_idx=get_string_idx)
+            # K: DIAS ATRASO
+            _set_cell_value(sheet_data, f'K{row}', item.get('dias_atraso_envio_coti', ''), ns, is_number=True)
+            # L: MOTIVO
+            _set_cell_value(sheet_data, f'L{row}', item.get('motivo_dias_atraso_com', ''), ns, get_string_idx=get_string_idx)
 
     # 3. Serialize
     modified_sheet1 = etree.tostring(root, encoding='utf-8', xml_declaration=True)
