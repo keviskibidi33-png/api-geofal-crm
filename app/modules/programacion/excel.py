@@ -126,7 +126,28 @@ def _discover_admin_template_mapping(
             best_mapping = row_mapping
 
     if best_score >= 4 and best_header_row > 0:
-        return best_header_row + 1, best_mapping
+        # Some templates keep staging rows hidden after headers.
+        # Start at the first visible row to avoid exporting into hidden lines.
+        row_lookup: dict[int, etree._Element] = {}
+        for row in sheet_data.findall(f'{{{ns}}}row'):
+            row_ref = row.get("r")
+            if not row_ref:
+                continue
+            try:
+                row_lookup[int(row_ref)] = row
+            except ValueError:
+                continue
+
+        candidate_row = best_header_row + 1
+        while candidate_row <= 5000:
+            candidate = row_lookup.get(candidate_row)
+            if candidate is None:
+                break
+            if candidate.get("hidden") != "1":
+                break
+            candidate_row += 1
+
+        return candidate_row, best_mapping
     return fallback_start_row, fallback_map
 
 
