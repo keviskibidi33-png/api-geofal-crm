@@ -189,6 +189,7 @@ def export_programacion_xlsx(template_path: str, items: list[dict]) -> io.BytesI
         shared_strings.append(s_text)
         shared_strings_map[s_text] = idx
         return idx
+    string_idx_getter = get_string_idx if ss_xml_original else None
 
     # 2. Modify Sheet 1
     # We assume 'sheet1.xml' is the data sheet.
@@ -256,43 +257,43 @@ def export_programacion_xlsx(template_path: str, items: list[dict]) -> io.BytesI
             row = START_ROW + idx
             # Mapping
             # A: ITEM
-            _set_cell_value(sheet_data, f'A{row}', item.get('item_numero', ''), ns, get_string_idx=get_string_idx)
+            _set_cell_value(sheet_data, f'A{row}', item.get('item_numero', ''), ns, get_string_idx=string_idx_getter)
             # B: RECEP
-            _set_cell_value(sheet_data, f'B{row}', item.get('recep_numero', ''), ns, get_string_idx=get_string_idx)
+            _set_cell_value(sheet_data, f'B{row}', item.get('recep_numero', ''), ns, get_string_idx=string_idx_getter)
             # C: OT
-            _set_cell_value(sheet_data, f'C{row}', item.get('ot', ''), ns, get_string_idx=get_string_idx)
+            _set_cell_value(sheet_data, f'C{row}', item.get('ot', ''), ns, get_string_idx=string_idx_getter)
             # D: CODIGOS
-            _set_cell_value(sheet_data, f'D{row}', item.get('codigo_muestra', ''), ns, get_string_idx=get_string_idx)
+            _set_cell_value(sheet_data, f'D{row}', item.get('codigo_muestra', ''), ns, get_string_idx=string_idx_getter)
             # E: FECHA RECEPCION
-            _set_cell_value(sheet_data, f'E{row}', item.get('fecha_recepcion', ''), ns, get_string_idx=get_string_idx)
+            _set_cell_value(sheet_data, f'E{row}', item.get('fecha_recepcion', ''), ns, get_string_idx=string_idx_getter)
             # F: FECHA INICIO
-            _set_cell_value(sheet_data, f'F{row}', item.get('fecha_inicio', ''), ns, get_string_idx=get_string_idx)
+            _set_cell_value(sheet_data, f'F{row}', item.get('fecha_inicio', ''), ns, get_string_idx=string_idx_getter)
             # G: FECHA ENTREGA
-            _set_cell_value(sheet_data, f'G{row}', item.get('fecha_entrega_estimada', ''), ns, get_string_idx=get_string_idx)
+            _set_cell_value(sheet_data, f'G{row}', item.get('fecha_entrega_estimada', ''), ns, get_string_idx=string_idx_getter)
             # H: CLIENTE
-            _set_cell_value(sheet_data, f'H{row}', item.get('cliente_nombre', ''), ns, get_string_idx=get_string_idx)
+            _set_cell_value(sheet_data, f'H{row}', item.get('cliente_nombre', ''), ns, get_string_idx=string_idx_getter)
             # I: DESCRIPCION
-            _set_cell_value(sheet_data, f'I{row}', item.get('descripcion_servicio', ''), ns, get_string_idx=get_string_idx)
+            _set_cell_value(sheet_data, f'I{row}', item.get('descripcion_servicio', ''), ns, get_string_idx=string_idx_getter)
             # J: PROYECTO
-            _set_cell_value(sheet_data, f'J{row}', item.get('proyecto', ''), ns, get_string_idx=get_string_idx)
+            _set_cell_value(sheet_data, f'J{row}', item.get('proyecto', ''), ns, get_string_idx=string_idx_getter)
             # K: REAL
-            _set_cell_value(sheet_data, f'K{row}', item.get('entrega_real', ''), ns, get_string_idx=get_string_idx)
+            _set_cell_value(sheet_data, f'K{row}', item.get('entrega_real', ''), ns, get_string_idx=string_idx_getter)
             # L: ESTADO
-            _set_cell_value(sheet_data, f'L{row}', item.get('estado_trabajo', ''), ns, get_string_idx=get_string_idx)
+            _set_cell_value(sheet_data, f'L{row}', item.get('estado_trabajo', ''), ns, get_string_idx=string_idx_getter)
             # M: COTIZACION
-            _set_cell_value(sheet_data, f'M{row}', item.get('cotizacion_lab', ''), ns, get_string_idx=get_string_idx)
+            _set_cell_value(sheet_data, f'M{row}', item.get('cotizacion_lab', ''), ns, get_string_idx=string_idx_getter)
             # N: AUTORIZ
-            _set_cell_value(sheet_data, f'N{row}', item.get('autorizacion_lab', ''), ns, get_string_idx=get_string_idx)
+            _set_cell_value(sheet_data, f'N{row}', item.get('autorizacion_lab', ''), ns, get_string_idx=string_idx_getter)
             # P: NOTA (O skipped?) User said "NOTA: P8". O is missing? Maybe hidden or empty.
-            _set_cell_value(sheet_data, f'P{row}', item.get('nota_lab', ''), ns, get_string_idx=get_string_idx)
+            _set_cell_value(sheet_data, f'P{row}', item.get('nota_lab', ''), ns, get_string_idx=string_idx_getter)
             # Q: DIAS ATE
             _set_cell_value(sheet_data, f'Q{row}', item.get('dias_atraso_lab', ''), ns, is_number=True)
             # R: MOTIVO
-            _set_cell_value(sheet_data, f'R{row}', item.get('motivo_dias_atraso_lab', ''), ns, get_string_idx=get_string_idx)
+            _set_cell_value(sheet_data, f'R{row}', item.get('motivo_dias_atraso_lab', ''), ns, get_string_idx=string_idx_getter)
             # S: EVIDENCIA REC
-            _set_cell_value(sheet_data, f'S{row}', item.get('evidencia_envio_recepcion', ''), ns, get_string_idx=get_string_idx)
+            _set_cell_value(sheet_data, f'S{row}', item.get('evidencia_envio_recepcion', ''), ns, get_string_idx=string_idx_getter)
             # T: EVIDENCIA INF
-            _set_cell_value(sheet_data, f'T{row}', item.get('envio_informes', ''), ns, get_string_idx=get_string_idx)
+            _set_cell_value(sheet_data, f'T{row}', item.get('envio_informes', ''), ns, get_string_idx=string_idx_getter)
 
     # 3. Serialize
     modified_sheet1 = etree.tostring(root, encoding='utf-8', xml_declaration=True)
@@ -383,6 +384,7 @@ def export_programacion_comercial_xlsx(template_path: str, items: list[dict]) ->
         shared_strings.append(s_text)
         shared_strings_map[s_text] = idx
         return idx
+    string_idx_getter = get_string_idx if ss_xml_original else None
 
     # 2. Modify Sheet 1
     sheet_file = 'xl/worksheets/sheet1.xml'
@@ -409,25 +411,25 @@ def export_programacion_comercial_xlsx(template_path: str, items: list[dict]) ->
         for idx, item in enumerate(items):
             row = START_ROW + idx
             # A: ITEM
-            _set_cell_value(sheet_data, f'A{row}', item.get('item_numero', ''), ns, get_string_idx=get_string_idx)
+            _set_cell_value(sheet_data, f'A{row}', item.get('item_numero', ''), ns, get_string_idx=string_idx_getter)
             # B: RECEP.N
-            _set_cell_value(sheet_data, f'B{row}', item.get('recep_numero', ''), ns, get_string_idx=get_string_idx)
+            _set_cell_value(sheet_data, f'B{row}', item.get('recep_numero', ''), ns, get_string_idx=string_idx_getter)
             # C: FECHA RECEPCIÓN
-            _set_cell_value(sheet_data, f'C{row}', item.get('fecha_recepcion', ''), ns, get_string_idx=get_string_idx)
+            _set_cell_value(sheet_data, f'C{row}', item.get('fecha_recepcion', ''), ns, get_string_idx=string_idx_getter)
             # D: CLIENTE
-            _set_cell_value(sheet_data, f'D{row}', item.get('cliente_nombre', ''), ns, get_string_idx=get_string_idx)
+            _set_cell_value(sheet_data, f'D{row}', item.get('cliente_nombre', ''), ns, get_string_idx=string_idx_getter)
             # E: COTIZACION
-            _set_cell_value(sheet_data, f'E{row}', item.get('cotizacion_lab', ''), ns, get_string_idx=get_string_idx)
+            _set_cell_value(sheet_data, f'E{row}', item.get('cotizacion_lab', ''), ns, get_string_idx=string_idx_getter)
             # F: FECHA SOLICITUD
-            _set_cell_value(sheet_data, f'F{row}', item.get('fecha_solicitud_com', ''), ns, get_string_idx=get_string_idx)
+            _set_cell_value(sheet_data, f'F{row}', item.get('fecha_solicitud_com', ''), ns, get_string_idx=string_idx_getter)
             # G: FECHA ENTREGA
-            _set_cell_value(sheet_data, f'G{row}', item.get('fecha_entrega_com', ''), ns, get_string_idx=get_string_idx)
+            _set_cell_value(sheet_data, f'G{row}', item.get('fecha_entrega_com', ''), ns, get_string_idx=string_idx_getter)
             # H: EVIDENCIA
-            _set_cell_value(sheet_data, f'H{row}', item.get('evidencia_solicitud_envio', ''), ns, get_string_idx=get_string_idx)
+            _set_cell_value(sheet_data, f'H{row}', item.get('evidencia_solicitud_envio', ''), ns, get_string_idx=string_idx_getter)
             # I: DIAS ATRASO
             _set_cell_value(sheet_data, f'I{row}', item.get('dias_atraso_envio_coti', ''), ns, is_number=True)
             # J: MOTIVO
-            _set_cell_value(sheet_data, f'J{row}', item.get('motivo_dias_atraso_com', ''), ns, get_string_idx=get_string_idx)
+            _set_cell_value(sheet_data, f'J{row}', item.get('motivo_dias_atraso_com', ''), ns, get_string_idx=string_idx_getter)
 
     # 3. Serialize
     modified_sheet1 = etree.tostring(root, encoding='utf-8', xml_declaration=True)
@@ -507,6 +509,7 @@ def export_programacion_administracion_xlsx(template_path: str, items: list[dict
         shared_strings.append(s_text)
         shared_strings_map[s_text] = idx
         return idx
+    string_idx_getter = get_string_idx if ss_xml_original else None
 
     # 2. Modify Sheet 1
     sheet_file = 'xl/worksheets/sheet1.xml'
@@ -565,7 +568,7 @@ def export_programacion_administracion_xlsx(template_path: str, items: list[dict
                     value,
                     ns,
                     is_number=is_number,
-                    get_string_idx=get_string_idx,
+                    get_string_idx=string_idx_getter,
                 )
 
     # 3. Serialize
