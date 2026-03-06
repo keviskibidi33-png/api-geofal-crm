@@ -1,5 +1,6 @@
 import io
 import zipfile
+import unicodedata
 from typing import Any
 from lxml import etree
 from datetime import date
@@ -7,6 +8,127 @@ from app.xlsx_direct_v2 import (
     NAMESPACES, _parse_cell_ref, _col_letter_to_num, _find_or_create_row, 
     _find_or_create_cell, _set_cell_value, _duplicate_row, _shift_rows, _shift_merged_cells
 )
+
+
+def _normalize_header_text(value: Any) -> str:
+    """Normalize header labels for resilient matching."""
+    if value is None:
+        return ""
+    text = unicodedata.normalize("NFKD", str(value))
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    text = text.replace("\n", " ").replace("\r", " ")
+    text = "".join(ch if ch.isalnum() else " " for ch in text.upper())
+    return " ".join(text.split())
+
+
+def _extract_cell_text(cell: etree._Element, ns: str, shared_strings: list[str]) -> str:
+    """Extract plain text from XML cell values (shared strings or inline strings)."""
+    cell_type = cell.get("t")
+    if cell_type == "s":
+        v = cell.find(f'{{{ns}}}v')
+        if v is None or not v.text:
+            return ""
+        try:
+            idx = int(v.text)
+        except (TypeError, ValueError):
+            return ""
+        return shared_strings[idx] if 0 <= idx < len(shared_strings) else ""
+    if cell_type == "inlineStr":
+        text_nodes = cell.findall(f'.//{{{ns}}}t')
+        return "".join(node.text or "" for node in text_nodes)
+
+    v = cell.find(f'{{{ns}}}v')
+    return v.text if v is not None and v.text else ""
+
+
+def _resolve_admin_header_field(normalized_header: str) -> tuple[str, bool] | None:
+    """Map normalized ADMIN template headers to API item fields."""
+    direct_map: dict[str, tuple[str, bool]] = {
+        "ITEM": ("item_numero", False),
+        "RECEP N": ("recep_numero", False),
+        "FECHA RECEPCION": ("fecha_recepcion", False),
+        "CLIENTE": ("cliente_nombre", False),
+        "PROYECTO": ("proyecto", False),
+        "COTIZACION": ("cotizacion_lab", False),
+        "FACTURACION": ("numero_factura", False),
+        "N FACTURA": ("numero_factura", False),
+        "NO FACTURA": ("numero_factura", False),
+        "NRO FACTURA": ("numero_factura", False),
+        "NUMERO FACTURA": ("numero_factura", False),
+        "ESTADO PAGO": ("estado_pago", False),
+        "ESTADO PARA AUTORIZAR": ("estado_autorizar", False),
+        "NOTA": ("nota_admin", False),
+        "FECHA SOLICITUD": ("fecha_solicitud_com", False),
+        "FECHA ENTREGA": ("fecha_entrega_com", False),
+        "MOTIVO DIAS ATRASO": ("motivo_dias_atraso_com", False),
+    }
+    if normalized_header in direct_map:
+        return direct_map[normalized_header]
+    if normalized_header.startswith("EVIDENCIA SOLICITUD"):
+        return ("evidencia_solicitud_envio", False)
+    if normalized_header.startswith("DIAS ATRASO"):
+        return ("dias_atraso_envio_coti", True)
+    return None
+
+
+def _discover_admin_template_mapping(
+    sheet_data: etree._Element, ns: str, shared_strings: list[str]
+) -> tuple[int, dict[str, tuple[str, bool]]]:
+    """
+    Discover header row and column mapping from ADMIN template.
+    Falls back to legacy fixed layout A-H when headers cannot be detected.
+    """
+    fallback_start_row = 6
+    fallback_map: dict[str, tuple[str, bool]] = {
+        "A": ("item_numero", False),
+        "B": ("recep_numero", False),
+        "C": ("fecha_recepcion", False),
+        "D": ("cliente_nombre", False),
+        "E": ("numero_factura", False),
+        "F": ("estado_pago", False),
+        "G": ("estado_autorizar", False),
+        "H": ("nota_admin", False),
+    }
+
+    best_score = 0
+    best_header_row = 0
+    best_mapping: dict[str, tuple[str, bool]] = {}
+
+    for row in sheet_data.findall(f'{{{ns}}}row'):
+        row_ref = row.get("r")
+        if not row_ref:
+            continue
+        try:
+            row_num = int(row_ref)
+        except ValueError:
+            continue
+        if row_num > 20:
+            continue
+
+        row_mapping: dict[str, tuple[str, bool]] = {}
+        for cell in row.findall(f'{{{ns}}}c'):
+            cell_ref = cell.get("r")
+            if not cell_ref:
+                continue
+            col_letter, _ = _parse_cell_ref(cell_ref)
+            header_text = _extract_cell_text(cell, ns, shared_strings)
+            normalized = _normalize_header_text(header_text)
+            if not normalized:
+                continue
+            field_info = _resolve_admin_header_field(normalized)
+            if field_info:
+                row_mapping[col_letter] = field_info
+
+        score = len(row_mapping)
+        if score > best_score:
+            best_score = score
+            best_header_row = row_num
+            best_mapping = row_mapping
+
+    if best_score >= 4 and best_header_row > 0:
+        return best_header_row + 1, best_mapping
+    return fallback_start_row, fallback_map
+
 
 def export_programacion_xlsx(template_path: str, items: list[dict]) -> io.BytesIO:
     """
@@ -219,14 +341,12 @@ def export_programacion_comercial_xlsx(template_path: str, items: list[dict]) ->
     RECEP.N: B
     FECHA RECEPCIÓN: C
     CLIENTE: D
-    PROYECTO: E
-    COTIZACION: F
-    FACTURACION: G
-    FECHA SOLICITUD: H
-    FECHA ENTREGA: I
-    EVIDENCIA SOLICITUD - ENVIO - ACEPTACION COTIZ: J
-    DIAS ATRASO ENVIO COTIZ.: K
-    MOTIVO DIAS ATRASO: L
+    COTIZACION: E
+    FECHA SOLICITUD: F
+    FECHA ENTREGA: G
+    EVIDENCIA SOLICITUD - ENVIO - ACEPTACION COTIZ: H
+    DIAS ATRASO ENVIO COTIZ.: I
+    MOTIVO DIAS ATRASO: J
     
     Data starts at Row 9.
     """
@@ -296,23 +416,18 @@ def export_programacion_comercial_xlsx(template_path: str, items: list[dict]) ->
             _set_cell_value(sheet_data, f'C{row}', item.get('fecha_recepcion', ''), ns, get_string_idx=get_string_idx)
             # D: CLIENTE
             _set_cell_value(sheet_data, f'D{row}', item.get('cliente_nombre', ''), ns, get_string_idx=get_string_idx)
-            # E: PROYECTO
-            _set_cell_value(sheet_data, f'E{row}', item.get('proyecto', ''), ns, get_string_idx=get_string_idx)
-            # F: COTIZACION
-            _set_cell_value(sheet_data, f'F{row}', item.get('cotizacion_lab', ''), ns, get_string_idx=get_string_idx)
-            # G: FACTURACION
-            facturacion_val = item.get('numero_factura') or item.get('facturacion', '')
-            _set_cell_value(sheet_data, f'G{row}', facturacion_val, ns, get_string_idx=get_string_idx)
-            # H: FECHA SOLICITUD
-            _set_cell_value(sheet_data, f'H{row}', item.get('fecha_solicitud_com', ''), ns, get_string_idx=get_string_idx)
-            # I: FECHA ENTREGA
-            _set_cell_value(sheet_data, f'I{row}', item.get('fecha_entrega_com', ''), ns, get_string_idx=get_string_idx)
-            # J: EVIDENCIA
-            _set_cell_value(sheet_data, f'J{row}', item.get('evidencia_solicitud_envio', ''), ns, get_string_idx=get_string_idx)
-            # K: DIAS ATRASO
-            _set_cell_value(sheet_data, f'K{row}', item.get('dias_atraso_envio_coti', ''), ns, is_number=True)
-            # L: MOTIVO
-            _set_cell_value(sheet_data, f'L{row}', item.get('motivo_dias_atraso_com', ''), ns, get_string_idx=get_string_idx)
+            # E: COTIZACION
+            _set_cell_value(sheet_data, f'E{row}', item.get('cotizacion_lab', ''), ns, get_string_idx=get_string_idx)
+            # F: FECHA SOLICITUD
+            _set_cell_value(sheet_data, f'F{row}', item.get('fecha_solicitud_com', ''), ns, get_string_idx=get_string_idx)
+            # G: FECHA ENTREGA
+            _set_cell_value(sheet_data, f'G{row}', item.get('fecha_entrega_com', ''), ns, get_string_idx=get_string_idx)
+            # H: EVIDENCIA
+            _set_cell_value(sheet_data, f'H{row}', item.get('evidencia_solicitud_envio', ''), ns, get_string_idx=get_string_idx)
+            # I: DIAS ATRASO
+            _set_cell_value(sheet_data, f'I{row}', item.get('dias_atraso_envio_coti', ''), ns, is_number=True)
+            # J: MOTIVO
+            _set_cell_value(sheet_data, f'J{row}', item.get('motivo_dias_atraso_com', ''), ns, get_string_idx=get_string_idx)
 
     # 3. Serialize
     modified_sheet1 = etree.tostring(root, encoding='utf-8', xml_declaration=True)
@@ -355,17 +470,9 @@ def export_programacion_comercial_xlsx(template_path: str, items: list[dict]) ->
 def export_programacion_administracion_xlsx(template_path: str, items: list[dict]) -> io.BytesIO:
     """
     Exporta Programacion ADMINISTRACION XLSX modificando el XML del template directamente.
-    Mapeo (segun Template_Programacion_Administracion.xlsx):
-    ITEM: A
-    RECEP.N: B
-    FECHA RECEPCIÓN: C
-    CLIENTE: D
-    Nº FACTURA: E
-    ESTADO PAGO: F
-    ESTADO PARA AUTORIZAR: G
-    NOTA: H
-    
-    Data starts at Row 6.
+    Detecta headers del template y llena columnas por nombre para evitar
+    errores cuando se inserten o reordenen columnas (p.ej. PROYECTO/FACTURACION).
+    Si no detecta headers, usa el layout legacy A-H (data desde fila 6).
     """
     
     # 1. Load shared strings
@@ -412,8 +519,24 @@ def export_programacion_administracion_xlsx(template_path: str, items: list[dict
     sheet_data = root.find(f'.//{{{ns}}}sheetData')
     
     START_ROW = 6
+    column_mapping: dict[str, tuple[str, bool]] = {
+        "A": ("item_numero", False),
+        "B": ("recep_numero", False),
+        "C": ("fecha_recepcion", False),
+        "D": ("cliente_nombre", False),
+        "E": ("numero_factura", False),
+        "F": ("estado_pago", False),
+        "G": ("estado_autorizar", False),
+        "H": ("nota_admin", False),
+    }
     
     if sheet_data is not None:
+        START_ROW, column_mapping = _discover_admin_template_mapping(
+            sheet_data=sheet_data,
+            ns=ns,
+            shared_strings=shared_strings,
+        )
+
         count = len(items)
         if count > 1:
             _shift_rows(sheet_data, START_ROW + 1, count - 1, ns)
@@ -425,23 +548,25 @@ def export_programacion_administracion_xlsx(template_path: str, items: list[dict
         # Fill Data
         for idx, item in enumerate(items):
             row = START_ROW + idx
-            # A: ITEM
-            _set_cell_value(sheet_data, f'A{row}', item.get('item_numero', ''), ns, get_string_idx=get_string_idx)
-            # B: RECEP.N
-            _set_cell_value(sheet_data, f'B{row}', item.get('recep_numero', ''), ns, get_string_idx=get_string_idx)
-            # C: FECHA RECEPCIÓN
-            _set_cell_value(sheet_data, f'C{row}', item.get('fecha_recepcion', ''), ns, get_string_idx=get_string_idx)
-            # D: CLIENTE
-            _set_cell_value(sheet_data, f'D{row}', item.get('cliente_nombre', ''), ns, get_string_idx=get_string_idx)
-            # E: Nº FACTURA
-            _set_cell_value(sheet_data, f'E{row}', item.get('numero_factura', ''), ns, get_string_idx=get_string_idx)
-            # F: ESTADO PAGO
-            _set_cell_value(sheet_data, f'F{row}', item.get('estado_pago', ''), ns, get_string_idx=get_string_idx)
-            # G: ESTADO PARA AUTORIZAR
-            autorizar_val = item.get('autorizacion_lab') or item.get('estado_autorizar', '')
-            _set_cell_value(sheet_data, f'G{row}', autorizar_val, ns, get_string_idx=get_string_idx)
-            # H: NOTA
-            _set_cell_value(sheet_data, f'H{row}', item.get('nota_admin', ''), ns, get_string_idx=get_string_idx)
+            for col_letter, (field_name, is_number) in sorted(
+                column_mapping.items(),
+                key=lambda entry: _col_letter_to_num(entry[0]),
+            ):
+                if field_name == "estado_autorizar":
+                    value = item.get("autorizacion_lab") or item.get("estado_autorizar", "")
+                elif field_name == "numero_factura":
+                    value = item.get("numero_factura") or item.get("facturacion", "")
+                else:
+                    value = item.get(field_name, "")
+
+                _set_cell_value(
+                    sheet_data,
+                    f"{col_letter}{row}",
+                    value,
+                    ns,
+                    is_number=is_number,
+                    get_string_idx=get_string_idx,
+                )
 
     # 3. Serialize
     modified_sheet1 = etree.tostring(root, encoding='utf-8', xml_declaration=True)
