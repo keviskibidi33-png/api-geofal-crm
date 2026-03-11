@@ -27,7 +27,7 @@ class RecepcionMuestra(Base):
     # Información del solicitante
     solicitante = Column(String(200), nullable=False, comment="Nombre del solicitante")
     domicilio_solicitante = Column(String(300), nullable=False, comment="Domicilio del solicitante")
-    proyecto = Column(String(200), nullable=False, comment="Nombre del proyecto")
+    proyecto = Column(String(500), nullable=False, comment="Nombre del proyecto")
     ubicacion = Column(String(200), nullable=False, comment="Ubicación del proyecto")
     
     # Fechas importantes
@@ -128,7 +128,7 @@ class RecepcionPlantilla(Base):
     # Datos de proyecto/informe
     solicitante = Column(String(255), nullable=False)
     domicilio_solicitante = Column(Text, nullable=False)
-    proyecto = Column(String(255), nullable=False)
+    proyecto = Column(String(500), nullable=False)
     ubicacion = Column(Text, nullable=False)
     
     fecha_creacion = Column(DateTime, nullable=False, default=func.now())

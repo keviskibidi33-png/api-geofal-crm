@@ -56,7 +56,7 @@ class RecepcionMuestraBase(BaseModel):
     # Información del solicitante
     solicitante: Optional[str] = Field("", max_length=200, description="Nombre del solicitante")
     domicilio_solicitante: Optional[str] = Field("", max_length=300, description="Domicilio del solicitante")
-    proyecto: Optional[str] = Field("", max_length=200, description="Nombre del proyecto")
+    proyecto: Optional[str] = Field("", max_length=500, description="Nombre del proyecto")
     ubicacion: Optional[str] = Field("", max_length=200, description="Ubicación del proyecto")
     
     # Fechas importantes
@@ -152,7 +152,7 @@ class RecepcionMuestraUpdate(BaseModel):
     telefono: Optional[str] = None
     solicitante: Optional[str] = None
     domicilio_solicitante: Optional[str] = None
-    proyecto: Optional[str] = None
+    proyecto: Optional[str] = Field(None, max_length=500)
     ubicacion: Optional[str] = None
     fecha_recepcion: Optional[str] = None
     fecha_estimada_culminacion: Optional[str] = None
@@ -183,7 +183,7 @@ class RecepcionPlantillaBase(BaseModel):
     telefono: Optional[str] = Field(None, max_length=50)
     solicitante: str = Field(..., max_length=200)
     domicilio_solicitante: str = Field(..., max_length=300)
-    proyecto: str = Field(..., max_length=200)
+    proyecto: str = Field(..., max_length=500)
     ubicacion: str = Field(..., max_length=200)
 
 class RecepcionPlantillaCreate(RecepcionPlantillaBase):

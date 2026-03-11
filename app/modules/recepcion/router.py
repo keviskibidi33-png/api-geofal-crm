@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, File
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, DataError
 from typing import List
 import unicodedata
 import re
@@ -36,6 +36,8 @@ async def crear_recepcion(
         raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except DataError:
+        raise HTTPException(status_code=400, detail="Texto demasiado largo para un campo de recepción")
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -192,6 +194,9 @@ async def actualizar_recepcion(
     # 4. Actualizar
     try:
         updated_recepcion = recepcion_service.actualizar_recepcion(db, recepcion_id, update_data)
+    except DataError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Texto demasiado largo para un campo de recepción")
     except IntegrityError as e:
         db.rollback()
         raw_message = str(getattr(e, "orig", e)).lower()
