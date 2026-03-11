@@ -51,7 +51,7 @@ class RecepcionMuestraBase(BaseModel):
     ruc: Optional[str] = Field("", max_length=20, description="RUC del cliente")
     persona_contacto: Optional[str] = Field("", max_length=100, description="Persona de contacto")
     email: Optional[str] = Field("", max_length=500, description="Email de contacto (puede ser múltiple)")
-    telefono: Optional[str] = Field("", max_length=20, description="Teléfono de contacto")
+    telefono: Optional[str] = Field("", max_length=50, description="Teléfono de contacto")
     
     # Información del solicitante
     solicitante: Optional[str] = Field("", max_length=200, description="Nombre del solicitante")
@@ -149,7 +149,7 @@ class RecepcionMuestraUpdate(BaseModel):
     ruc: Optional[str] = None
     persona_contacto: Optional[str] = None
     email: Optional[str] = None
-    telefono: Optional[str] = None
+    telefono: Optional[str] = Field(None, max_length=50)
     solicitante: Optional[str] = None
     domicilio_solicitante: Optional[str] = None
     proyecto: Optional[str] = Field(None, max_length=500)

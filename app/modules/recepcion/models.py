@@ -22,7 +22,7 @@ class RecepcionMuestra(Base):
     ruc = Column(String(20), nullable=False, comment="RUC del cliente")
     persona_contacto = Column(String(100), nullable=False, comment="Persona de contacto")
     email = Column(String(500), nullable=False, comment="Email de contacto (puede ser múltiple)")
-    telefono = Column(String(20), nullable=False, comment="Teléfono de contacto")
+    telefono = Column(String(50), nullable=False, comment="Teléfono de contacto")
     
     # Información del solicitante
     solicitante = Column(String(200), nullable=False, comment="Nombre del solicitante")
