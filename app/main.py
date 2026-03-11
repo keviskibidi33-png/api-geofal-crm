@@ -13,7 +13,9 @@ from typing import Any
  
 import asyncio
 import requests # Moved by user
-from fastapi import FastAPI, HTTPException, Header, Response, Depends # Added Response, Depends; kept Header
+from fastapi import FastAPI, HTTPException, Header, Response, Depends, Request # Added Response, Depends; kept Header
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse # Added JSONResponse
 from dotenv import load_dotenv
@@ -301,6 +303,18 @@ async def value_error_handler(request, exc):
         status_code=400,
         content={"detail": str(exc)},
     )
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_error_handler(request: Request, exc: RequestValidationError):
+    """Log validation errors to identify malformed payloads without changing response shape."""
+    logger.warning(
+        "Validation error on %s %s: %s",
+        request.method,
+        request.url.path,
+        exc.errors(),
+    )
+    return await request_validation_exception_handler(request, exc)
 
  
 @app.get("/")
@@ -844,6 +858,45 @@ async def get_roles():
                     "role_id": "vendor",
                     "label": "Vendedor",
                     "description": "Acceso a modulos de ventas",
+                    "permissions": {
+                        "clientes": {"read": True, "write": True, "delete": False},
+                        "proyectos": {"read": True, "write": True, "delete": False},
+                        "cotizadora": {"read": True, "write": True, "delete": False},
+                        "programacion": {"read": True, "write": False, "delete": False},
+                        "recepcion": {"read": False, "write": False, "delete": False},
+                        "verificacion_muestras": {"read": False, "write": False, "delete": False},
+                        "compresion": {"read": False, "write": False, "delete": False},
+                        "tracing": {"read": False, "write": False, "delete": False},
+                        "humedad": {"read": False, "write": False, "delete": False},
+                        "cont_humedad": {"read": False, "write": False, "delete": False},
+                        "planas": {"read": False, "write": False, "delete": False},
+                        "caras": {"read": False, "write": False, "delete": False},
+                        "cbr": {"read": False, "write": False, "delete": False},
+                        "proctor": {"read": False, "write": False, "delete": False},
+                        "llp": {"read": False, "write": False, "delete": False},
+                        "gran_suelo": {"read": False, "write": False, "delete": False},
+                        "gran_agregado": {"read": False, "write": False, "delete": False},
+                        "abra": {"read": False, "write": False, "delete": False},
+                        "abrass": {"read": False, "write": False, "delete": False},
+                        "peso_unitario": {"read": False, "write": False, "delete": False},
+                        "tamiz": {"read": False, "write": False, "delete": False},
+                        "equi_arena": {"read": False, "write": False, "delete": False},
+                        "ge_fino": {"read": False, "write": False, "delete": False},
+                        "ge_grueso": {"read": False, "write": False, "delete": False},
+                        "usuarios": {"read": False, "write": False, "delete": False},
+                        "auditoria": {"read": False, "write": False, "delete": False},
+                        "configuracion": {"read": False, "write": False, "delete": False},
+                        "laboratorio": {"read": False, "write": False, "delete": False},
+                        "comercial": {"read": True, "write": True, "delete": False},
+                        "administracion": {"read": False, "write": False, "delete": False},
+                        "permisos": {"read": False, "write": False, "delete": False}
+                    },
+                    "is_system": True
+                },
+                {
+                    "role_id": "auxiliar_comercial",
+                    "label": "Auxiliar Comercial",
+                    "description": "Soporte comercial (edición de cotizaciones, clientes y proyectos)",
                     "permissions": {
                         "clientes": {"read": True, "write": True, "delete": False},
                         "proyectos": {"read": True, "write": True, "delete": False},
