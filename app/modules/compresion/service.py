@@ -108,6 +108,14 @@ class CompresionService:
             for field in numeric_fields
         )
 
+    @staticmethod
+    def _coerce_item_num(value: Any) -> Optional[int]:
+        try:
+            num = int(str(value).strip())
+            return num if num > 0 else None
+        except (TypeError, ValueError):
+            return None
+
     @classmethod
     def _sanitize_items(cls, items_data: Optional[List[Any]]) -> List[dict]:
         sanitized: List[dict] = []
@@ -117,7 +125,10 @@ class CompresionService:
             if not cls._item_tiene_datos(data):
                 continue
 
-            data["item"] = len(sanitized) + 1
+            item_num = cls._coerce_item_num(data.get("item")) or cls._coerce_item_num(data.get("item_numero"))
+            if item_num is None:
+                item_num = len(sanitized) + 1
+            data["item"] = item_num
             data["codigo_lem"] = (data.get("codigo_lem") or "").strip().upper()
             sanitized.append(data)
 
