@@ -40,16 +40,7 @@ def _index_by_item_numero(records, item_attr: str = "item_numero") -> dict:
 
 def _buscar_modulos(db: Session, numero_recepcion: str, canonical: str):
     """Busca verificación y compresión con variantes de número."""
-    base_num = TracingService._extraer_numero_base(numero_recepcion)
-    source = canonical or numero_recepcion or ""
-    year_match = re.search(r'-(\d{2})$', source)
-    year_suffix = year_match.group(1) if year_match else ""
-
-    search_nums = list(dict.fromkeys(filter(None, [
-        canonical, base_num, numero_recepcion,
-        f"{base_num}-REC",
-        f"{base_num}-REC-{year_suffix}" if year_suffix else None,
-    ])))
+    search_nums = TracingService._build_numero_variantes(numero_recepcion, canonical)
 
     verificacion = None
     compresion = None

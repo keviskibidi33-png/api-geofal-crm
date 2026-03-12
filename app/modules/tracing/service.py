@@ -29,6 +29,37 @@ class TracingService:
         return clean
 
     @staticmethod
+    def _build_numero_variantes(numero: str, canonical: str = "") -> list[str]:
+        """
+        Construye variantes de numero_recepcion para buscar en modulos.
+        Incluye prefijos REC- y sufijos -REC con y sin anio.
+        """
+        source = (canonical or numero or "").strip()
+        if not source:
+            return []
+
+        base_num = TracingService._extraer_numero_base(source)
+        clean_num = source.replace("REC-", "").replace("rec-", "").strip()
+
+        year_match = re.search(r'-(\d{2})$', source)
+        year_suffix = year_match.group(1) if year_match else ""
+
+        variants = [
+            numero,
+            canonical,
+            source,
+            clean_num,
+            base_num,
+            f"REC-{base_num}" if base_num else None,
+            f"REC-{base_num}-{year_suffix}" if base_num and year_suffix else None,
+            f"REC-{clean_num}" if clean_num and not clean_num.upper().startswith("REC-") else None,
+            f"{base_num}-REC" if base_num else None,
+            f"{base_num}-REC-{year_suffix}" if base_num and year_suffix else None,
+        ]
+
+        return list(dict.fromkeys([v for v in variants if v]))
+
+    @staticmethod
     def _buscar_recepcion_flexible(db: Session, numero: str) -> Optional[tuple[Optional[RecepcionMuestra], str]]:
         """
         Busca una recepción permitiendo variaciones de formato usando una sola query optimizada.
@@ -81,23 +112,16 @@ class TracingService:
         # 1. Obtener recepción con búsqueda inteligente
         recepcion, canonical_numero = TracingService._buscar_recepcion_flexible(db, numero_recepcion)
         
-        # Extraer número base para búsquedas cruzadas entre módulos
-        base_num = TracingService._extraer_numero_base(numero_recepcion)
-        numeros_busqueda = list(set([canonical_numero, base_num, numero_recepcion]))
+        # Extraer variantes para búsquedas cruzadas entre módulos
+        numeros_busqueda = TracingService._build_numero_variantes(numero_recepcion, canonical_numero)
 
-        # 2. Buscar en otros módulos usando todas las variantes del número
         # 2. Buscar en otros módulos usando todas las variantes del número
         verificacion = None
         compresion = None
         
         # Ensure we have a valid list to search
-        search_candidates = []
-        if canonical_numero: search_candidates.append(canonical_numero)
-        if base_num: search_candidates.append(base_num)
-        if numero_recepcion: search_candidates.append(numero_recepcion)
-        
-        # Deduplicate preserving order
-        numeros_busqueda = list(dict.fromkeys(search_candidates))
+        if not numeros_busqueda:
+            numeros_busqueda = [numero_recepcion] if numero_recepcion else []
 
         for num in numeros_busqueda:
             if not verificacion:
@@ -105,21 +129,14 @@ class TracingService:
                 verificacion = db.query(VerificacionMuestras).filter(VerificacionMuestras.numero_verificacion == num).first()
                 
                 # If not found, try smart verification formats
-                if not verificacion and base_num:
+                if not verificacion:
                     # Common formats: "1111", "REC-1111-26", "1111-REC", "1111-REC-26"
-                    extra_variants = [f"{base_num}-REC"]
-                    
-                    # Try to guess year suffix from canonical or original
-                    # Safely handle None for canonical_numero
-                    source_str = canonical_numero or numero_recepcion or ""
-                    year_match = re.search(r'-(\d{2})$', source_str)
-                    if year_match:
-                        year_suffix = year_match.group(1)
-                        extra_variants.append(f"{base_num}-REC-{year_suffix}") 
-                    
-                    for variant in extra_variants:
-                        verificacion = db.query(VerificacionMuestras).filter(VerificacionMuestras.numero_verificacion == variant).first()
-                        if verificacion: break
+                    for variant in TracingService._build_numero_variantes(numero_recepcion, canonical_numero):
+                        verificacion = db.query(VerificacionMuestras).filter(
+                            VerificacionMuestras.numero_verificacion == variant
+                        ).first()
+                        if verificacion:
+                            break
             
             if not compresion:
                 compresion = db.query(EnsayoCompresion).filter(EnsayoCompresion.numero_recepcion == num).first()
