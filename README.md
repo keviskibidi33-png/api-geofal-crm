@@ -6,6 +6,12 @@ Este repositorio contiene el backend del CRM de GeoFal, construido con **FastAPI
 
 El sistema se divide en **Módulos Funcionales** (en `app/modules/`) y **Servicios Core** (en `app/`).
 
+### Documentación específica Humedad/CBR
+
+Para replicar el patrón `CRM -> iframe -> API` con automatización y seguridad:
+
+- `docs/HUMEDAD_CBR_IFRAME_AUTOMATIZACION_SEGURIDAD.md`
+
 ### Estructura de Directorios
 ```
 app/
@@ -82,8 +88,8 @@ Es el corazón del sistema de reportes. Funciona descomprimiendo el `.xlsx` (que
 - **Importante:** Permite inyectar condiciones comerciales dinámicas traídas de la BD sin romper el formato visual del documento legal.
 
 ### Autenticación
-- Integrada con **Directus**.
-- El endpoint `/user/me` actúa como proxy validando el token contra el servicio de identidad de Directus.
+- Seguridad principal por JWT de Supabase (`JWTAuthMiddleware` en `app/auth.py`).
+- El endpoint `/user/me` se mantiene como proxy de perfil para compatibilidad con Directus.
 
 ---
 

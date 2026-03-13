@@ -26,11 +26,10 @@ RUN mkdir -p /app/uploads /app/cotizaciones && \
     chmod -R 777 /app/uploads /app/cotizaciones
 
 # Expose port
-EXPOSE 8080
+EXPOSE 8181
 
 # Healthcheck
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl -f http://localhost:8080/ || exit 1
-
+  CMD curl -f http://localhost:8181/ || exit 1
 # Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8181"]

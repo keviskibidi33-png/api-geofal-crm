@@ -355,11 +355,13 @@ def _fill_drawing(drawing_xml: bytes, data: GranSueloRequest) -> bytes:
                 replacements["Revisado:"] = data.revisado_por
             if data.revisado_fecha:
                 replacements["Fecha:"] = data.revisado_fecha
+                replacements["Fecha"] = data.revisado_fecha
         elif is_aprobado:
             if data.aprobado_por:
                 replacements["Aprobado:"] = data.aprobado_por
             if data.aprobado_fecha:
                 replacements["Fecha:"] = data.aprobado_fecha
+                replacements["Fecha"] = data.aprobado_fecha
 
         for run in anchor.findall(".//a:r", ns):
             t_el = run.find("a:t", ns)
@@ -368,7 +370,7 @@ def _fill_drawing(drawing_xml: bytes, data: GranSueloRequest) -> bytes:
             text = t_el.text.strip()
             if text in replacements and replacements[text]:
                 t_el.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
-                if text == "Fecha:":
+                if "Fecha" in text:
                     t_el.text = f"{text} {replacements[text]}"
                 else:
                     t_el.text = f"{text}\n{replacements[text]}"

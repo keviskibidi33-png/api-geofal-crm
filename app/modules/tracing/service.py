@@ -173,6 +173,7 @@ class TracingService:
         if recepcion:
             traza.cliente = recepcion.cliente
             traza.proyecto = recepcion.proyecto
+            traza.fecha_entrega = recepcion.fecha_estimada_culminacion
         elif verificacion:
             traza.cliente = verificacion.cliente
             traza.proyecto = "Cargado desde Verificación"
@@ -249,6 +250,7 @@ class TracingService:
             "numero_ot": getattr(recepcion, 'numero_ot', None) if recepcion else (compresion.numero_ot if compresion else None),
             "cliente": traza.cliente,
             "proyecto": traza.proyecto,
+            "fecha_entrega": traza.fecha_entrega.isoformat() if traza.fecha_entrega else None,
             "muestras_count": len(recepcion.muestras) if recepcion and recepcion.muestras else 0,
             "fecha_recepcion": recepcion.fecha_recepcion.isoformat() if recepcion and recepcion.fecha_recepcion else None,
             "verificacion_id": verificacion.id if verificacion else None,

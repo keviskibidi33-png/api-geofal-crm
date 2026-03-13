@@ -52,6 +52,12 @@ from app.modules.tamiz.router import router as tamiz_router
 from app.modules.equi_arena.router import router as equi_arena_router
 from app.modules.ge_fino.router import router as ge_fino_router
 from app.modules.ge_grueso.router import router as ge_grueso_router
+from app.modules.cd.router import router as cd_router
+from app.modules.ph.router import router as ph_router
+from app.modules.cloro_soluble.router import router as cloro_soluble_router
+from app.modules.sales_solubles.router import router as sales_solubles_router
+from app.modules.sulfatos_solubles.router import router as sulfatos_solubles_router
+from app.modules.compresion_no_confinada.router import router as compresion_no_confinada_router
 from app.modules.recepcion.models import Base as RecepcionBase
 from app.modules.verificacion.models import Base as VerificacionBase
 from app.modules.tracing.models import Trazabilidad
@@ -72,6 +78,12 @@ from app.modules.tamiz.models import TamizEnsayo
 from app.modules.equi_arena.models import EquiArenaEnsayo
 from app.modules.ge_fino.models import GeFinoEnsayo
 from app.modules.ge_grueso.models import GeGruesoEnsayo
+from app.modules.cd.models import CDEnsayo
+from app.modules.ph.models import PHEnsayo
+from app.modules.cloro_soluble.models import CloroSolubleEnsayo
+from app.modules.sales_solubles.models import SalesSolublesEnsayo
+from app.modules.sulfatos_solubles.models import SulfatosSolublesEnsayo
+from app.modules.compresion_no_confinada.models import CompresionNoConfinadaEnsayo
 from app.database import engine
 from app.auth import JWTAuthMiddleware
 
@@ -116,6 +128,12 @@ class RolePermissions(BaseModel):
     equi_arena: ModulePermission | None = None
     ge_fino: ModulePermission | None = None
     ge_grueso: ModulePermission | None = None
+    cd: ModulePermission | None = None
+    ph: ModulePermission | None = None
+    cloro_soluble: ModulePermission | None = None
+    sales_solubles: ModulePermission | None = None
+    sulfatos_solubles: ModulePermission | None = None
+    compresion_no_confinada: ModulePermission | None = None
     usuarios: ModulePermission | None = None
     auditoria: ModulePermission | None = None
     configuracion: ModulePermission | None = None
@@ -178,6 +196,12 @@ def _get_cors_origins() -> list[str]:
         "http://localhost:3020", # Contenido Humedad CRM (Vite local)
         "http://localhost:3021", # Planas CRM (Vite local)
         "http://localhost:3022", # Caras CRM (Vite local)
+        "http://localhost:3023", # CD CRM (Vite local)
+        "http://localhost:3024", # PH CRM (Vite local)
+        "http://localhost:3025", # Cloro Soluble CRM (Vite local)
+        "http://localhost:3026", # Sales Solubles CRM (Vite local)
+        "http://localhost:3027", # Sulfatos Solubles CRM (Vite local)
+        "http://localhost:3028", # Compresion No Confinada CRM (Vite local)
         "http://localhost:5173", # Cotizador
         "http://localhost:5174",
         "http://localhost:5175", # Compresion (Vite)
@@ -197,6 +221,12 @@ def _get_cors_origins() -> list[str]:
         "http://127.0.0.1:3020",
         "http://127.0.0.1:3021",
         "http://127.0.0.1:3022",
+        "http://127.0.0.1:3023",
+        "http://127.0.0.1:3024",
+        "http://127.0.0.1:3025",
+        "http://127.0.0.1:3026",
+        "http://127.0.0.1:3027",
+        "http://127.0.0.1:3028",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:5174",
         "http://127.0.0.1:5175",
@@ -224,6 +254,12 @@ def _get_cors_origins() -> list[str]:
         "https://contenido-humedad.geofal.com.pe",
         "https://planas.geofal.com.pe",
         "https://caras.geofal.com.pe",
+        "https://cd.geofal.com.pe",
+        "https://ph.geofal.com.pe",
+        "https://cloro-soluble.geofal.com.pe",
+        "https://sales-solubles.geofal.com.pe",
+        "https://sulfatos-solubles.geofal.com.pe",
+        "https://compresion-no-confinada.geofal.com.pe",
     ]
     raw = os.getenv("QUOTES_CORS_ORIGINS")
     if raw:
@@ -274,6 +310,12 @@ app.add_middleware(
         "X-Equi-Arena-Id",
         "X-Ge-Fino-Id",
         "X-Ge-Grueso-Id",
+        "X-CD-Id",
+        "X-PH-Id",
+        "X-CL-Id",
+        "X-SS-Id",
+        "X-SULF-Id",
+        "X-CNC-Id",
         "X-Storage-Object-Key",
     ],
     max_age=3600,
@@ -377,6 +419,12 @@ app.include_router(tamiz_router)
 app.include_router(equi_arena_router)
 app.include_router(ge_fino_router)
 app.include_router(ge_grueso_router)
+app.include_router(cd_router)
+app.include_router(ph_router)
+app.include_router(cloro_soluble_router)
+app.include_router(sales_solubles_router)
+app.include_router(sulfatos_solubles_router)
+app.include_router(compresion_no_confinada_router)
 
 # Note: All legacy endpoints for Quotes and Programacion have been moved to their respective modules.
 # Check app/modules/cotizacion and app/modules/programacion.
@@ -844,6 +892,12 @@ async def get_roles():
                         "equi_arena": {"read": True, "write": True, "delete": True},
                         "ge_fino": {"read": True, "write": True, "delete": True},
                         "ge_grueso": {"read": True, "write": True, "delete": True},
+                        "cd": {"read": True, "write": True, "delete": True},
+                        "ph": {"read": True, "write": True, "delete": True},
+                        "cloro_soluble": {"read": True, "write": True, "delete": True},
+                        "sales_solubles": {"read": True, "write": True, "delete": True},
+                        "sulfatos_solubles": {"read": True, "write": True, "delete": True},
+                        "compresion_no_confinada": {"read": True, "write": True, "delete": True},
                         "usuarios": {"read": True, "write": True, "delete": True},
                         "auditoria": {"read": True, "write": True, "delete": True},
                         "configuracion": {"read": True, "write": True, "delete": True},
@@ -883,6 +937,12 @@ async def get_roles():
                         "equi_arena": {"read": False, "write": False, "delete": False},
                         "ge_fino": {"read": False, "write": False, "delete": False},
                         "ge_grueso": {"read": False, "write": False, "delete": False},
+                        "cd": {"read": False, "write": False, "delete": False},
+                        "ph": {"read": False, "write": False, "delete": False},
+                        "cloro_soluble": {"read": False, "write": False, "delete": False},
+                        "sales_solubles": {"read": False, "write": False, "delete": False},
+                        "sulfatos_solubles": {"read": False, "write": False, "delete": False},
+                        "compresion_no_confinada": {"read": False, "write": False, "delete": False},
                         "usuarios": {"read": False, "write": False, "delete": False},
                         "auditoria": {"read": False, "write": False, "delete": False},
                         "configuracion": {"read": False, "write": False, "delete": False},
@@ -922,6 +982,12 @@ async def get_roles():
                         "equi_arena": {"read": False, "write": False, "delete": False},
                         "ge_fino": {"read": False, "write": False, "delete": False},
                         "ge_grueso": {"read": False, "write": False, "delete": False},
+                        "cd": {"read": False, "write": False, "delete": False},
+                        "ph": {"read": False, "write": False, "delete": False},
+                        "cloro_soluble": {"read": False, "write": False, "delete": False},
+                        "sales_solubles": {"read": False, "write": False, "delete": False},
+                        "sulfatos_solubles": {"read": False, "write": False, "delete": False},
+                        "compresion_no_confinada": {"read": False, "write": False, "delete": False},
                         "usuarios": {"read": False, "write": False, "delete": False},
                         "auditoria": {"read": False, "write": False, "delete": False},
                         "configuracion": {"read": False, "write": False, "delete": False},
@@ -961,6 +1027,12 @@ async def get_roles():
                         "equi_arena": {"read": True, "write": True, "delete": False},
                         "ge_fino": {"read": True, "write": True, "delete": False},
                         "ge_grueso": {"read": True, "write": True, "delete": False},
+                        "cd": {"read": True, "write": True, "delete": False},
+                        "ph": {"read": True, "write": True, "delete": False},
+                        "cloro_soluble": {"read": True, "write": True, "delete": False},
+                        "sales_solubles": {"read": True, "write": True, "delete": False},
+                        "sulfatos_solubles": {"read": True, "write": True, "delete": False},
+                        "compresion_no_confinada": {"read": True, "write": True, "delete": False},
                         "usuarios": {"read": False, "write": False, "delete": False},
                         "auditoria": {"read": False, "write": False, "delete": False},
                         "configuracion": {"read": False, "write": False, "delete": False},

@@ -264,7 +264,7 @@ def listar_seguimiento(db: Session = Depends(get_db_session), skip: int = 0, lim
         resultado.append(TracingSummary(
             numero_recepcion=t.numero_recepcion,
             cliente=t.cliente,
-            fecha=t.fecha_creacion,
+            fecha=t.fecha_entrega or t.fecha_creacion,
             stages=stages
         ))
         

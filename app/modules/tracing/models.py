@@ -22,6 +22,7 @@ class Trazabilidad(Base):
     
     # Metadata técnica
     data_consolidada = Column(JSON) # Para guardar IDs o info extra de cada etapa
+    fecha_entrega = Column(DateTime(timezone=True), nullable=True) # Fecha estimada de culminación de la recepción
     fecha_creacion = Column(DateTime(timezone=True), server_default=func.now())
     fecha_actualizacion = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
 

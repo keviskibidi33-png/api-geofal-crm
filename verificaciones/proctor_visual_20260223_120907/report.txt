@@ -1,0 +1,24 @@
+PROCTOR VISUAL FILL TESTS
+================================================================================
+Output directory: C:\Users\Lenovo\Documents\crmnew\api-geofal-crm\verificaciones\proctor_visual_20260223_120907
+
+[OK] full_auto_calculated
+  file: C:\Users\Lenovo\Documents\crmnew\api-geofal-crm\verificaciones\proctor_visual_20260223_120907\01_full_auto_calculated.xlsx
+  payload: C:\Users\Lenovo\Documents\crmnew\api-geofal-crm\verificaciones\proctor_visual_20260223_120907\01_full_auto_calculated_payload.json
+  checked_cells: 126
+  mismatches: 0
+  footer_ok: True
+
+[OK] manual_override_fields
+  file: C:\Users\Lenovo\Documents\crmnew\api-geofal-crm\verificaciones\proctor_visual_20260223_120907\02_manual_override_fields.xlsx
+  payload: C:\Users\Lenovo\Documents\crmnew\api-geofal-crm\verificaciones\proctor_visual_20260223_120907\02_manual_override_fields_payload.json
+  checked_cells: 126
+  mismatches: 0
+  footer_ok: True
+
+[OK] normalized_input_formats
+  file: C:\Users\Lenovo\Documents\crmnew\api-geofal-crm\verificaciones\proctor_visual_20260223_120907\03_normalized_input_formats.xlsx
+  payload: C:\Users\Lenovo\Documents\crmnew\api-geofal-crm\verificaciones\proctor_visual_20260223_120907\03_normalized_input_formats_payload.json
+  checked_cells: 126
+  mismatches: 0
+  footer_ok: True

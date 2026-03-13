@@ -15,6 +15,10 @@ def _year_short() -> str:
     return datetime.now().strftime("%y")
 
 
+def _today_short_date() -> str:
+    return datetime.now().strftime("%d/%m/%y")
+
+
 def _pad2(value: str) -> str:
     return value.zfill(2)[-2:]
 
@@ -96,6 +100,16 @@ def _coerce_float(value: object) -> float | None:
     text = str(value).strip()
     if not text or text == "-":
         return None
+    text = re.sub(r"\s+", "", text)
+    has_comma = "," in text
+    has_dot = "." in text
+    if has_comma and has_dot:
+        if text.rfind(",") > text.rfind("."):
+            text = text.replace(".", "").replace(",", ".")
+        else:
+            text = text.replace(",", "")
+    elif has_comma:
+        text = text.replace(",", ".")
     try:
         return float(text)
     except (TypeError, ValueError):
@@ -219,8 +233,32 @@ class GeGruesoRequest(BaseModel):
     def normalize_flags(cls, value):
         return _normalize_si_no(value)
 
+    @field_validator(
+        "masa_retenida_malla_1_1_2_pct",
+        "masa_muestra_inicial_total_kg",
+        "masa_fraccion_01_kg",
+        "masa_fraccion_02_kg",
+        "fr1_a_g",
+        "fr1_b_g",
+        "fr1_c_g",
+        "fr1_d_g",
+        "fr1_masa_total_g",
+        "fr2_a_g",
+        "fr2_b_g",
+        "fr2_c_g",
+        "fr2_d_g",
+        "fr2_masa_total_g",
+        mode="before",
+    )
+    @classmethod
+    def normalize_numeric_fields(cls, value):
+        return _coerce_float(value)
+
     @model_validator(mode="after")
     def normalize_payload(self):
+        if not str(self.fecha_ensayo or "").strip():
+            self.fecha_ensayo = _today_short_date()
+
         numeric_fields = [
             "masa_retenida_malla_1_1_2_pct",
             "masa_muestra_inicial_total_kg",

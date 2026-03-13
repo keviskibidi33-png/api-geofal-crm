@@ -15,6 +15,10 @@ def _year_short() -> str:
     return datetime.now().strftime("%y")
 
 
+def _today_short_date() -> str:
+    return datetime.now().strftime("%d/%m/%y")
+
+
 def _pad2(value: str) -> str:
     return value.zfill(2)[-2:]
 
@@ -96,6 +100,16 @@ def _coerce_float(value: object) -> float | None:
     text = str(value).strip()
     if not text or text == "-":
         return None
+    text = re.sub(r"\s+", "", text)
+    has_comma = "," in text
+    has_dot = "." in text
+    if has_comma and has_dot:
+        if text.rfind(",") > text.rfind("."):
+            text = text.replace(".", "").replace(",", ".")
+        else:
+            text = text.replace(",", "")
+    elif has_comma:
+        text = text.replace(",", ".")
     try:
         return float(text)
     except (TypeError, ValueError):
@@ -113,6 +127,12 @@ def _round4(value: float | None) -> float | None:
     if value is None:
         return None
     return round(value, 4)
+
+
+def _round2(value: float | None) -> float | None:
+    if value is None:
+        return None
+    return round(value, 2)
 
 
 def _safe_div(num: float | None, den: float | None) -> float | None:
@@ -205,8 +225,35 @@ class GeFinoRequest(BaseModel):
             return "NO"
         return "-"
 
+    @field_validator(
+        "masa_humeda_g",
+        "masa_seca_g",
+        "masa_seca_constante_g",
+        "temp_picnometro_contenido_c",
+        "temp_durante_calibracion_c",
+        "valor_s_g",
+        "valor_c_g",
+        "valor_b_g",
+        "valor_d_g",
+        "valor_e_g",
+        "valor_f_g",
+        "valor_g_g",
+        "valor_a_g",
+        "densidad_relativa_od",
+        "densidad_relativa_ssd",
+        "densidad_relativa_aparente",
+        "absorcion_pct",
+        mode="before",
+    )
+    @classmethod
+    def normalize_numeric_fields(cls, value):
+        return _coerce_float(value)
+
     @model_validator(mode="after")
     def normalize_payload(self):
+        if not str(self.fecha_ensayo or "").strip():
+            self.fecha_ensayo = _today_short_date()
+
         numeric_fields = [
             "masa_humeda_g",
             "masa_seca_g",
@@ -258,7 +305,7 @@ class GeFinoRequest(BaseModel):
         self.densidad_relativa_od = _round4(self.densidad_relativa_od)
         self.densidad_relativa_ssd = _round4(self.densidad_relativa_ssd)
         self.densidad_relativa_aparente = _round4(self.densidad_relativa_aparente)
-        self.absorcion_pct = _round4(self.absorcion_pct)
+        self.absorcion_pct = _round2(self.absorcion_pct)
         self.valor_a_g = _round4(self.valor_a_g)
 
         text_fields = [
