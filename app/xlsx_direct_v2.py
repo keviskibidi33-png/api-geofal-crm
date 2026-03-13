@@ -4,6 +4,7 @@ Preserva todos los estilos, logos, footers y márgenes del template original.
 """
 import io
 import zipfile
+import posixpath
 from datetime import date
 from typing import Any, Callable, Optional
 from lxml import etree
@@ -377,6 +378,40 @@ def _shift_hyperlinks(root: etree._Element, from_row: int, shift: int, ns: str):
                 hyperlink.set('ref', f"{col}{row + shift}")
 
 
+def _shift_drawing_rows(drawing_xml: bytes, from_row: int, shift: int) -> bytes:
+    """Desplaza anchors en drawings (twoCellAnchor / oneCellAnchor)."""
+    if shift <= 0:
+        return drawing_xml
+
+    drawing_root = etree.fromstring(drawing_xml)
+    xdr_ns = 'http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing'
+
+    def _shift_anchor_row(anchor_elem: etree._Element):
+        row_elem = anchor_elem.find(f'{{{xdr_ns}}}row')
+        if row_elem is not None and row_elem.text:
+            try:
+                row_num = int(row_elem.text)
+            except ValueError:
+                return
+            if row_num >= from_row:
+                row_elem.text = str(row_num + shift)
+
+    # twoCellAnchor: from + to
+    for anchor in drawing_root.findall(f'.//{{{xdr_ns}}}twoCellAnchor'):
+        for elem_name in ['from', 'to']:
+            elem = anchor.find(f'{{{xdr_ns}}}{elem_name}')
+            if elem is not None:
+                _shift_anchor_row(elem)
+
+    # oneCellAnchor: from only
+    for anchor in drawing_root.findall(f'.//{{{xdr_ns}}}oneCellAnchor'):
+        elem = anchor.find(f'{{{xdr_ns}}}from')
+        if elem is not None:
+            _shift_anchor_row(elem)
+
+    return etree.tostring(drawing_root, encoding='utf-8', xml_declaration=True)
+
+
 def export_xlsx_direct(template_path: str, data: dict) -> io.BytesIO:
     """Exporta XLSX modificando el template directamente."""
     
@@ -736,27 +771,29 @@ def export_xlsx_direct(template_path: str, data: dict) -> io.BytesIO:
             modified_wb = etree.tostring(wb_root, encoding='utf-8', xml_declaration=True)
     
     # 3.6 Actualizar drawings (shapes/textboxes) para desplazar referencias de filas
-    modified_drawing = None
+    modified_drawings: dict[str, bytes] = {}
     if extra_rows > 0:
         with zipfile.ZipFile(template_path, 'r') as z:
-            if 'xl/drawings/drawing28.xml' in z.namelist():
-                drawing_xml = z.read('xl/drawings/drawing28.xml')
-                drawing_root = etree.fromstring(drawing_xml)
-                xdr_ns = 'http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing'
-                
-                # Desplazar referencias de filas en twoCellAnchor (from/to row)
-                for anchor in drawing_root.findall(f'.//{{{xdr_ns}}}twoCellAnchor'):
-                    for elem_name in ['from', 'to']:
-                        elem = anchor.find(f'{{{xdr_ns}}}{elem_name}')
-                        if elem is not None:
-                            row_elem = elem.find(f'{{{xdr_ns}}}row')
-                            if row_elem is not None and row_elem.text:
-                                row_num = int(row_elem.text)
-                                # Desplazar filas >= 18 (después de los items)
-                                if row_num >= 17:
-                                    row_elem.text = str(row_num + extra_rows)
-                
-                modified_drawing = etree.tostring(drawing_root, encoding='utf-8', xml_declaration=True)
+            # Detectar drawings vinculados a la hoja MORT2
+            sheet_basename = posixpath.basename(sheet_file)
+            sheet_rels_path = posixpath.join('xl/worksheets/_rels', f'{sheet_basename}.rels')
+            if sheet_rels_path in z.namelist():
+                rels_root = etree.fromstring(z.read(sheet_rels_path))
+                drawing_targets: list[str] = []
+                for rel in rels_root:
+                    if rel.attrib.get('Type') == 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing':
+                        target = rel.attrib.get('Target', '')
+                        if target.startswith('/'):
+                            target = target.lstrip('/')
+                        elif not target.startswith('xl/'):
+                            target = posixpath.normpath(posixpath.join('xl/worksheets', target))
+                        if target:
+                            drawing_targets.append(target)
+
+                for target in drawing_targets:
+                    if target in z.namelist():
+                        drawing_xml = z.read(target)
+                        modified_drawings[target] = _shift_drawing_rows(drawing_xml, 17, extra_rows)
     
     # 4. Escribir output
     output = io.BytesIO()
@@ -770,8 +807,8 @@ def export_xlsx_direct(template_path: str, data: dict) -> io.BytesIO:
                     z_out.writestr(item, modified_ss)
                 elif item == 'xl/workbook.xml' and modified_wb:
                     z_out.writestr(item, modified_wb)
-                elif item == 'xl/drawings/drawing28.xml' and modified_drawing:
-                    z_out.writestr(item, modified_drawing)
+                elif item in modified_drawings:
+                    z_out.writestr(item, modified_drawings[item])
                 else:
                     z_out.writestr(item, z_in.read(item))
     
