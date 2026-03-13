@@ -415,9 +415,45 @@ def export_xlsx_direct(template_path: str, data: dict) -> io.BytesIO:
         shared_strings_map[text] = idx
         return idx
     
-    # 2. Modificar sheet36.xml (hoja MORT2 - la hoja de cotización)
-    sheet_file = 'xl/worksheets/sheet36.xml'
+    # 2. Modificar sheet (hoja MORT2 - la hoja de cotización)
+    # Resolución dinámica de la hoja MORT2
+    sheet_file = None
+    mort2_rid = None
+    mort2_internal_id = None # Para localSheetId en Print_Area
+    
     with zipfile.ZipFile(template_path, 'r') as z:
+        # a) Buscar rId de la hoja "MORT2" en workbook.xml
+        wb_xml = z.read('xl/workbook.xml')
+        wb_root = etree.fromstring(wb_xml)
+        wb_ns = {'main': NAMESPACES['main']}
+        
+        sheets_elem = wb_root.find('main:sheets', wb_ns)
+        if sheets_elem is not None:
+            for s in sheets_elem.findall('main:sheet', wb_ns):
+                if s.get('name') == 'MORT2':
+                    mort2_rid = s.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
+                    # localSheetId es el índice 0-based de la hoja en la lista de sheets
+                    # que corresponde al orden de definición en workbook.xml
+                    mort2_internal_id = str(list(sheets_elem).index(s))
+                    break
+        
+        if not mort2_rid:
+            raise ValueError("No se encontró la hoja 'MORT2' en el template.")
+            
+        # b) Buscar path del archivo .xml en workbook.xml.rels
+        rels_xml = z.read('xl/_rels/workbook.xml.rels')
+        rels_root = etree.fromstring(rels_xml)
+        rel_ns = {'rel': 'http://schemas.openxmlformats.org/package/2006/relationships'}
+        
+        for r in rels_root.findall('rel:Relationship', rel_ns):
+            if r.get('Id') == mort2_rid:
+                target = r.get('Target')
+                sheet_file = f"xl/{target}" if not target.startswith('/') else target[1:]
+                break
+        
+        if not sheet_file:
+            raise ValueError(f"No se encontró el archivo de la hoja con rId {mort2_rid}")
+
         sheet_data_xml = z.read(sheet_file)
     
     root = etree.fromstring(sheet_data_xml)
@@ -690,7 +726,7 @@ def export_xlsx_direct(template_path: str, data: dict) -> io.BytesIO:
             defs = wb_root.find(f'.//{{{wb_ns}}}definedNames')
             if defs is not None:
                 for d in defs.findall(f'{{{wb_ns}}}definedName'):
-                    if d.get('name') == '_xlnm.Print_Area' and d.get('localSheetId') == '35':
+                    if d.get('name') == '_xlnm.Print_Area' and d.get('localSheetId') == mort2_internal_id:
                         # Actualizar área de impresión de MORT2 (original: $B$3:$N$60)
                         old_text = d.text or ''
                         if '$N$60' in old_text:
@@ -728,7 +764,7 @@ def export_xlsx_direct(template_path: str, data: dict) -> io.BytesIO:
     with zipfile.ZipFile(template_path, 'r') as z_in:
         with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED) as z_out:
             for item in z_in.namelist():
-                if item == 'xl/worksheets/sheet36.xml':
+                if item == sheet_file:
                     z_out.writestr(item, modified_sheet1)
                 elif item == 'xl/sharedStrings.xml' and modified_ss:
                     z_out.writestr(item, modified_ss)
