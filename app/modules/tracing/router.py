@@ -265,6 +265,7 @@ def listar_seguimiento(db: Session = Depends(get_db_session), skip: int = 0, lim
             numero_recepcion=t.numero_recepcion,
             cliente=t.cliente,
             fecha=t.fecha_entrega or t.fecha_creacion,
+            fecha_entrega=t.fecha_entrega,
             stages=stages
         ))
         

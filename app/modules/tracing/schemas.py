@@ -19,6 +19,7 @@ class TracingSummary(BaseModel):
     numero_recepcion: str
     cliente: Optional[str] = None
     fecha: Optional[datetime] = None
+    fecha_entrega: Optional[datetime] = None
     stages: List[StageSummary]
 
 
