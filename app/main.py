@@ -159,8 +159,23 @@ class RoleUpdate(BaseModel):
 class HeartbeatRequest(BaseModel):
     user_id: str
 
- 
 app = FastAPI(title="quotes-service")
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """
+    Manejador global de excepciones para asegurar que incluso los errores no manejados
+    devuelvan una respuesta JSON válida y no rompan los encabezados CORS.
+    """
+    logger.error("Unhandled exception: %s", exc, exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "Internal Server Error",
+            "message": str(exc) if os.getenv("ALLOW_INSECURE_DEV_AUTH") == "true" else "Error interno del servidor",
+            "path": request.url.path
+        }
+    )
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env", override=False)
 
@@ -260,6 +275,8 @@ def _get_cors_origins() -> list[str]:
         "https://sales-solubles.geofal.com.pe",
         "https://sulfatos-solubles.geofal.com.pe",
         "https://compresion-no-confinada.geofal.com.pe",
+        "https://verificacion.geofal.com.pe",
+        "https://verifiacion.geofal.com.pe",
     ]
     raw = os.getenv("QUOTES_CORS_ORIGINS")
     if raw:

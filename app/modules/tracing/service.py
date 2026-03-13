@@ -8,7 +8,10 @@ from app.modules.compresion.models import EnsayoCompresion
 from typing import Optional
 import os
 import re
+import logging
 from app.utils.storage_utils import StorageUtils
+
+logger = logging.getLogger(__name__)
 
 class TracingService:
     @staticmethod
@@ -336,16 +339,20 @@ class TracingService:
         """
         Busca sugerencias de números de recepción en la tabla de trazabilidad.
         """
-        query = TracingService._trazabilidad_query(db)
-        
-        if q:
-            # Búsqueda por número de recepción o cliente
-            query = query.filter(
-                (Trazabilidad.numero_recepcion.ilike(f"%{q}%")) |
-                (Trazabilidad.cliente.ilike(f"%{q}%"))
-            )
+        try:
+            query = TracingService._trazabilidad_query(db)
             
-        return query.order_by(Trazabilidad.fecha_creacion.desc()).limit(limit).all()
+            if q:
+                # Búsqueda por número de recepción o cliente
+                query = query.filter(
+                    (Trazabilidad.numero_recepcion.ilike(f"%{q}%")) |
+                    (Trazabilidad.cliente.ilike(f"%{q}%"))
+                )
+                
+            return query.order_by(Trazabilidad.fecha_creacion.desc()).limit(limit).all()
+        except Exception as e:
+            logger.error("Error in buscar_sugerencias: %s", e, exc_info=True)
+            return []
 
     @staticmethod
     def migrar_datos(db: Session):
