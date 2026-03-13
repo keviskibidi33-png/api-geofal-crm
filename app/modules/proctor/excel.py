@@ -13,6 +13,8 @@ from typing import Any
 
 from lxml import etree
 
+from app.utils.excel_footer import fill_standard_footer_shapes
+
 from .schemas import ProctorRequest
 
 logger = logging.getLogger(__name__)
@@ -405,45 +407,10 @@ def _fill_sheet(sheet_xml: bytes, data: ProctorRequest, centered_style_map: dict
 
 def _fill_drawing(drawing_xml: bytes, data: ProctorRequest) -> bytes:
     """Injects text in footer shapes (Revisado/Aprobado)."""
-    has_footer = any([data.revisado_por, data.revisado_fecha, data.aprobado_por, data.aprobado_fecha])
-    if not has_footer:
-        return drawing_xml
-
-    ns = {"xdr": NS_DRAW, "a": NS_A}
-    root = etree.fromstring(drawing_xml)
-
-    for anchor in root.findall(".//xdr:twoCellAnchor", ns):
-        all_texts = [(node.text or "").strip() for node in anchor.findall(".//a:t", ns)]
-        text_blob = " ".join(all_texts)
-
-        is_revisado = "Revisado:" in text_blob
-        is_aprobado = "Aprobado:" in text_blob
-        if not is_revisado and not is_aprobado:
-            continue
-
-        replacements: dict[str, str] = {}
-        if is_revisado:
-            if data.revisado_por:
-                replacements["Revisado:"] = data.revisado_por
-            if data.revisado_fecha:
-                replacements["Fecha:"] = data.revisado_fecha
-        elif is_aprobado:
-            if data.aprobado_por:
-                replacements["Aprobado:"] = data.aprobado_por
-            if data.aprobado_fecha:
-                replacements["Fecha:"] = data.aprobado_fecha
-
-        for run in anchor.findall(".//a:r", ns):
-            t_el = run.find("a:t", ns)
-            if t_el is None or t_el.text is None:
-                continue
-            text = t_el.text.strip()
-            if text in replacements and replacements[text]:
-                t_el.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
-                if text == "Fecha:":
-                    # Keep the date on the same line to avoid dropping too low in the signature box.
-                    t_el.text = f"{text} {replacements[text]}"
-                else:
-                    t_el.text = f"{text}\n{replacements[text]}"
-
-    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+    return fill_standard_footer_shapes(
+        drawing_xml,
+        revisado_por=data.revisado_por,
+        revisado_fecha=data.revisado_fecha,
+        aprobado_por=data.aprobado_por,
+        aprobado_fecha=data.aprobado_fecha,
+    )

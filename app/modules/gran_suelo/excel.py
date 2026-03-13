@@ -340,6 +340,54 @@ def _fill_drawing(drawing_xml: bytes, data: GranSueloRequest) -> bytes:
     ns = {"xdr": NS_DRAW, "a": NS_A}
     root = etree.fromstring(drawing_xml)
 
+    def _set_paragraph_text(paragraph: etree._Element, text: str) -> None:
+        run_tag = f"{{{NS_A}}}r"
+        field_tag = f"{{{NS_A}}}fld"
+        break_tag = f"{{{NS_A}}}br"
+        run_props_tag = f"{{{NS_A}}}rPr"
+        text_tag = f"{{{NS_A}}}t"
+
+        first_run_props = paragraph.find("a:r/a:rPr", ns)
+        end_para_props = paragraph.find("a:endParaRPr", ns)
+
+        for child in list(paragraph):
+            if child.tag in (run_tag, field_tag, break_tag):
+                paragraph.remove(child)
+
+        run = etree.Element(run_tag)
+        run_props = etree.SubElement(run, run_props_tag)
+
+        style_source = first_run_props if first_run_props is not None else end_para_props
+        if style_source is not None:
+            for attr, attr_val in style_source.attrib.items():
+                run_props.set(attr, attr_val)
+            for style_child in style_source:
+                run_props.append(deepcopy(style_child))
+        else:
+            run_props.set("lang", "es-PE")
+            run_props.set("sz", "1000")
+
+        text_node = etree.SubElement(run, text_tag)
+        if "\n" in text or text.endswith(" "):
+            text_node.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+        text_node.text = text
+
+        end_para_props = paragraph.find("a:endParaRPr", ns)
+        if end_para_props is not None:
+            paragraph.insert(list(paragraph).index(end_para_props), run)
+        else:
+            paragraph.append(run)
+
+    def _fill_footer_anchor(anchor: etree._Element, role_label: str, person: str, footer_date: str) -> bool:
+        paragraphs = anchor.findall(".//xdr:txBody/a:p", ns)
+        if len(paragraphs) < 3:
+            return False
+
+        _set_paragraph_text(paragraphs[0], f"{role_label}:")
+        _set_paragraph_text(paragraphs[1], person)
+        _set_paragraph_text(paragraphs[2], f"Fecha: {footer_date}" if footer_date else "Fecha:")
+        return True
+
     for anchor in root.findall(".//xdr:twoCellAnchor", ns):
         all_texts = [(node.text or "").strip() for node in anchor.findall(".//a:t", ns)]
         text_blob = " ".join(all_texts)
@@ -351,17 +399,21 @@ def _fill_drawing(drawing_xml: bytes, data: GranSueloRequest) -> bytes:
 
         replacements: dict[str, str] = {}
         if is_revisado:
+            if _fill_footer_anchor(anchor, "Revisado", (data.revisado_por or "").strip(), (data.revisado_fecha or "").strip()):
+                continue
             if data.revisado_por:
-                replacements["Revisado:"] = data.revisado_por
+                replacements["Revisado:"] = f"Revisado: {data.revisado_por}"
             if data.revisado_fecha:
-                replacements["Fecha:"] = data.revisado_fecha
-                replacements["Fecha"] = data.revisado_fecha
+                replacements["Fecha:"] = f"Fecha: {data.revisado_fecha}"
+                replacements["Fecha"] = f"Fecha: {data.revisado_fecha}"
         elif is_aprobado:
+            if _fill_footer_anchor(anchor, "Aprobado", (data.aprobado_por or "").strip(), (data.aprobado_fecha or "").strip()):
+                continue
             if data.aprobado_por:
-                replacements["Aprobado:"] = data.aprobado_por
+                replacements["Aprobado:"] = f"Aprobado: {data.aprobado_por}"
             if data.aprobado_fecha:
-                replacements["Fecha:"] = data.aprobado_fecha
-                replacements["Fecha"] = data.aprobado_fecha
+                replacements["Fecha:"] = f"Fecha: {data.aprobado_fecha}"
+                replacements["Fecha"] = f"Fecha: {data.aprobado_fecha}"
 
         for run in anchor.findall(".//a:r", ns):
             t_el = run.find("a:t", ns)
@@ -370,10 +422,7 @@ def _fill_drawing(drawing_xml: bytes, data: GranSueloRequest) -> bytes:
             text = t_el.text.strip()
             if text in replacements and replacements[text]:
                 t_el.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
-                if "Fecha" in text:
-                    t_el.text = f"{text} {replacements[text]}"
-                else:
-                    t_el.text = f"{text}\n{replacements[text]}"
+                t_el.text = replacements[text]
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 

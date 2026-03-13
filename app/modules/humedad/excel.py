@@ -544,7 +544,7 @@ def _fill_drawing(drawing_xml: bytes, data: HumedadRequest) -> bytes:
 
         _set_paragraph_text(paragraphs[0], f"{role_label}:")
         _set_paragraph_text(paragraphs[1], person)
-        _set_paragraph_text(paragraphs[2], f"Fecha:\n{footer_date}")
+        _set_paragraph_text(paragraphs[2], f"Fecha: {footer_date}" if footer_date else "Fecha:")
         return True
 
     revisado_nombre = (data.revisado_por or "").strip()
