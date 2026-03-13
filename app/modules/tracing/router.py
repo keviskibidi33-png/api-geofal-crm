@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy.orm import Session, load_only
 from sqlalchemy import text
+import re
 from datetime import datetime
 from typing import List, Optional
 from app.database import get_db_session
@@ -278,6 +279,61 @@ def listar_seguimiento(db: Session = Depends(get_db_session), skip: int = 0, lim
         .limit(limit)
         .all()
     )
+
+    def _normalizar_recep(numero: str) -> str:
+        if not numero:
+            return ""
+        clean = numero.replace("REC-", "").replace("rec-", "").strip()
+        clean = re.sub(r"-REC$", "", clean, flags=re.IGNORECASE)
+        clean = re.sub(r"-REC-(\d{2})$", r"-\1", clean, flags=re.IGNORECASE)
+        return clean
+
+    control_map: dict[str, datetime] = {}
+    has_control = db.execute(
+        text(
+            "select 1 from information_schema.tables "
+            "where table_schema = 'public' and table_name = 'cuadro_control'"
+        )
+    ).first() is not None
+
+    if has_control and trazas:
+        has_recep_num = db.execute(
+            text(
+                "select 1 from information_schema.columns "
+                "where table_schema = 'public' and table_name = 'cuadro_control' and column_name = 'recep_numero'"
+            )
+        ).first() is not None
+        has_fecha_est = db.execute(
+            text(
+                "select 1 from information_schema.columns "
+                "where table_schema = 'public' and table_name = 'cuadro_control' and column_name = 'fecha_entrega_estimada'"
+            )
+        ).first() is not None
+
+        if has_recep_num and has_fecha_est:
+            variantes: set[str] = set()
+            for t in trazas:
+                variantes.update(TracingService._build_numero_variantes(t.numero_recepcion, t.numero_recepcion))
+
+            if variantes:
+                rows = db.execute(
+                    text(
+                        "select recep_numero, fecha_entrega_estimada "
+                        "from cuadro_control "
+                        "where recep_numero = any(:nums)"
+                    ),
+                    {"nums": list(variantes)},
+                ).fetchall()
+
+                for row in rows:
+                    recep_num = row[0]
+                    fecha_est = row[1]
+                    if not recep_num or not fecha_est:
+                        continue
+                    control_map[recep_num] = fecha_est
+                    norm = _normalizar_recep(recep_num)
+                    if norm and norm not in control_map:
+                        control_map[norm] = fecha_est
     
     resultado = []
     for t in trazas:
@@ -287,8 +343,13 @@ def listar_seguimiento(db: Session = Depends(get_db_session), skip: int = 0, lim
             StageSummary(key="compresion", status=t.estado_compresion),
             StageSummary(key="informe", status=t.estado_informe)
         ]
-        
-        fecha_entrega = t.fecha_entrega if has_fecha_entrega else None
+
+        fecha_control = None
+        if control_map:
+            key_norm = _normalizar_recep(t.numero_recepcion)
+            fecha_control = control_map.get(t.numero_recepcion) or (control_map.get(key_norm) if key_norm else None)
+
+        fecha_entrega = fecha_control or (t.fecha_entrega if has_fecha_entrega else None)
         resultado.append(TracingSummary(
             numero_recepcion=t.numero_recepcion,
             cliente=t.cliente,
