@@ -103,12 +103,7 @@ def _set_cell_value(
             if txt_style == 'bold':
                 etree.SubElement(rPr, f'{{{ns}}}b')
             
-            # Match Template Font (Arial 13)
-            # Apply to ALL runs (bold or not) to ensure consistency
-            rFont = etree.SubElement(rPr, f'{{{ns}}}rFont')
-            rFont.set('val', 'Arial')
-            sz = etree.SubElement(rPr, f'{{{ns}}}sz')
-            sz.set('val', '13')
+            # Match Template Font - Dejamos que herede de la celda
              
             t_elem = etree.SubElement(r_elem, f'{{{ns}}}t')
             # Preserve spaces is critical for rich text runs
@@ -138,6 +133,7 @@ def _set_cell_value(
             cell.set('t', 'inlineStr')
             is_elem = etree.SubElement(cell, f'{{{ns}}}is')
             t_elem = etree.SubElement(is_elem, f'{{{ns}}}t')
+            t_elem.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
             t_elem.text = str(value)
     
     if style:
