@@ -75,7 +75,8 @@ def _set_cell_value(
     ns: str,
     is_number: bool = False,
     get_string_idx: Optional[Callable[[str], int]] = None,
-    rich_text: list = None
+    rich_text: list = None,
+    style_font_map: Optional[dict[int, dict[str, str]]] = None
 ):
     """Establece el valor de una celda"""
     col, row_num = _parse_cell_ref(cell_ref)
@@ -95,6 +96,12 @@ def _set_cell_value(
         # rich_text is a list of tuples: [(text, 'bold'), (text, 'normal')]
         cell.set('t', 'inlineStr')
         is_elem = etree.SubElement(cell, f'{{{ns}}}is')
+
+        style_info = None
+        if style_font_map and style and style.isdigit():
+            style_info = style_font_map.get(int(style))
+        font_size = style_info.get('size') if style_info else None
+        font_name = style_info.get('name') if style_info else None
         
         for text_part, txt_style in rich_text:
             r_elem = etree.SubElement(is_elem, f'{{{ns}}}r')
@@ -103,6 +110,12 @@ def _set_cell_value(
             # Apply Bold if requested
             if txt_style == 'bold':
                 etree.SubElement(rPr, f'{{{ns}}}b')
+            if font_name:
+                rfont = etree.SubElement(rPr, f'{{{ns}}}rFont')
+                rfont.set('val', font_name)
+            if font_size:
+                sz = etree.SubElement(rPr, f'{{{ns}}}sz')
+                sz.set('val', font_size)
             
             # Match Template Font - Dejamos que herede de la celda
              
@@ -419,6 +432,7 @@ def export_xlsx_direct(template_path: str, data: dict) -> io.BytesIO:
     shared_strings = []
     shared_strings_map = {}
     ss_xml_original = None
+    style_font_map: dict[int, dict[str, str]] = {}
     
     with zipfile.ZipFile(template_path, 'r') as z:
         if 'xl/sharedStrings.xml' in z.namelist():
@@ -437,6 +451,32 @@ def export_xlsx_direct(template_path: str, data: dict) -> io.BytesIO:
                     shared_strings.append(text)
                     if text:
                         shared_strings_map[text] = len(shared_strings) - 1
+        if 'xl/styles.xml' in z.namelist():
+            styles_root = etree.fromstring(z.read('xl/styles.xml'))
+            ns_styles = styles_root.nsmap.get(None, NAMESPACES['main'])
+            fonts = styles_root.find(f'{{{ns_styles}}}fonts')
+            cellxfs = styles_root.find(f'{{{ns_styles}}}cellXfs')
+            if fonts is not None and cellxfs is not None:
+                font_list = fonts.findall(f'{{{ns_styles}}}font')
+                for idx, xf in enumerate(cellxfs.findall(f'{{{ns_styles}}}xf')):
+                    font_id = xf.get('fontId')
+                    if font_id is None:
+                        continue
+                    try:
+                        font_id_int = int(font_id)
+                    except ValueError:
+                        continue
+                    if font_id_int >= len(font_list):
+                        continue
+                    font = font_list[font_id_int]
+                    sz_elem = font.find(f'{{{ns_styles}}}sz')
+                    name_elem = font.find(f'{{{ns_styles}}}name')
+                    if name_elem is None:
+                        name_elem = font.find(f'{{{ns_styles}}}rFont')
+                    style_font_map[idx] = {
+                        'size': sz_elem.get('val') if sz_elem is not None else None,
+                        'name': name_elem.get('val') if name_elem is not None else None
+                    }
     
     # get_string_idx se definirá solo si el template usa sharedStrings
     get_string_idx = None
@@ -607,7 +647,7 @@ def export_xlsx_direct(template_path: str, data: dict) -> io.BytesIO:
                 rich_parts.append((f"- {condicion}\n", "normal"))
             
             print(f"DEBUG: Escribiendo condiciones Rich Text en B{row_condiciones}")
-            _set_cell_value(sheet_data, f'B{row_condiciones}', None, ns, rich_text=rich_parts)
+            _set_cell_value(sheet_data, f'B{row_condiciones}', None, ns, rich_text=rich_parts, style_font_map=style_font_map)
         # Si no hay condiciones, se mantiene el texto original del template
         
         # PLAZO ESTIMADO (fila 24 + extra_rows, celdas combinadas B24:N24)
@@ -635,7 +675,7 @@ def export_xlsx_direct(template_path: str, data: dict) -> io.BytesIO:
             ]
         
         print(f"DEBUG: Escribiendo plazo Rich Text en B{row_plazo}")
-        _set_cell_value(sheet_data, f'B{row_plazo}', None, ns, rich_text=rich_parts)
+        _set_cell_value(sheet_data, f'B{row_plazo}', None, ns, rich_text=rich_parts, style_font_map=style_font_map)
         
         # CONDICIONES DE PAGO (fila 34 + extra_rows, SIN celdas combinadas)
         condicion_pago = data.get('condicion_pago', '')
@@ -656,7 +696,7 @@ def export_xlsx_direct(template_path: str, data: dict) -> io.BytesIO:
                 (texto_condicion, "normal")
             ]
             print(f"DEBUG: Escribiendo condición Rich Text en B{row_condicion}")
-            _set_cell_value(sheet_data, f'B{row_condicion}', None, ns, rich_text=rich_parts)
+            _set_cell_value(sheet_data, f'B{row_condicion}', None, ns, rich_text=rich_parts, style_font_map=style_font_map)
         # Si no hay condicion_pago, se mantiene el texto original del template
         
         # CORREO DEL VENDEDOR (fila 51 + extra_rows, celdas combinadas B51:N51)
@@ -727,7 +767,7 @@ def export_xlsx_direct(template_path: str, data: dict) -> io.BytesIO:
             if not rich_parts:
                     continue
 
-            _set_cell_value(sheet_data, f'B{new_row}', None, ns, rich_text=rich_parts)
+            _set_cell_value(sheet_data, f'B{new_row}', None, ns, rich_text=rich_parts, style_font_map=style_font_map)
     
     modified_sheet1 = etree.tostring(root, encoding='utf-8', xml_declaration=True)
     
