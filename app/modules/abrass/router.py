@@ -17,6 +17,7 @@ from sqlalchemy import desc, text
 from sqlalchemy.orm import Session
 
 from app.database import get_db_session
+from app.utils.export_filename import build_formato_filename
 
 from .excel import generate_abrass_excel
 from .models import AbrassEnsayo
@@ -408,7 +409,7 @@ async def generar_excel_abrass(
         excel_bytes = generate_abrass_excel(payload)
 
         today = date.today()
-        filename = f"ABRASS_{payload.numero_ot}_{today.strftime('%Y%m%d')}.xlsx"
+        filename = build_formato_filename(payload.muestra, "AG", "ABRASS")
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")

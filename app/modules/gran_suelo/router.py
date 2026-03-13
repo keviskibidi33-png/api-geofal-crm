@@ -43,6 +43,23 @@ def _safe_filename(base_name: str, extension: str = "xlsx") -> str:
     return f"{normalized}.{extension}" if extension else normalized
 
 
+def _build_formato_filename(codigo_muestra: str, modulo_codigo: str, modulo_nombre: str) -> str:
+    current_year = date.today().strftime("%y")
+    normalized = (codigo_muestra or "").strip().upper()
+    match = re.match(r"^(?P<num>\d+)(?:-[A-Z0-9. ]+)?-(?P<yy>\d{2,4})$", normalized)
+    fallback = re.match(r"^(?P<num>\d+)(?:-(?P<yy>\d{2,4}))?$", normalized)
+    match = match or fallback
+
+    if match:
+        numero = match.group("num")
+        year = (match.groupdict().get("yy") or current_year)[-2:]
+    else:
+        numero = "xxxx"
+        year = current_year
+
+    return f"Formato N-{numero}-{modulo_codigo}-{year} {modulo_nombre}.xlsx"
+
+
 def _upload_to_supabase_storage(file_bytes: bytes, bucket: str, object_path: str) -> str | None:
     supabase_url = os.getenv("SUPABASE_URL")
     supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
@@ -400,7 +417,7 @@ async def generar_excel_gran_suelo(
         excel_bytes = generate_gran_suelo_excel(payload)
 
         today = date.today()
-        filename = f"GRAN_SUELO_{payload.numero_ot}_{today.strftime('%Y%m%d')}.xlsx"
+        filename = _build_formato_filename(payload.muestra, "SU", "GR. SUELO")
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")

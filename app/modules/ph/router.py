@@ -16,6 +16,7 @@ from sqlalchemy import desc, text
 from sqlalchemy.orm import Session
 
 from app.database import get_db_session
+from app.utils.export_filename import build_formato_filename
 from .excel import generate_ph_excel
 from .models import PHEnsayo
 from .schemas import PHDetalleResponse, PHEnsayoResponse, PHRequest, PHSaveResponse
@@ -373,7 +374,7 @@ async def generar_excel(
         excel_bytes = generate_ph_excel(payload)
 
         today = date.today()
-        filename = f"PH_{payload.numero_ot}_{today.strftime('%Y%m%d')}.xlsx"
+        filename = build_formato_filename(payload.muestra, "SU", "PH")
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")

@@ -16,6 +16,7 @@ from sqlalchemy import desc, text
 from sqlalchemy.orm import Session
 
 from app.database import get_db_session
+from app.utils.export_filename import build_formato_filename
 from .excel import generate_humedad_excel
 from .models import HumedadEnsayo
 from .schemas import (
@@ -43,35 +44,8 @@ def _safe_filename(base_name: str, extension: str = "xlsx") -> str:
     return f"{normalized}.{extension}" if extension else normalized
 
 
-def _extract_muestra_code_parts(muestra: str | None) -> tuple[str, str]:
-    """Extrae (XXX, YY) desde código de muestra tipo 445-SU-26."""
-    raw = (muestra or "").strip().upper()
-    current_yy = date.today().strftime("%y")
-    if not raw:
-        return "XXX", current_yy
-
-    strict = re.match(r"^([A-Z0-9]+)-SU-(\d{2})$", raw)
-    if strict:
-        return strict.group(1), strict.group(2)
-
-    relaxed = re.search(r"([A-Z0-9]+)-SU(?:-(\d{2}))?", raw)
-    if relaxed:
-        return relaxed.group(1), (relaxed.group(2) or current_yy)
-
-    compact = re.sub(r"[^A-Z0-9]+", "", raw)
-    if compact:
-        return compact[:12], current_yy
-    return "XXX", current_yy
-
-
 def _build_humedad_export_filename(payload: HumedadRequest) -> str:
-    """
-    Formato requerido:
-      Formato N-XXX-26 SU20 HUMEDAD SUELO - V05.xlsx
-    donde XXX se deriva del código de muestra.
-    """
-    xxx, yy = _extract_muestra_code_parts(payload.muestra)
-    return f"Formato N-{xxx}-{yy} SU20 HUMEDAD SUELO - V05.xlsx"
+    return build_formato_filename(payload.muestra, "SU", "HUMEDAD")
 
 
 def _upload_to_supabase_storage(file_bytes: bytes, bucket: str, object_path: str) -> str | None:

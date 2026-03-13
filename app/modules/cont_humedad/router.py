@@ -17,6 +17,7 @@ from sqlalchemy import desc, text
 from sqlalchemy.orm import Session
 
 from app.database import get_db_session
+from app.utils.export_filename import build_formato_filename
 
 from .excel import generate_cont_humedad_excel
 from .models import ContHumedadEnsayo
@@ -411,7 +412,7 @@ async def generar_excel_cont_humedad(
         excel_bytes = generate_cont_humedad_excel(payload)
 
         today = date.today()
-        filename = f"CONT_HUMEDAD_{payload.numero_ot}_{today.strftime('%Y%m%d')}.xlsx"
+        filename = build_formato_filename(payload.muestra, "SU", "CONT. HUMEDAD")
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")

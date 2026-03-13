@@ -17,6 +17,7 @@ from sqlalchemy import desc, text
 from sqlalchemy.orm import Session
 
 from app.database import get_db_session
+from app.utils.export_filename import build_formato_filename
 
 from .excel import generate_peso_unitario_excel
 from .models import PesoUnitarioEnsayo
@@ -405,7 +406,7 @@ async def generar_excel_peso_unitario(
         excel_bytes = generate_peso_unitario_excel(payload)
 
         today = date.today()
-        filename = f"PESO_UNITARIO_{payload.numero_ot}_{today.strftime('%Y%m%d')}.xlsx"
+        filename = build_formato_filename(payload.muestra, "AG", "PESO UNITARIO")
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")

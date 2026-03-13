@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db_session
+from app.utils.export_filename import build_formato_filename
 from .schemas import (
     EnsayoCompresionCreate, 
     EnsayoCompresionUpdate, 
@@ -14,6 +15,17 @@ from .excel import generate_compression_excel
 
 router = APIRouter(prefix="/api/compresion", tags=["Compresion"])
 compresion_service = CompresionService()
+
+
+def _resolve_compresion_sample_code(items) -> str | None:
+    for item in items or []:
+        if isinstance(item, dict):
+            codigo = item.get("codigo_lem")
+        else:
+            codigo = getattr(item, "codigo_lem", None)
+        if isinstance(codigo, str) and codigo.strip():
+            return codigo.strip()
+    return None
 
 
 @router.post("/", response_model=EnsayoCompresionResponse)
@@ -184,7 +196,7 @@ async def generar_excel_ensayo(
         if not excel_buffer:
             raise HTTPException(status_code=500, detail="Error generando Excel")
         
-        filename = f"Formato Compresion N-{ensayo.numero_recepcion}.xlsx"
+        filename = build_formato_filename(_resolve_compresion_sample_code(getattr(ensayo, "items", [])) or ensayo.numero_recepcion, "SU", "COMPRESION")
         
         return Response(
             content=excel_buffer.getvalue(),
@@ -251,7 +263,7 @@ async def export_compression(payload: CompressionExportRequest):
     """Export compression directly without DB (backwards compatible)"""
     try:
         excel_file = generate_compression_excel(payload)
-        filename = f"Formato Compresión N-{payload.recepcion_numero}.xlsx"
+        filename = build_formato_filename(_resolve_compresion_sample_code(payload.items) or payload.recepcion_numero, "SU", "COMPRESION")
         return StreamingResponse(
             excel_file,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

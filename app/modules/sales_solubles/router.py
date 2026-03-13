@@ -16,6 +16,7 @@ from sqlalchemy import desc, text
 from sqlalchemy.orm import Session
 
 from app.database import get_db_session
+from app.utils.export_filename import build_formato_filename
 from .excel import generate_sales_solubles_excel
 from .models import SalesSolublesEnsayo
 from .schemas import SalesSolublesDetalleResponse, SalesSolublesEnsayoResponse, SalesSolublesRequest, SalesSolublesSaveResponse
@@ -373,7 +374,7 @@ async def generar_excel(
         excel_bytes = generate_sales_solubles_excel(payload)
 
         today = date.today()
-        filename = f"SS_{payload.numero_ot}_{today.strftime('%Y%m%d')}.xlsx"
+        filename = build_formato_filename(payload.muestra, "SU", "SALES SOLUBLES")
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")

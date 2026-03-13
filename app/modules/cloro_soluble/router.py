@@ -16,6 +16,7 @@ from sqlalchemy import desc, text
 from sqlalchemy.orm import Session
 
 from app.database import get_db_session
+from app.utils.export_filename import build_formato_filename
 from .excel import generate_cloro_soluble_excel
 from .models import CloroSolubleEnsayo
 from .schemas import CloroSolubleDetalleResponse, CloroSolubleEnsayoResponse, CloroSolubleRequest, CloroSolubleSaveResponse
@@ -373,7 +374,7 @@ async def generar_excel(
         excel_bytes = generate_cloro_soluble_excel(payload)
 
         today = date.today()
-        filename = f"CL_{payload.numero_ot}_{today.strftime('%Y%m%d')}.xlsx"
+        filename = build_formato_filename(payload.muestra, "SU", "CLORO SOLUBLE")
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")
