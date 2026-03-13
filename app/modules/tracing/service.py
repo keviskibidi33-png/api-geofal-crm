@@ -1,4 +1,6 @@
-from sqlalchemy.orm import Session
+from types import SimpleNamespace
+from sqlalchemy import text
+from sqlalchemy.orm import Session, load_only
 from .models import Trazabilidad
 from app.modules.recepcion.models import RecepcionMuestra
 from app.modules.verificacion.models import VerificacionMuestras
@@ -9,6 +11,59 @@ import re
 from app.utils.storage_utils import StorageUtils
 
 class TracingService:
+    @staticmethod
+    def _has_fecha_entrega_column(db: Session) -> bool:
+        cached = db.info.get("trazabilidad_has_fecha_entrega")
+        if cached is not None:
+            return cached
+
+        exists = db.execute(
+            text(
+                "select 1 from information_schema.columns "
+                "where table_schema = 'public' and table_name = 'trazabilidad' and column_name = 'fecha_entrega'"
+            )
+        ).first() is not None
+        db.info["trazabilidad_has_fecha_entrega"] = exists
+        return exists
+
+    @staticmethod
+    def _trazabilidad_query(db: Session):
+        cols = [
+            Trazabilidad.id,
+            Trazabilidad.numero_recepcion,
+            Trazabilidad.cliente,
+            Trazabilidad.proyecto,
+            Trazabilidad.estado_recepcion,
+            Trazabilidad.estado_verificacion,
+            Trazabilidad.estado_compresion,
+            Trazabilidad.estado_informe,
+            Trazabilidad.mensaje_seguimiento,
+            Trazabilidad.data_consolidada,
+            Trazabilidad.fecha_creacion,
+            Trazabilidad.fecha_actualizacion,
+        ]
+        if TracingService._has_fecha_entrega_column(db):
+            cols.append(Trazabilidad.fecha_entrega)
+        return db.query(Trazabilidad).options(load_only(*cols))
+
+    @staticmethod
+    def _build_virtual_traza(numero_recepcion: str):
+        return SimpleNamespace(
+            id=None,
+            numero_recepcion=numero_recepcion,
+            cliente=None,
+            proyecto=None,
+            estado_recepcion="pendiente",
+            estado_verificacion="pendiente",
+            estado_compresion="pendiente",
+            estado_informe="pendiente",
+            mensaje_seguimiento=None,
+            data_consolidada={},
+            fecha_entrega=None,
+            fecha_creacion=None,
+            fecha_actualizacion=None,
+        )
+
     @staticmethod
     def _extraer_numero_base(numero: str) -> str:
         """
@@ -145,14 +200,18 @@ class TracingService:
             if verificacion and compresion:
                 break
         
+        has_fecha_entrega = TracingService._has_fecha_entrega_column(db)
+        persist_traza = True
+
         # 3. Buscar si ya existe en trazabilidad
-        traza = db.query(Trazabilidad).filter(Trazabilidad.numero_recepcion == canonical_numero).first()
+        traza = TracingService._trazabilidad_query(db).filter(Trazabilidad.numero_recepcion == canonical_numero).first()
         
         # Búsqueda secundaria flexible en trazabilidad si no se encuentra por el canónico actual
         if not traza:
             for num in numeros_busqueda:
-                traza = db.query(Trazabilidad).filter(Trazabilidad.numero_recepcion == num).first()
-                if traza: break
+                traza = TracingService._trazabilidad_query(db).filter(Trazabilidad.numero_recepcion == num).first()
+                if traza:
+                    break
 
         # --- PERSISTENCE & CLEANUP FIX ---
         # Si NO EXISTE NADA en los módulos origen:
@@ -166,14 +225,20 @@ class TracingService:
             return None # No crear nada si no hay nada
         
         if not traza:
-            traza = Trazabilidad(numero_recepcion=canonical_numero)
-            db.add(traza)
+            if has_fecha_entrega:
+                traza = Trazabilidad(numero_recepcion=canonical_numero)
+                db.add(traza)
+            else:
+                # Fallback temporal mientras la migración no exista en producción.
+                persist_traza = False
+                traza = TracingService._build_virtual_traza(canonical_numero)
             
         # 4. Actualizar datos básicos (priorizando la recepción si existe)
         if recepcion:
             traza.cliente = recepcion.cliente
             traza.proyecto = recepcion.proyecto
-            traza.fecha_entrega = recepcion.fecha_estimada_culminacion
+            if has_fecha_entrega:
+                traza.fecha_entrega = recepcion.fecha_estimada_culminacion
         elif verificacion:
             traza.cliente = verificacion.cliente
             traza.proyecto = "Cargado desde Verificación"
@@ -244,13 +309,15 @@ class TracingService:
             traza.estado_informe = "en_proceso"  # Solo recepción, descargable con datos parciales
             
         # 6. Guardar metadata extra en JSON
+        fecha_entrega_value = traza.__dict__.get("fecha_entrega") if has_fecha_entrega else None
+
         traza.data_consolidada = {
             "recepcion_id": recepcion.id if recepcion else None,
             "recepcion_estado": recepcion.estado if recepcion else None,
             "numero_ot": getattr(recepcion, 'numero_ot', None) if recepcion else (compresion.numero_ot if compresion else None),
             "cliente": traza.cliente,
             "proyecto": traza.proyecto,
-            "fecha_entrega": traza.fecha_entrega.isoformat() if traza.fecha_entrega else None,
+            "fecha_entrega": fecha_entrega_value.isoformat() if fecha_entrega_value else None,
             "muestras_count": len(recepcion.muestras) if recepcion and recepcion.muestras else 0,
             "fecha_recepcion": recepcion.fecha_recepcion.isoformat() if recepcion and recepcion.fecha_recepcion else None,
             "verificacion_id": verificacion.id if verificacion else None,
@@ -258,9 +325,10 @@ class TracingService:
             "compresion_status": compresion.estado if compresion else None,
             "storage_verified": True
         }
-        
-        db.commit()
-        db.refresh(traza)
+
+        if persist_traza:
+            db.commit()
+            db.refresh(traza)
         return traza
 
     @staticmethod
@@ -268,7 +336,7 @@ class TracingService:
         """
         Busca sugerencias de números de recepción en la tabla de trazabilidad.
         """
-        query = db.query(Trazabilidad)
+        query = TracingService._trazabilidad_query(db)
         
         if q:
             # Búsqueda por número de recepción o cliente

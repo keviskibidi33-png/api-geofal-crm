@@ -273,7 +273,7 @@ class InformeService:
         Cada descarga/generación crea un registro de versión.
         """
         # Buscar trazabilidad
-        traza = db.query(Trazabilidad).filter(
+        traza = TracingService._trazabilidad_query(db).filter(
             Trazabilidad.numero_recepcion == numero_recepcion
         ).first()
         

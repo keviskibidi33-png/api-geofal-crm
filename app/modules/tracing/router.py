@@ -376,7 +376,7 @@ def eliminar_trazabilidad(numero_recepcion: str, db: Session = Depends(get_db_se
     # Usar búsqueda flexible para encontrar el registro correcto
     _, canonical_numero = TracingService._buscar_recepcion_flexible(db, numero_recepcion)
     
-    traza = db.query(Trazabilidad).filter(Trazabilidad.numero_recepcion == canonical_numero).first()
+    traza = TracingService._trazabilidad_query(db).filter(Trazabilidad.numero_recepcion == canonical_numero).first()
     if not traza:
         raise HTTPException(status_code=404, detail="Registro de trazabilidad no encontrado")
     
