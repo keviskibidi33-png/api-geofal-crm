@@ -407,13 +407,17 @@ def export_xlsx_direct(template_path: str, data: dict) -> io.BytesIO:
                     if text:
                         shared_strings_map[text] = len(shared_strings) - 1
     
-    def get_string_idx(text: str) -> int:
-        if text in shared_strings_map:
-            return shared_strings_map[text]
-        idx = len(shared_strings)
-        shared_strings.append(text)
-        shared_strings_map[text] = idx
-        return idx
+    # get_string_idx se definirá solo si el template usa sharedStrings
+    get_string_idx = None
+    if ss_xml_original:
+        def _get_string_idx(text: str) -> int:
+            if text in shared_strings_map:
+                return shared_strings_map[text]
+            idx = len(shared_strings)
+            shared_strings.append(text)
+            shared_strings_map[text] = idx
+            return idx
+        get_string_idx = _get_string_idx
     
     # 2. Modificar sheet (hoja MORT2 - la hoja de cotización)
     # Resolución dinámica de la hoja MORT2
