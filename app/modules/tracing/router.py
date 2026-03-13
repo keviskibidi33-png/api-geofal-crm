@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
+from sqlalchemy import text
 from datetime import datetime
 from typing import List, Optional
 from app.database import get_db_session
@@ -250,7 +251,33 @@ def listar_seguimiento(db: Session = Depends(get_db_session), skip: int = 0, lim
     """
     Lista las recepciones usando la tabla maestra (Bibliotecas de estados).
     """
-    trazas = db.query(Trazabilidad).order_by(desc(Trazabilidad.fecha_creacion)).offset(skip).limit(limit).all()
+    has_fecha_entrega = db.execute(
+        text(
+            "select 1 from information_schema.columns "
+            "where table_schema = 'public' and table_name = 'trazabilidad' and column_name = 'fecha_entrega'"
+        )
+    ).first() is not None
+
+    cols = [
+        Trazabilidad.numero_recepcion,
+        Trazabilidad.cliente,
+        Trazabilidad.fecha_creacion,
+        Trazabilidad.estado_recepcion,
+        Trazabilidad.estado_verificacion,
+        Trazabilidad.estado_compresion,
+        Trazabilidad.estado_informe,
+    ]
+    if has_fecha_entrega:
+        cols.append(Trazabilidad.fecha_entrega)
+
+    trazas = (
+        db.query(Trazabilidad)
+        .options(load_only(*cols))
+        .order_by(desc(Trazabilidad.fecha_creacion))
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
     
     resultado = []
     for t in trazas:
@@ -261,11 +288,12 @@ def listar_seguimiento(db: Session = Depends(get_db_session), skip: int = 0, lim
             StageSummary(key="informe", status=t.estado_informe)
         ]
         
+        fecha_entrega = t.fecha_entrega if has_fecha_entrega else None
         resultado.append(TracingSummary(
             numero_recepcion=t.numero_recepcion,
             cliente=t.cliente,
-            fecha=t.fecha_entrega or t.fecha_creacion,
-            fecha_entrega=t.fecha_entrega,
+            fecha=fecha_entrega or t.fecha_creacion,
+            fecha_entrega=fecha_entrega,
             stages=stages
         ))
         
