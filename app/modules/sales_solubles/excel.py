@@ -405,6 +405,7 @@ def _fill_sheet(sheet_xml: bytes, payload: SalesSolublesRequest) -> bytes:
             if ref not in existing:
                 mc = etree.SubElement(merge_cells, f"{{{NS_SHEET}}}mergeCell")
                 mc.set("ref", ref)
+        merge_cells.set("count", str(len(merge_cells.findall(f"{{{NS_SHEET}}}mergeCell"))))
 
     merge_anchor_map = _build_merge_anchor_map(root)
     data = payload.model_dump(mode="json")

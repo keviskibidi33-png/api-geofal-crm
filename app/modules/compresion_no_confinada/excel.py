@@ -436,6 +436,7 @@ def _fill_sheet(
             if ref not in existing:
                 mc = etree.SubElement(merge_cells, f"{{{NS_SHEET}}}mergeCell")
                 mc.set("ref", ref)
+        merge_cells.set("count", str(len(merge_cells.findall(f"{{{NS_SHEET}}}mergeCell"))))
 
     # Encabezado
     _set_cell(sheet_data, "B11", payload.muestra, style_overrides=style_overrides)
