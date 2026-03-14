@@ -383,19 +383,19 @@ def _fill_sheet(sheet_xml: bytes, payload: CloroSolubleRequest) -> bytes:
     _set_cell(sheet_data, "E10", payload.fecha_ensayo, merge_anchor_map=merge_anchor_map)
     _set_cell(sheet_data, "G10", payload.realizado_por or "", merge_anchor_map=merge_anchor_map)
 
-    _set_cell(sheet_data, "G22", _to_float(data.get("volumen_agua_ml")), is_number=True, merge_anchor_map=merge_anchor_map)
-    _set_cell(sheet_data, "G23", _to_float(data.get("peso_suelo_seco_g")), is_number=True, merge_anchor_map=merge_anchor_map)
-    _set_cell(sheet_data, "G24", _to_float(data.get("alicuota_tomada_ml")), is_number=True, merge_anchor_map=merge_anchor_map)
-    _set_cell(sheet_data, "G25", _to_float(data.get("titulacion_suelo_g")), is_number=True, merge_anchor_map=merge_anchor_map)
-    _set_cell(sheet_data, "G26", _to_float(data.get("titulacion_nitrato_plata")), is_number=True, merge_anchor_map=merge_anchor_map)
-    _set_cell(sheet_data, "G27", _to_float(data.get("ph_ensayo")), is_number=True, merge_anchor_map=merge_anchor_map)
-    _set_cell(sheet_data, "G28", _to_float(data.get("factor_dilucion")), is_number=True, merge_anchor_map=merge_anchor_map)
+    _set_cell(sheet_data, "F22", _to_float(data.get("volumen_agua_ml")), is_number=True, merge_anchor_map=merge_anchor_map)
+    _set_cell(sheet_data, "F23", _to_float(data.get("peso_suelo_seco_g")), is_number=True, merge_anchor_map=merge_anchor_map)
+    _set_cell(sheet_data, "F24", _to_float(data.get("alicuota_tomada_ml")), is_number=True, merge_anchor_map=merge_anchor_map)
+    _set_cell(sheet_data, "F25", _to_float(data.get("titulacion_suelo_g")), is_number=True, merge_anchor_map=merge_anchor_map)
+    _set_cell(sheet_data, "F26", _to_float(data.get("titulacion_nitrato_plata")), is_number=True, merge_anchor_map=merge_anchor_map)
+    _set_cell(sheet_data, "F27", _to_float(data.get("ph_ensayo")), is_number=True, merge_anchor_map=merge_anchor_map)
+    _set_cell(sheet_data, "F28", _to_float(data.get("factor_dilucion")), is_number=True, merge_anchor_map=merge_anchor_map)
 
     resultados = list(payload.resultados or [])
     while len(resultados) < 2:
         resultados.append(CloroSolubleResultado())
 
-    resultado_refs = (("G29", "G30"), ("H29", "H30"))
+    resultado_refs = (("F29", "F30"), ("G29", "G30"))
     for idx, refs in enumerate(resultado_refs):
         resultado = resultados[idx] if idx < len(resultados) else None
         if resultado is None:
