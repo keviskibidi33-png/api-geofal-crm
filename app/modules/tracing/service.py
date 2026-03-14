@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from sqlalchemy import text
+from sqlalchemy import text, or_
 from sqlalchemy.orm import Session, load_only
 from .models import Trazabilidad
 from app.modules.recepcion.models import RecepcionMuestra
@@ -340,16 +340,95 @@ class TracingService:
         Busca sugerencias de números de recepción en la tabla de trazabilidad.
         """
         try:
-            query = TracingService._trazabilidad_query(db)
-            
-            if q:
-                # Búsqueda por número de recepción o cliente
-                query = query.filter(
-                    (Trazabilidad.numero_recepcion.ilike(f"%{q}%")) |
-                    (Trazabilidad.cliente.ilike(f"%{q}%"))
+            termino = (q or "").strip()
+            patrones_numero = [termino] if termino else []
+            if termino:
+                patrones_numero = list(
+                    dict.fromkeys(
+                        [
+                            patron.strip()
+                            for patron in [
+                                termino,
+                                TracingService._extraer_numero_base(termino),
+                                *TracingService._build_numero_variantes(termino, termino),
+                            ]
+                            if patron and str(patron).strip()
+                        ]
+                    )
                 )
-                
-            return query.order_by(Trazabilidad.fecha_creacion.desc()).limit(limit).all()
+
+            query = TracingService._trazabilidad_query(db)
+            if termino:
+                filtros_traza = [Trazabilidad.cliente.ilike(f"%{termino}%")]
+                filtros_traza.extend(
+                    Trazabilidad.numero_recepcion.ilike(f"%{patron}%")
+                    for patron in patrones_numero
+                )
+                query = query.filter(or_(*filtros_traza))
+
+            trazas = query.order_by(Trazabilidad.fecha_creacion.desc()).limit(limit).all()
+
+            resultados = []
+            vistos: set[str] = set()
+
+            def _append_result(item):
+                numero = getattr(item, "numero_recepcion", None)
+                if not numero or numero in vistos:
+                    return
+                vistos.add(numero)
+                resultados.append(item)
+
+            for traza in trazas:
+                _append_result(traza)
+
+            if len(resultados) >= limit:
+                return resultados[:limit]
+
+            recepcion_query = db.query(RecepcionMuestra)
+            if termino:
+                filtros_recepcion = [RecepcionMuestra.cliente.ilike(f"%{termino}%")]
+                filtros_recepcion.extend(
+                    RecepcionMuestra.numero_recepcion.ilike(f"%{patron}%")
+                    for patron in patrones_numero
+                )
+                recepcion_query = recepcion_query.filter(or_(*filtros_recepcion))
+
+            recepciones = (
+                recepcion_query
+                .order_by(RecepcionMuestra.fecha_creacion.desc())
+                .limit(limit)
+                .all()
+            )
+
+            for recepcion in recepciones:
+                if recepcion.numero_recepcion in vistos:
+                    continue
+
+                synced = TracingService.actualizar_trazabilidad(db, recepcion.numero_recepcion)
+                if synced:
+                    _append_result(synced)
+                    if len(resultados) >= limit:
+                        break
+                    continue
+
+                fallback = TracingService._build_virtual_traza(recepcion.numero_recepcion)
+                fallback.cliente = recepcion.cliente
+                fallback.proyecto = recepcion.proyecto
+                fallback.estado_recepcion = "completado" if recepcion.object_key else "en_proceso"
+                fallback.data_consolidada = {
+                    "recepcion_id": recepcion.id,
+                    "numero_ot": recepcion.numero_ot,
+                    "cliente": recepcion.cliente,
+                    "proyecto": recepcion.proyecto,
+                    "muestras_count": len(recepcion.muestras) if recepcion.muestras else 0,
+                    "fecha_recepcion": recepcion.fecha_recepcion.isoformat() if recepcion.fecha_recepcion else None,
+                }
+                _append_result(fallback)
+
+                if len(resultados) >= limit:
+                    break
+
+            return resultados[:limit]
         except Exception as e:
             logger.error("Error in buscar_sugerencias: %s", e, exc_info=True)
             return []
