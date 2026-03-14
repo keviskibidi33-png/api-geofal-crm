@@ -269,6 +269,14 @@ def _normalize_list(values: Iterable[Any] | None, length: int) -> list[float | N
     return result
 
 
+def _format_number_text(value: float | None, decimals: int = 4) -> str:
+    if value is None:
+        return ""
+    rounded = round(float(value), decimals)
+    text = f"{rounded:.{decimals}f}".rstrip("0").rstrip(".")
+    return text or "0"
+
+
 def _build_signature_text(name: str | None, date_text: str | None) -> str:
     name_value = (name or "").strip()
     date_value = (date_text or "").strip()
@@ -446,12 +454,12 @@ def _fill_sheet(
 
     # Contenido de humedad (col C)
     _set_cell(sheet_data, "C17", tara_numero, style_overrides=style_overrides)
-    _set_cell(sheet_data, "C18", tara_humedo, is_number=True, style_overrides=style_overrides)
-    _set_cell(sheet_data, "C19", tara_seco, is_number=True, style_overrides=style_overrides)
-    _set_cell(sheet_data, "C20", peso_agua, is_number=True, style_overrides=style_overrides)
-    _set_cell(sheet_data, "C21", peso_tara, is_number=True, style_overrides=style_overrides)
-    _set_cell(sheet_data, "C22", peso_suelo_seco, is_number=True, style_overrides=style_overrides)
-    _set_cell(sheet_data, "C23", humedad_pct, is_number=True, style_overrides=style_overrides)
+    _set_cell(sheet_data, "C18", _format_number_text(tara_humedo, 3), style_overrides=style_overrides)
+    _set_cell(sheet_data, "C19", _format_number_text(tara_seco, 3), style_overrides=style_overrides)
+    _set_cell(sheet_data, "C20", _format_number_text(peso_agua, 3), style_overrides=style_overrides)
+    _set_cell(sheet_data, "C21", _format_number_text(peso_tara, 3), style_overrides=style_overrides)
+    _set_cell(sheet_data, "C22", _format_number_text(peso_suelo_seco, 3), style_overrides=style_overrides)
+    _set_cell(sheet_data, "C23", _format_number_text(humedad_pct, 3), style_overrides=style_overrides)
 
     diametros = _normalize_list(data.get("diametro_cm"), 3)
     alturas = _normalize_list(data.get("altura_cm"), 3)
@@ -483,18 +491,25 @@ def _fill_sheet(
     }
 
     for idx, col in enumerate(value_cols):
-        _set_cell(sheet_data, f"{col}{rows['diametro']}", diametros[idx], is_number=True, style_overrides=style_overrides)
-        _set_cell(sheet_data, f"{col}{rows['altura']}", alturas[idx], is_number=True, style_overrides=style_overrides)
-        _set_cell(sheet_data, f"{col}{rows['area']}", areas[idx], is_number=True, style_overrides=style_overrides)
-        _set_cell(sheet_data, f"{col}{rows['volumen']}", volumenes[idx], is_number=True, style_overrides=style_overrides)
-        _set_cell(sheet_data, f"{col}{rows['peso']}", pesos[idx], is_number=True, style_overrides=style_overrides)
-        _set_cell(sheet_data, f"{col}{rows['unit_humedo']}", unit_humedo[idx], is_number=True, style_overrides=style_overrides)
-        _set_cell(sheet_data, f"{col}{rows['unit_seco']}", unit_seco[idx], is_number=True, style_overrides=style_overrides)
+        _set_cell(sheet_data, f"{col}{rows['diametro']}", _format_number_text(diametros[idx], 4), style_overrides=style_overrides)
+        _set_cell(sheet_data, f"{col}{rows['altura']}", _format_number_text(alturas[idx], 4), style_overrides=style_overrides)
+        _set_cell(sheet_data, f"{col}{rows['area']}", _format_number_text(areas[idx], 4), style_overrides=style_overrides)
+        _set_cell(sheet_data, f"{col}{rows['volumen']}", _format_number_text(volumenes[idx], 4), style_overrides=style_overrides)
+        _set_cell(sheet_data, f"{col}{rows['peso']}", _format_number_text(pesos[idx], 4), style_overrides=style_overrides)
+        _set_cell(sheet_data, f"{col}{rows['unit_humedo']}", _format_number_text(unit_humedo[idx], 4), style_overrides=style_overrides)
+        _set_cell(sheet_data, f"{col}{rows['unit_seco']}", _format_number_text(unit_seco[idx], 4), style_overrides=style_overrides)
 
+    tiempos = list(data.get("deformacion_tiempo") or [])[:24]
+    deformacion_pulg = _normalize_list(data.get("deformacion_pulg_001"), 24)
+    deformacion_mm = _normalize_list(data.get("deformacion_mm"), 24)
     lectura = _normalize_list(data.get("lectura_carga_kg"), 24)
-    for idx, value in enumerate(lectura):
+    for idx in range(24):
         row = 27 + idx
-        _set_cell(sheet_data, f"E{row}", value, is_number=True, style_overrides=style_overrides)
+        tiempo = tiempos[idx] if idx < len(tiempos) else ""
+        _set_cell(sheet_data, f"B{row}", tiempo, style_overrides=style_overrides)
+        _set_cell(sheet_data, f"C{row}", _format_number_text(deformacion_pulg[idx], 3), style_overrides=style_overrides)
+        _set_cell(sheet_data, f"D{row}", _format_number_text(deformacion_mm[idx], 3), style_overrides=style_overrides)
+        _set_cell(sheet_data, f"E{row}", _format_number_text(lectura[idx], 3), style_overrides=style_overrides)
 
     if payload.observaciones:
         _set_cell(sheet_data, "B52", payload.observaciones, style_overrides=style_overrides)
