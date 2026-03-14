@@ -275,6 +275,7 @@ def _get_cors_origins() -> list[str]:
         "https://sales-solubles.geofal.com.pe",
         "https://sulfatos-solubles.geofal.com.pe",
         "https://compresion-no-confinada.geofal.com.pe",
+        "https://comp.noconfinada.geofal.com.pe",
         "https://verificacion.geofal.com.pe",
         "https://verifiacion.geofal.com.pe",
     ]
