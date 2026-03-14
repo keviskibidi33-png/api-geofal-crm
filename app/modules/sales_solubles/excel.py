@@ -407,7 +407,7 @@ def _fill_sheet(sheet_xml: bytes, payload: SalesSolublesRequest) -> bytes:
 
     for idx, ref in enumerate(("G21", "H21")):
         capsula = capsulas[idx] if idx < len(capsulas) else None
-        _set_cell(sheet_data, ref, getattr(capsula, "capsula_numero", None), merge_anchor_map=merge_anchor_map, style_ref="G21")
+        _set_cell(sheet_data, ref, getattr(capsula, "capsula_numero", None), merge_anchor_map=merge_anchor_map, style_ref=ref)
 
     shared_sales = {
         "G22": _to_float(data.get("volumen_agua_ml")),
