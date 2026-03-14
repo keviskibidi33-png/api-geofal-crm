@@ -9,7 +9,7 @@ import re
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
 
 
 def _year_short() -> str:
@@ -96,6 +96,50 @@ def _normalize_text(value: object | None) -> str | None:
     return text or None
 
 
+def _coerce_float(value: object | None) -> float | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text or text == "-":
+        return None
+    try:
+        return float(text)
+    except (TypeError, ValueError):
+        return None
+
+
+class CDHumedadPunto(BaseModel):
+    recipiente_numero: Optional[str] = None
+    peso_recipiente_g: Optional[float] = None
+    peso_recipiente_suelo_humedo_g: Optional[float] = None
+    peso_recipiente_suelo_seco_g: Optional[float] = None
+    peso_agua_g: Optional[float] = None
+    peso_suelo_g: Optional[float] = None
+    contenido_humedad_pct: Optional[float] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_fields(cls, value: object):
+        if not isinstance(value, dict):
+            return value
+
+        if "recipiente_numero" in value:
+            value["recipiente_numero"] = _normalize_text(value.get("recipiente_numero"))
+
+        for key in [
+            "peso_recipiente_g",
+            "peso_recipiente_suelo_humedo_g",
+            "peso_recipiente_suelo_seco_g",
+            "peso_agua_g",
+            "peso_suelo_g",
+            "contenido_humedad_pct",
+        ]:
+            if key in value:
+                value[key] = _coerce_float(value.get(key))
+
+        return value
+
+
 class CDRequest(BaseModel):
     """Payload para generar reporte CD."""
 
@@ -112,6 +156,15 @@ class CDRequest(BaseModel):
     revisado_fecha: Optional[str] = None
     aprobado_por: Optional[str] = None
     aprobado_fecha: Optional[str] = None
+
+    humedad_puntos: list[CDHumedadPunto] = Field(default_factory=list)
+    recipiente_numero: Optional[str] = None
+    peso_recipiente_g: Optional[float] = None
+    peso_recipiente_suelo_humedo_g: Optional[float] = None
+    peso_recipiente_suelo_seco_g: Optional[float] = None
+    peso_agua_g: Optional[float] = None
+    peso_suelo_g: Optional[float] = None
+    contenido_humedad_pct: Optional[float] = None
 
     @field_validator("muestra", mode="before")
     @classmethod
@@ -141,6 +194,60 @@ class CDRequest(BaseModel):
     @classmethod
     def normalize_text_fields(cls, value):
         return _normalize_text(value)
+
+    @field_validator(
+        "peso_recipiente_g",
+        "peso_recipiente_suelo_humedo_g",
+        "peso_recipiente_suelo_seco_g",
+        "peso_agua_g",
+        "peso_suelo_g",
+        "contenido_humedad_pct",
+        mode="before",
+    )
+    @classmethod
+    def normalize_humedad_numbers(cls, value):
+        return _coerce_float(value)
+
+    @field_validator("recipiente_numero", mode="before")
+    @classmethod
+    def normalize_recipiente_numero(cls, value):
+        return _normalize_text(value)
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_legacy_humedad_fields(cls, value: object):
+        if not isinstance(value, dict):
+            return value
+
+        legacy_point = {
+            "recipiente_numero": value.get("recipiente_numero"),
+            "peso_recipiente_g": value.get("peso_recipiente_g"),
+            "peso_recipiente_suelo_humedo_g": value.get("peso_recipiente_suelo_humedo_g"),
+            "peso_recipiente_suelo_seco_g": value.get("peso_recipiente_suelo_seco_g"),
+            "peso_agua_g": value.get("peso_agua_g"),
+            "peso_suelo_g": value.get("peso_suelo_g"),
+            "contenido_humedad_pct": value.get("contenido_humedad_pct"),
+        }
+        has_legacy_data = any(item not in (None, "") for item in legacy_point.values())
+        if has_legacy_data and not value.get("humedad_puntos"):
+            value["humedad_puntos"] = [legacy_point]
+        return value
+
+    @model_validator(mode="after")
+    def ensure_humedad_points(self):
+        self.humedad_puntos = self.humedad_puntos[:3]
+        while len(self.humedad_puntos) < 3:
+            self.humedad_puntos.append(CDHumedadPunto())
+
+        principal = self.humedad_puntos[0]
+        self.recipiente_numero = principal.recipiente_numero
+        self.peso_recipiente_g = principal.peso_recipiente_g
+        self.peso_recipiente_suelo_humedo_g = principal.peso_recipiente_suelo_humedo_g
+        self.peso_recipiente_suelo_seco_g = principal.peso_recipiente_suelo_seco_g
+        self.peso_agua_g = principal.peso_agua_g
+        self.peso_suelo_g = principal.peso_suelo_g
+        self.contenido_humedad_pct = principal.contenido_humedad_pct
+        return self
 
 
 class CDEnsayoResponse(BaseModel):
