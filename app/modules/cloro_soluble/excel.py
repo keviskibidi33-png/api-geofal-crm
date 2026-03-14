@@ -395,7 +395,7 @@ def _fill_sheet(sheet_xml: bytes, payload: CloroSolubleRequest) -> bytes:
     while len(resultados) < 2:
         resultados.append(CloroSolubleResultado())
 
-    resultado_refs = (("F29", "F30"), ("G29", "G30"))
+    resultado_refs = (("G29", "G30"), ("H29", "H30"))
     for idx, refs in enumerate(resultado_refs):
         resultado = resultados[idx] if idx < len(resultados) else None
         if resultado is None:
