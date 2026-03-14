@@ -165,6 +165,7 @@ def _set_cell(
     *,
     is_number: bool = False,
     merge_anchor_map: dict[str, str] | None = None,
+    style_ref: str | None = None,
 ) -> None:
     if value is None:
         return
@@ -178,6 +179,11 @@ def _set_cell(
     cell = _find_or_create_cell(row, target_ref)
 
     style = cell.get("s")
+    if style_ref:
+        style_row_num = _parse_cell_ref(style_ref)[1]
+        style_row = _find_or_create_row(sheet_data, style_row_num)
+        style_cell = _find_or_create_cell(style_row, style_ref)
+        style = style_cell.get("s") or style
     for child in list(cell):
         cell.remove(child)
 
@@ -401,7 +407,7 @@ def _fill_sheet(sheet_xml: bytes, payload: SalesSolublesRequest) -> bytes:
 
     for idx, ref in enumerate(("G21", "H21")):
         capsula = capsulas[idx] if idx < len(capsulas) else None
-        _set_cell(sheet_data, ref, getattr(capsula, "capsula_numero", None), merge_anchor_map=merge_anchor_map)
+        _set_cell(sheet_data, ref, getattr(capsula, "capsula_numero", None), merge_anchor_map=merge_anchor_map, style_ref="G21")
 
     shared_sales = {
         "G22": _to_float(data.get("volumen_agua_ml")),
@@ -412,7 +418,7 @@ def _fill_sheet(sheet_xml: bytes, payload: SalesSolublesRequest) -> bytes:
         "H24": _to_float(data.get("volumen_solucion_tomada_ml")),
     }
     for ref, value in shared_sales.items():
-        _set_cell(sheet_data, ref, value, is_number=True, merge_anchor_map=merge_anchor_map)
+        _set_cell(sheet_data, ref, value, is_number=True, merge_anchor_map=merge_anchor_map, style_ref=ref)
 
     capsula_refs = (
         ("G25", "G26", "G27", "G28"),
@@ -422,10 +428,10 @@ def _fill_sheet(sheet_xml: bytes, payload: SalesSolublesRequest) -> bytes:
         capsula = capsulas[idx] if idx < len(capsulas) else None
         if capsula is None:
             continue
-        _set_cell(sheet_data, refs[0], capsula.peso_capsula_g, is_number=True, merge_anchor_map=merge_anchor_map)
-        _set_cell(sheet_data, refs[1], capsula.peso_capsula_sales_g, is_number=True, merge_anchor_map=merge_anchor_map)
-        _set_cell(sheet_data, refs[2], capsula.peso_sales_g, is_number=True, merge_anchor_map=merge_anchor_map)
-        _set_cell(sheet_data, refs[3], capsula.contenido_sales_ppm, is_number=True, merge_anchor_map=merge_anchor_map)
+        _set_cell(sheet_data, refs[0], capsula.peso_capsula_g, is_number=True, merge_anchor_map=merge_anchor_map, style_ref=refs[0])
+        _set_cell(sheet_data, refs[1], capsula.peso_capsula_sales_g, is_number=True, merge_anchor_map=merge_anchor_map, style_ref=refs[1])
+        _set_cell(sheet_data, refs[2], capsula.peso_sales_g, is_number=True, merge_anchor_map=merge_anchor_map, style_ref=refs[2])
+        _set_cell(sheet_data, refs[3], capsula.contenido_sales_ppm, is_number=True, merge_anchor_map=merge_anchor_map, style_ref=refs[3])
 
     horas = _normalize_text_list(data.get("peso_constante_hora"), 4)
     peso_1 = _normalize_number_list(data.get("peso_constante_peso_1"), 4)
@@ -435,15 +441,15 @@ def _fill_sheet(sheet_xml: bytes, payload: SalesSolublesRequest) -> bytes:
 
     for idx in range(4):
         row = 34 + idx
-        _set_cell(sheet_data, f"D{row}", horas[idx], merge_anchor_map=merge_anchor_map)
-        _set_cell(sheet_data, f"E{row}", peso_1[idx], is_number=True, merge_anchor_map=merge_anchor_map)
-        _set_cell(sheet_data, f"F{row}", variacion_1[idx], is_number=True, merge_anchor_map=merge_anchor_map)
-        _set_cell(sheet_data, f"G{row}", peso_2[idx], is_number=True, merge_anchor_map=merge_anchor_map)
-        _set_cell(sheet_data, f"H{row}", variacion_2[idx], is_number=True, merge_anchor_map=merge_anchor_map)
+        _set_cell(sheet_data, f"D{row}", horas[idx], merge_anchor_map=merge_anchor_map, style_ref=f"D{row}")
+        _set_cell(sheet_data, f"E{row}", peso_1[idx], is_number=True, merge_anchor_map=merge_anchor_map, style_ref=f"E{row}")
+        _set_cell(sheet_data, f"F{row}", variacion_1[idx], is_number=True, merge_anchor_map=merge_anchor_map, style_ref=f"F{row}")
+        _set_cell(sheet_data, f"G{row}", peso_2[idx], is_number=True, merge_anchor_map=merge_anchor_map, style_ref=f"G{row}")
+        _set_cell(sheet_data, f"H{row}", variacion_2[idx], is_number=True, merge_anchor_map=merge_anchor_map, style_ref=f"H{row}")
 
-    _set_cell(sheet_data, "F43", payload.equipo_horno_codigo or "", merge_anchor_map=merge_anchor_map)
-    _set_cell(sheet_data, "F44", payload.equipo_balanza_0001_codigo or "", merge_anchor_map=merge_anchor_map)
-    _set_cell(sheet_data, "F45", payload.equipo_balanza_001_codigo or "", merge_anchor_map=merge_anchor_map)
+    _set_cell(sheet_data, "F43", payload.equipo_horno_codigo or "", merge_anchor_map=merge_anchor_map, style_ref="F43")
+    _set_cell(sheet_data, "F44", payload.equipo_balanza_0001_codigo or "", merge_anchor_map=merge_anchor_map, style_ref="F44")
+    _set_cell(sheet_data, "F45", payload.equipo_balanza_001_codigo or "", merge_anchor_map=merge_anchor_map, style_ref="F45")
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
