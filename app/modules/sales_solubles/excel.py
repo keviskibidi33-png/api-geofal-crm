@@ -393,6 +393,19 @@ def _fill_sheet(sheet_xml: bytes, payload: SalesSolublesRequest) -> bytes:
     if sheet_data is None:
         return sheet_xml
 
+    merge_cells = root.find(f".//{{{NS_SHEET}}}mergeCells")
+    if merge_cells is not None:
+        existing = {mc.get("ref") for mc in merge_cells.findall(f"{{{NS_SHEET}}}mergeCell")}
+        for row in range(22, 29):
+            ref = f"C{row}:E{row}"
+            if ref not in existing:
+                mc = etree.SubElement(merge_cells, f"{{{NS_SHEET}}}mergeCell")
+                mc.set("ref", ref)
+        for ref in ("G22:H22", "G23:H23", "G24:H24"):
+            if ref not in existing:
+                mc = etree.SubElement(merge_cells, f"{{{NS_SHEET}}}mergeCell")
+                mc.set("ref", ref)
+
     merge_anchor_map = _build_merge_anchor_map(root)
     data = payload.model_dump(mode="json")
 
@@ -450,6 +463,14 @@ def _fill_sheet(sheet_xml: bytes, payload: SalesSolublesRequest) -> bytes:
     _set_cell(sheet_data, "F43", payload.equipo_horno_codigo or "", merge_anchor_map=merge_anchor_map, style_ref="F43")
     _set_cell(sheet_data, "F44", payload.equipo_balanza_0001_codigo or "", merge_anchor_map=merge_anchor_map, style_ref="F44")
     _set_cell(sheet_data, "F45", payload.equipo_balanza_001_codigo or "", merge_anchor_map=merge_anchor_map, style_ref="F45")
+
+    _center_style = "61"
+    for ref in ("G21", "H21", "G25", "H25", "G27", "H27"):
+        target_ref = merge_anchor_map.get(ref, ref)
+        _, row_num = _parse_cell_ref(target_ref)
+        row = _find_or_create_row(sheet_data, row_num)
+        cell = _find_or_create_cell(row, target_ref)
+        cell.set("s", _center_style)
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 

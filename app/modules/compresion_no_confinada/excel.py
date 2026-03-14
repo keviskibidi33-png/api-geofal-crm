@@ -428,6 +428,15 @@ def _fill_sheet(
 
     data = payload.model_dump(mode="json")
 
+    merge_cells = root.find(f".//{{{NS_SHEET}}}mergeCells")
+    if merge_cells is not None:
+        existing = {mc.get("ref") for mc in merge_cells.findall(f"{{{NS_SHEET}}}mergeCell")}
+        for row in range(18, 24):
+            ref = f"F{row}:H{row}"
+            if ref not in existing:
+                mc = etree.SubElement(merge_cells, f"{{{NS_SHEET}}}mergeCell")
+                mc.set("ref", ref)
+
     # Encabezado
     _set_cell(sheet_data, "B11", payload.muestra, style_overrides=style_overrides)
     _set_cell(sheet_data, "D11", payload.numero_ot, style_overrides=style_overrides)
@@ -492,12 +501,13 @@ def _fill_sheet(
 
     for idx, col in enumerate(value_cols):
         _set_cell(sheet_data, f"{col}{rows['diametro']}", _format_number_text(diametros[idx], 4), style_overrides=style_overrides)
-        _set_cell(sheet_data, f"{col}{rows['altura']}", _format_number_text(alturas[idx], 4), style_overrides=style_overrides)
-        _set_cell(sheet_data, f"{col}{rows['area']}", _format_number_text(areas[idx], 4), style_overrides=style_overrides)
-        _set_cell(sheet_data, f"{col}{rows['volumen']}", _format_number_text(volumenes[idx], 4), style_overrides=style_overrides)
-        _set_cell(sheet_data, f"{col}{rows['peso']}", _format_number_text(pesos[idx], 4), style_overrides=style_overrides)
-        _set_cell(sheet_data, f"{col}{rows['unit_humedo']}", _format_number_text(unit_humedo[idx], 4), style_overrides=style_overrides)
-        _set_cell(sheet_data, f"{col}{rows['unit_seco']}", _format_number_text(unit_seco[idx], 4), style_overrides=style_overrides)
+
+    _set_cell(sheet_data, f"F{rows['altura']}", _format_number_text(alturas[0], 4), style_overrides=style_overrides)
+    _set_cell(sheet_data, f"F{rows['area']}", _format_number_text(areas[0], 4), style_overrides=style_overrides)
+    _set_cell(sheet_data, f"F{rows['volumen']}", _format_number_text(volumenes[0], 4), style_overrides=style_overrides)
+    _set_cell(sheet_data, f"F{rows['peso']}", _format_number_text(pesos[0], 4), style_overrides=style_overrides)
+    _set_cell(sheet_data, f"F{rows['unit_humedo']}", _format_number_text(unit_humedo[0], 4), style_overrides=style_overrides)
+    _set_cell(sheet_data, f"F{rows['unit_seco']}", _format_number_text(unit_seco[0], 4), style_overrides=style_overrides)
 
     tiempos = list(data.get("deformacion_tiempo") or [])[:24]
     deformacion_pulg = _normalize_list(data.get("deformacion_pulg_001"), 24)
