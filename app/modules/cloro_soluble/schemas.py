@@ -9,7 +9,7 @@ import re
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
 
 
 def _year_short() -> str:
@@ -96,6 +96,38 @@ def _normalize_text(value: object | None) -> str | None:
     return text or None
 
 
+def _coerce_float(value: object | None) -> float | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text or text == "-":
+        return None
+    try:
+        return float(text)
+    except (TypeError, ValueError):
+        return None
+
+
+class CloroSolubleResultado(BaseModel):
+    mililitros_solucion_usada: Optional[float] = None
+    contenido_cloruros_ppm: Optional[float] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_fields(cls, value: object):
+        if not isinstance(value, dict):
+            return value
+
+        for key in [
+            "mililitros_solucion_usada",
+            "contenido_cloruros_ppm",
+        ]:
+            if key in value:
+                value[key] = _coerce_float(value.get(key))
+
+        return value
+
+
 class CloroSolubleRequest(BaseModel):
     """Payload para generar reporte Cloro Soluble."""
 
@@ -112,6 +144,10 @@ class CloroSolubleRequest(BaseModel):
     revisado_fecha: Optional[str] = None
     aprobado_por: Optional[str] = None
     aprobado_fecha: Optional[str] = None
+
+    resultados: list[CloroSolubleResultado] = Field(default_factory=list)
+    mililitros_solucion_usada: Optional[float] = None
+    contenido_cloruros_ppm: Optional[float] = None
 
     @field_validator("muestra", mode="before")
     @classmethod
@@ -141,6 +177,37 @@ class CloroSolubleRequest(BaseModel):
     @classmethod
     def normalize_text_fields(cls, value):
         return _normalize_text(value)
+
+    @field_validator("mililitros_solucion_usada", "contenido_cloruros_ppm", mode="before")
+    @classmethod
+    def normalize_result_numbers(cls, value):
+        return _coerce_float(value)
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_legacy_result_fields(cls, value: object):
+        if not isinstance(value, dict):
+            return value
+
+        legacy_resultado = {
+            "mililitros_solucion_usada": value.get("mililitros_solucion_usada"),
+            "contenido_cloruros_ppm": value.get("contenido_cloruros_ppm"),
+        }
+        has_legacy_data = any(item not in (None, "") for item in legacy_resultado.values())
+        if has_legacy_data and not value.get("resultados"):
+            value["resultados"] = [legacy_resultado]
+        return value
+
+    @model_validator(mode="after")
+    def ensure_resultados(self):
+        self.resultados = self.resultados[:2]
+        while len(self.resultados) < 2:
+            self.resultados.append(CloroSolubleResultado())
+
+        principal = self.resultados[0]
+        self.mililitros_solucion_usada = principal.mililitros_solucion_usada
+        self.contenido_cloruros_ppm = principal.contenido_cloruros_ppm
+        return self
 
 
 class CloroSolubleEnsayoResponse(BaseModel):
