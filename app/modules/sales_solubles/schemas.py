@@ -152,6 +152,9 @@ class SalesSolublesRequest(BaseModel):
     revisado_fecha: Optional[str] = None
     aprobado_por: Optional[str] = None
     aprobado_fecha: Optional[str] = None
+    equipo_horno_codigo: Optional[str] = None
+    equipo_balanza_0001_codigo: Optional[str] = None
+    equipo_balanza_001_codigo: Optional[str] = None
 
     capsulas: list[SalesSolublesCapsula] = Field(default_factory=list)
     capsula_numero: Optional[str] = None
@@ -184,7 +187,17 @@ class SalesSolublesRequest(BaseModel):
             return text
         return _normalize_flexible_date(text)
 
-    @field_validator("realizado_por", "cliente", "observaciones", "revisado_por", "aprobado_por", mode="before")
+    @field_validator(
+        "realizado_por",
+        "cliente",
+        "observaciones",
+        "revisado_por",
+        "aprobado_por",
+        "equipo_horno_codigo",
+        "equipo_balanza_0001_codigo",
+        "equipo_balanza_001_codigo",
+        mode="before",
+    )
     @classmethod
     def normalize_text_fields(cls, value):
         return _normalize_text(value)
