@@ -569,6 +569,9 @@ def generate_compresion_no_confinada_excel(payload: CompresionNoConfinadaRequest
             modified_styles_xml, style_overrides = None, {}
 
         for item in zin.infolist():
+            if item.filename == "xl/calcChain.xml":
+                continue
+
             raw = zin.read(item.filename)
 
             if item.filename == sheet_path:

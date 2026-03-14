@@ -461,6 +461,9 @@ def generate_cloro_soluble_excel(payload: CloroSolubleRequest) -> bytes:
             sheet_path = "xl/worksheets/sheet2.xml"
 
         for item in zin.infolist():
+            if item.filename == "xl/calcChain.xml":
+                continue
+
             raw = zin.read(item.filename)
 
             if item.filename == sheet_path:
