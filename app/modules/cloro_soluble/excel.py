@@ -169,6 +169,9 @@ def _set_cell(
     if value is None:
         return
 
+    if is_number and value == "":
+        return
+
     target_ref = merge_anchor_map.get(ref, ref) if merge_anchor_map else ref
     _, row_num = _parse_cell_ref(target_ref)
     row = _find_or_create_row(sheet_data, row_num)
@@ -403,8 +406,8 @@ def _fill_sheet(sheet_xml: bytes, payload: CloroSolubleRequest) -> bytes:
     if payload.observaciones:
         _set_cell(sheet_data, "A35", payload.observaciones, merge_anchor_map=merge_anchor_map)
 
-    _set_cell(sheet_data, "G40", data.get("equipo_horno_codigo") or "", merge_anchor_map=merge_anchor_map)
-    _set_cell(sheet_data, "G41", data.get("equipo_balanza_001_codigo") or "", merge_anchor_map=merge_anchor_map)
+    _set_cell(sheet_data, "F40", data.get("equipo_horno_codigo") or "", merge_anchor_map=merge_anchor_map)
+    _set_cell(sheet_data, "F41", data.get("equipo_balanza_001_codigo") or "", merge_anchor_map=merge_anchor_map)
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
