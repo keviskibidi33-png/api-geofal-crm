@@ -7,6 +7,7 @@ import logging
 import math
 import os
 import zipfile
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -25,6 +26,7 @@ SHEET_NAME = "CNC (2)"
 
 SIG_REVISADO_BOUNDS = (1, 53, 3, 56)  # col,row,col,row (0-based) from drawing2.xml
 SIG_APROBADO_BOUNDS = (3, 53, 5, 56)
+ARIAL_SOURCE_STYLE_IDS = (25, 36, 42, 43, 52, 69, 90)
 
 
 def _find_template_path(filename: str) -> Path:
@@ -122,7 +124,13 @@ def _find_or_create_cell(row: etree._Element, cell_ref: str) -> etree._Element:
     return cell
 
 
-def _set_cell(sheet_data: etree._Element, ref: str, value: Any, is_number: bool = False) -> None:
+def _set_cell(
+    sheet_data: etree._Element,
+    ref: str,
+    value: Any,
+    is_number: bool = False,
+    style_overrides: dict[int, int] | None = None,
+) -> None:
     if value is None:
         return
 
@@ -131,6 +139,13 @@ def _set_cell(sheet_data: etree._Element, ref: str, value: Any, is_number: bool 
     cell = _find_or_create_cell(row, ref)
 
     style = cell.get("s")
+    if style and style_overrides:
+        try:
+            style_id = int(style)
+        except ValueError:
+            style_id = None
+        if style_id is not None and style_id in style_overrides:
+            style = str(style_overrides[style_id])
     for child in list(cell):
         cell.remove(child)
 
@@ -154,6 +169,82 @@ def _set_cell(sheet_data: etree._Element, ref: str, value: Any, is_number: bool 
 
     if style:
         cell.set("s", style)
+
+
+def _ensure_arial_styles(styles_xml: bytes, source_style_ids: Iterable[int]) -> tuple[bytes, dict[int, int]]:
+    root = etree.fromstring(styles_xml)
+    fonts_el = root.find(f".//{{{NS_SHEET}}}fonts")
+    cell_xfs = root.find(f".//{{{NS_SHEET}}}cellXfs")
+    if fonts_el is None or cell_xfs is None:
+        return styles_xml, {}
+
+    fonts = fonts_el.findall(f"{{{NS_SHEET}}}font")
+    xfs = cell_xfs.findall(f"{{{NS_SHEET}}}xf")
+    font_map: dict[int, int] = {}
+    style_map: dict[int, int] = {}
+
+    def _serialize(node: etree._Element) -> bytes:
+        return etree.tostring(node, encoding="utf-8")
+
+    font_lookup = {_serialize(font): idx for idx, font in enumerate(fonts)}
+    xf_lookup = {_serialize(xf): idx for idx, xf in enumerate(xfs)}
+
+    for source_style_id in source_style_ids:
+        if source_style_id >= len(xfs):
+            continue
+
+        source_xf = xfs[source_style_id]
+        try:
+            source_font_id = int(source_xf.get("fontId", "0"))
+        except ValueError:
+            source_font_id = 0
+        if source_font_id >= len(fonts):
+            continue
+
+        source_font = fonts[source_font_id]
+        font_name_el = source_font.find(f"{{{NS_SHEET}}}name")
+        if font_name_el is not None and font_name_el.get("val") == "Arial":
+            style_map[source_style_id] = source_style_id
+            continue
+
+        if source_font_id in font_map:
+            new_font_id = font_map[source_font_id]
+        else:
+            new_font = deepcopy(source_font)
+            name_el = new_font.find(f"{{{NS_SHEET}}}name")
+            if name_el is None:
+                name_el = etree.SubElement(new_font, f"{{{NS_SHEET}}}name")
+            name_el.set("val", "Arial")
+
+            signature = _serialize(new_font)
+            existing_font_id = font_lookup.get(signature)
+            if existing_font_id is not None:
+                new_font_id = existing_font_id
+            else:
+                new_font_id = len(fonts)
+                fonts_el.append(new_font)
+                fonts.append(new_font)
+                fonts_el.set("count", str(len(fonts)))
+                font_lookup[signature] = new_font_id
+            font_map[source_font_id] = new_font_id
+
+        new_xf = deepcopy(source_xf)
+        new_xf.set("fontId", str(new_font_id))
+        new_xf.set("applyFont", "1")
+        xf_signature = _serialize(new_xf)
+        existing_style_id = xf_lookup.get(xf_signature)
+        if existing_style_id is not None:
+            style_map[source_style_id] = existing_style_id
+            continue
+
+        new_style_id = len(xfs)
+        cell_xfs.append(new_xf)
+        xfs.append(new_xf)
+        cell_xfs.set("count", str(len(xfs)))
+        xf_lookup[xf_signature] = new_style_id
+        style_map[source_style_id] = new_style_id
+
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True), style_map
 
 
 def _to_float(value: Any) -> float | None:
@@ -317,7 +408,11 @@ def _resolve_sheet_and_drawing_paths(zin: zipfile.ZipFile, sheet_name: str) -> t
     return sheet_path, drawing_path
 
 
-def _fill_sheet(sheet_xml: bytes, payload: CompresionNoConfinadaRequest) -> bytes:
+def _fill_sheet(
+    sheet_xml: bytes,
+    payload: CompresionNoConfinadaRequest,
+    style_overrides: dict[int, int] | None = None,
+) -> bytes:
     root = etree.fromstring(sheet_xml)
     sheet_data = root.find(f".//{{{NS_SHEET}}}sheetData")
     if sheet_data is None:
@@ -326,11 +421,11 @@ def _fill_sheet(sheet_xml: bytes, payload: CompresionNoConfinadaRequest) -> byte
     data = payload.model_dump(mode="json")
 
     # Encabezado
-    _set_cell(sheet_data, "B11", payload.muestra)
-    _set_cell(sheet_data, "D11", payload.numero_ot)
-    _set_cell(sheet_data, "E11", payload.fecha_ensayo)
+    _set_cell(sheet_data, "B11", payload.muestra, style_overrides=style_overrides)
+    _set_cell(sheet_data, "D11", payload.numero_ot, style_overrides=style_overrides)
+    _set_cell(sheet_data, "E11", payload.fecha_ensayo, style_overrides=style_overrides)
     if payload.realizado_por:
-        _set_cell(sheet_data, "F11", payload.realizado_por)
+        _set_cell(sheet_data, "F11", payload.realizado_por, style_overrides=style_overrides)
 
     tara_numero = data.get("tara_numero")
     tara_humedo = _to_float(data.get("tara_suelo_humedo_g"))
@@ -350,13 +445,13 @@ def _fill_sheet(sheet_xml: bytes, payload: CompresionNoConfinadaRequest) -> byte
         humedad_pct = _round((peso_agua / peso_suelo_seco) * 100, 3)
 
     # Contenido de humedad (col C)
-    _set_cell(sheet_data, "C17", tara_numero)
-    _set_cell(sheet_data, "C18", tara_humedo, is_number=True)
-    _set_cell(sheet_data, "C19", tara_seco, is_number=True)
-    _set_cell(sheet_data, "C20", peso_agua, is_number=True)
-    _set_cell(sheet_data, "C21", peso_tara, is_number=True)
-    _set_cell(sheet_data, "C22", peso_suelo_seco, is_number=True)
-    _set_cell(sheet_data, "C23", humedad_pct, is_number=True)
+    _set_cell(sheet_data, "C17", tara_numero, style_overrides=style_overrides)
+    _set_cell(sheet_data, "C18", tara_humedo, is_number=True, style_overrides=style_overrides)
+    _set_cell(sheet_data, "C19", tara_seco, is_number=True, style_overrides=style_overrides)
+    _set_cell(sheet_data, "C20", peso_agua, is_number=True, style_overrides=style_overrides)
+    _set_cell(sheet_data, "C21", peso_tara, is_number=True, style_overrides=style_overrides)
+    _set_cell(sheet_data, "C22", peso_suelo_seco, is_number=True, style_overrides=style_overrides)
+    _set_cell(sheet_data, "C23", humedad_pct, is_number=True, style_overrides=style_overrides)
 
     diametros = _normalize_list(data.get("diametro_cm"), 3)
     alturas = _normalize_list(data.get("altura_cm"), 3)
@@ -388,21 +483,21 @@ def _fill_sheet(sheet_xml: bytes, payload: CompresionNoConfinadaRequest) -> byte
     }
 
     for idx, col in enumerate(value_cols):
-        _set_cell(sheet_data, f"{col}{rows['diametro']}", diametros[idx], is_number=True)
-        _set_cell(sheet_data, f"{col}{rows['altura']}", alturas[idx], is_number=True)
-        _set_cell(sheet_data, f"{col}{rows['area']}", areas[idx], is_number=True)
-        _set_cell(sheet_data, f"{col}{rows['volumen']}", volumenes[idx], is_number=True)
-        _set_cell(sheet_data, f"{col}{rows['peso']}", pesos[idx], is_number=True)
-        _set_cell(sheet_data, f"{col}{rows['unit_humedo']}", unit_humedo[idx], is_number=True)
-        _set_cell(sheet_data, f"{col}{rows['unit_seco']}", unit_seco[idx], is_number=True)
+        _set_cell(sheet_data, f"{col}{rows['diametro']}", diametros[idx], is_number=True, style_overrides=style_overrides)
+        _set_cell(sheet_data, f"{col}{rows['altura']}", alturas[idx], is_number=True, style_overrides=style_overrides)
+        _set_cell(sheet_data, f"{col}{rows['area']}", areas[idx], is_number=True, style_overrides=style_overrides)
+        _set_cell(sheet_data, f"{col}{rows['volumen']}", volumenes[idx], is_number=True, style_overrides=style_overrides)
+        _set_cell(sheet_data, f"{col}{rows['peso']}", pesos[idx], is_number=True, style_overrides=style_overrides)
+        _set_cell(sheet_data, f"{col}{rows['unit_humedo']}", unit_humedo[idx], is_number=True, style_overrides=style_overrides)
+        _set_cell(sheet_data, f"{col}{rows['unit_seco']}", unit_seco[idx], is_number=True, style_overrides=style_overrides)
 
     lectura = _normalize_list(data.get("lectura_carga_kg"), 24)
     for idx, value in enumerate(lectura):
         row = 27 + idx
-        _set_cell(sheet_data, f"E{row}", value, is_number=True)
+        _set_cell(sheet_data, f"E{row}", value, is_number=True, style_overrides=style_overrides)
 
     if payload.observaciones:
-        _set_cell(sheet_data, "B52", payload.observaciones)
+        _set_cell(sheet_data, "B52", payload.observaciones, style_overrides=style_overrides)
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
@@ -441,11 +536,20 @@ def generate_compresion_no_confinada_excel(payload: CompresionNoConfinadaRequest
             logger.warning("Sheet %s not found in template, falling back to sheet2.xml", SHEET_NAME)
             sheet_path = "xl/worksheets/sheet2.xml"
 
+        try:
+            styles_xml = zin.read("xl/styles.xml")
+            modified_styles_xml, style_overrides = _ensure_arial_styles(styles_xml, ARIAL_SOURCE_STYLE_IDS)
+        except KeyError:
+            modified_styles_xml, style_overrides = None, {}
+
         for item in zin.infolist():
             raw = zin.read(item.filename)
 
             if item.filename == sheet_path:
-                raw = _fill_sheet(raw, payload)
+                raw = _fill_sheet(raw, payload, style_overrides=style_overrides)
+
+            if modified_styles_xml is not None and item.filename == "xl/styles.xml":
+                raw = modified_styles_xml
 
             if drawing_path and item.filename == drawing_path:
                 raw = _fill_drawing(raw, payload)
