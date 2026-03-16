@@ -125,11 +125,11 @@ def _fill_sheet(sheet_xml: bytes, data: GeFinoRequest) -> bytes:
     if sd is None:
         return sheet_xml
 
-    # Encabezado
-    _set_cell(sd, "B11", data.muestra)
+    # Encabezado (C=MUESTRA, D=N°OT, E=FECHA ENSAYO, F:G=REALIZADO)
+    _set_cell(sd, "C11", data.muestra)
     _set_cell(sd, "D11", data.numero_ot)
-    _set_cell(sd, "F11", data.fecha_ensayo)
-    _set_cell(sd, "H11", data.realizado_por)
+    _set_cell(sd, "E11", data.fecha_ensayo)
+    _set_cell(sd, "F11", data.realizado_por)
 
     # Especimen de prueba
     _set_cell(sd, "D16", data.masa_humeda_g, is_number=True)
