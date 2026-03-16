@@ -163,7 +163,7 @@ class GeFinoRequest(BaseModel):
     valor_s_g: Optional[float] = None
     valor_c_g: Optional[float] = None
     valor_b_g: Optional[float] = None
-    valor_d_g: Optional[float] = None
+    valor_d_g: Optional[str] = None
     valor_e_g: Optional[float] = None
     valor_f_g: Optional[float] = None
     valor_g_g: Optional[float] = None
@@ -234,7 +234,6 @@ class GeFinoRequest(BaseModel):
         "valor_s_g",
         "valor_c_g",
         "valor_b_g",
-        "valor_d_g",
         "valor_e_g",
         "valor_f_g",
         "valor_g_g",
@@ -263,7 +262,6 @@ class GeFinoRequest(BaseModel):
             "valor_s_g",
             "valor_c_g",
             "valor_b_g",
-            "valor_d_g",
             "valor_e_g",
             "valor_f_g",
             "valor_g_g",
@@ -281,8 +279,6 @@ class GeFinoRequest(BaseModel):
             candidates = [
                 (self.valor_g_g, self.valor_e_g),
                 (self.valor_f_g, self.valor_e_g),
-                (self.valor_f_g, self.valor_d_g),
-                (self.valor_g_g, self.valor_d_g),
             ]
             for upper, lower in candidates:
                 if upper is not None and lower is not None:

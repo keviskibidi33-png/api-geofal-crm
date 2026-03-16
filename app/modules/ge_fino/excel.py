@@ -144,7 +144,7 @@ def _fill_sheet(sheet_xml: bytes, data: GeFinoRequest) -> bytes:
     _set_cell(sd, "G23", data.valor_s_g, is_number=True)
     _set_cell(sd, "G24", data.valor_c_g, is_number=True)
     _set_cell(sd, "G25", data.valor_b_g, is_number=True)
-    _set_cell(sd, "G26", data.valor_d_g, is_number=True)
+    _set_cell(sd, "G26", data.valor_d_g)
     _set_cell(sd, "G27", data.valor_e_g, is_number=True)
     _set_cell(sd, "G28", data.valor_f_g, is_number=True)
     _set_cell(sd, "G29", data.valor_g_g, is_number=True)
@@ -194,6 +194,9 @@ def generate_ge_fino_excel(data: GeFinoRequest) -> bytes:
         sheet_xml = _fill_sheet(sheet_original, data)
 
         for item in zin.infolist():
+            if item.filename == "xl/calcChain.xml":
+                continue
+
             if item.filename == "xl/worksheets/sheet1.xml":
                 raw = sheet_xml
             else:
