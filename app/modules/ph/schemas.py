@@ -96,6 +96,18 @@ def _normalize_text(value: object | None) -> str | None:
     return text or None
 
 
+def _coerce_float(value: object) -> float | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text or text == "-":
+        return None
+    try:
+        return float(text)
+    except (TypeError, ValueError):
+        return None
+
+
 class PHRequest(BaseModel):
     """Payload para generar reporte PH."""
 
@@ -106,6 +118,36 @@ class PHRequest(BaseModel):
     fecha_ensayo: str = Field(..., description="Fecha de ensayo DD/MM/AA")
     realizado_por: Optional[str] = None
     cliente: Optional[str] = None
+
+    # Condiciones de secado
+    condicion_secado_aire: Optional[str] = None
+    condicion_secado_horno: Optional[str] = None
+
+    # Resultados principales
+    temperatura_ensayo_c: Optional[float] = None
+    ph_resultado: Optional[float] = None
+
+    # Contenido de humedad (opcional)
+    recipiente_numero: Optional[str] = None
+    peso_recipiente_g: Optional[float] = None
+    peso_recipiente_suelo_humedo_g: Optional[float] = None
+    peso_recipiente_suelo_seco_g: Optional[float] = None
+    peso_agua_g: Optional[float] = None
+    peso_suelo_g: Optional[float] = None
+    contenido_humedad_pct: Optional[float] = None
+
+    # Deformaciones (expansión)
+    hora_1: Optional[list[str]] = None
+    deform_1: Optional[list[float | None]] = None
+    hora_2: Optional[list[str]] = None
+    deform_2: Optional[list[float | None]] = None
+    hora_3: Optional[list[str]] = None
+    deform_3: Optional[list[float | None]] = None
+
+    # Equipos
+    equipo_horno_codigo: Optional[str] = None
+    equipo_balanza_001_codigo: Optional[str] = None
+    equipo_ph_metro_codigo: Optional[str] = None
 
     observaciones: Optional[str] = None
     revisado_por: Optional[str] = None
@@ -137,10 +179,38 @@ class PHRequest(BaseModel):
             return text
         return _normalize_flexible_date(text)
 
-    @field_validator("realizado_por", "cliente", "observaciones", "revisado_por", "aprobado_por", mode="before")
+    @field_validator(
+        "realizado_por",
+        "cliente",
+        "observaciones",
+        "revisado_por",
+        "aprobado_por",
+        "condicion_secado_aire",
+        "condicion_secado_horno",
+        "recipiente_numero",
+        "equipo_horno_codigo",
+        "equipo_balanza_001_codigo",
+        "equipo_ph_metro_codigo",
+        mode="before",
+    )
     @classmethod
     def normalize_text_fields(cls, value):
         return _normalize_text(value)
+
+    @field_validator(
+        "temperatura_ensayo_c",
+        "ph_resultado",
+        "peso_recipiente_g",
+        "peso_recipiente_suelo_humedo_g",
+        "peso_recipiente_suelo_seco_g",
+        "peso_agua_g",
+        "peso_suelo_g",
+        "contenido_humedad_pct",
+        mode="before",
+    )
+    @classmethod
+    def normalize_floats(cls, value):
+        return _coerce_float(value)
 
 
 class PHEnsayoResponse(BaseModel):
