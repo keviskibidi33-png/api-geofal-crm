@@ -200,15 +200,6 @@ def _is_payload_completo(payload: ContHumedadRequest) -> bool:
     if not all(_has_text_value(value) for value in required_text_fields):
         return False
 
-    if payload.cumple_masa_minima_norma in {None, "-"}:
-        return False
-
-    if payload.se_excluyo_material in {None, "-"}:
-        return False
-
-    if payload.se_excluyo_material == "SI" and not _has_text_value(payload.descripcion_material_excluido):
-        return False
-
     required_numbers = [
         payload.numero_ensayo,
         payload.masa_recipiente_muestra_humedo_g,
