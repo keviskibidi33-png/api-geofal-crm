@@ -208,26 +208,29 @@ def _fill_drawing(drawing_xml: bytes, data: PHRequest) -> bytes:
     ns = {"xdr": NS_DRAW, "a": NS_A}
     root = etree.fromstring(drawing_xml)
     
-    # Find shapes in rows 16-18 (condiciones) and inject text
+    # Find shapes in condiciones area and inject text
     for anchor in root.findall(".//xdr:twoCellAnchor", ns):
         from_elem = anchor.find(".//xdr:from", ns)
-        if from_elem is None:
+        to_elem = anchor.find(".//xdr:to", ns)
+        if from_elem is None or to_elem is None:
             continue
         
         from_row_elem = from_elem.find("xdr:row", ns)
         from_col_elem = from_elem.find("xdr:col", ns)
-        if from_row_elem is None or from_col_elem is None:
+        to_row_elem = to_elem.find("xdr:row", ns)
+        if from_row_elem is None or from_col_elem is None or to_row_elem is None:
             continue
         
         from_row = int(from_row_elem.text)
         from_col = int(from_col_elem.text)
+        to_row = int(to_row_elem.text)
         
-        # Shape covering SECADO AL AIRE (col 4-5, row 16-18) - second shape
-        if from_row == 16 and from_col == 4 and data.condicion_secado_aire:
+        # Shape row 15-16, col 4 (E-F) = valor SECADO AL AIRE
+        if from_row == 15 and to_row == 16 and from_col == 4 and data.condicion_secado_aire:
             _inject_shape_text(anchor, data.condicion_secado_aire, ns)
         
-        # Shape covering SECADO EN HORNO (col 2-4, row 16-18) - first shape
-        elif from_row == 16 and from_col == 2 and data.condicion_secado_horno:
+        # Shape row 16-18, col 4 (E-F) = valor SECADO EN HORNO
+        elif from_row == 16 and to_row == 18 and from_col == 4 and data.condicion_secado_horno:
             _inject_shape_text(anchor, data.condicion_secado_horno, ns)
     
     # Apply footer shapes (revisado/aprobado)
