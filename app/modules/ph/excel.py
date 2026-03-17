@@ -159,13 +159,13 @@ def _fill_sheet(sheet_xml: bytes, data: PHRequest) -> bytes:
     _set_cell(sd, "E11", data.fecha_ensayo)
     _set_cell(sd, "G11", data.realizado_por)
 
-    # Condiciones de secado (rows 17-18)
-    _set_cell(sd, "D17", data.condicion_secado_aire)
-    _set_cell(sd, "D18", data.condicion_secado_horno)
+    # Condiciones de secado (rows 17-18) - inyectar en F (celda fusionada F:G)
+    _set_cell(sd, "F17", data.condicion_secado_aire)
+    _set_cell(sd, "F18", data.condicion_secado_horno)
 
-    # Resultados principales (rows 24-25)
-    _set_cell(sd, "D24", data.temperatura_ensayo_c, is_number=True)
-    _set_cell(sd, "D25", data.ph_resultado, is_number=True)
+    # Resultados principales (rows 24-25) - inyectar en F (celda fusionada F:G)
+    _set_cell(sd, "F24", data.temperatura_ensayo_c, is_number=True)
+    _set_cell(sd, "F25", data.ph_resultado, is_number=True)
 
     # Equipos (rows 36-38)
     _set_cell(sd, "E36", data.equipo_horno_codigo)
