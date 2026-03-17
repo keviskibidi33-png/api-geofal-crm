@@ -204,9 +204,9 @@ def generate_ph_excel(payload: PHRequest) -> bytes:
     for item in in_zip.infolist():
         data_bytes = in_zip.read(item.filename)
 
-        if item.filename == "xl/worksheets/sheet1.xml":
+        if item.filename == "xl/worksheets/sheet2.xml":
             data_bytes = _fill_sheet(data_bytes, payload)
-        elif item.filename == "xl/drawings/drawing1.xml":
+        elif item.filename == "xl/drawings/drawing2.xml":
             data_bytes = _fill_drawing(data_bytes, payload)
         elif item.filename == "xl/calcChain.xml":
             continue
