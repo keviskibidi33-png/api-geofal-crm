@@ -159,9 +159,8 @@ def _fill_sheet(sheet_xml: bytes, data: PHRequest) -> bytes:
     _set_cell(sd, "E11", data.fecha_ensayo)
     _set_cell(sd, "G11", data.realizado_por)
 
-    # Condiciones de secado (rows 17-18) - inyectar en F (celda fusionada F:G)
-    _set_cell(sd, "F17", data.condicion_secado_aire)
-    _set_cell(sd, "F18", data.condicion_secado_horno)
+    # Condiciones de secado (rows 17-18) - ahora se inyectan en shapes, no en celdas
+    # Las condiciones se renderizarán en los shapes del drawing
 
     # Resultados principales (rows 24-25) - inyectar en F (celda fusionada F:G)
     _set_cell(sd, "F24", data.temperatura_ensayo_c, is_number=True)
@@ -179,9 +178,62 @@ def _fill_sheet(sheet_xml: bytes, data: PHRequest) -> bytes:
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
+def _inject_shape_text(anchor: etree._Element, text: str, ns: dict[str, str]) -> None:
+    """Inject text into a shape's txBody."""
+    txBody = anchor.find(".//xdr:txBody", ns)
+    if txBody is None:
+        return
+    
+    # Clear existing paragraphs
+    for p in list(txBody.findall(".//a:p", ns)):
+        txBody.remove(p)
+    
+    # Create new paragraph with text
+    p = etree.SubElement(txBody, f"{{{NS_A}}}p")
+    r = etree.SubElement(p, f"{{{NS_A}}}r")
+    rPr = etree.SubElement(r, f"{{{NS_A}}}rPr")
+    rPr.set("lang", "es-PE")
+    rPr.set("sz", "1100")
+    
+    t = etree.SubElement(r, f"{{{NS_A}}}t")
+    t.text = text
+    
+    # Add end para props
+    endParaRPr = etree.SubElement(p, f"{{{NS_A}}}endParaRPr")
+    endParaRPr.set("lang", "es-PE")
+    endParaRPr.set("sz", "1100")
+
+
 def _fill_drawing(drawing_xml: bytes, data: PHRequest) -> bytes:
+    ns = {"xdr": NS_DRAW, "a": NS_A}
+    root = etree.fromstring(drawing_xml)
+    
+    # Find shapes in rows 16-18 (condiciones) and inject text
+    for anchor in root.findall(".//xdr:twoCellAnchor", ns):
+        from_elem = anchor.find(".//xdr:from", ns)
+        if from_elem is None:
+            continue
+        
+        from_row_elem = from_elem.find("xdr:row", ns)
+        from_col_elem = from_elem.find("xdr:col", ns)
+        if from_row_elem is None or from_col_elem is None:
+            continue
+        
+        from_row = int(from_row_elem.text)
+        from_col = int(from_col_elem.text)
+        
+        # Shape covering SECADO AL AIRE (col 4-5, row 16-18) - second shape
+        if from_row == 16 and from_col == 4 and data.condicion_secado_aire:
+            _inject_shape_text(anchor, data.condicion_secado_aire, ns)
+        
+        # Shape covering SECADO EN HORNO (col 2-4, row 16-18) - first shape
+        elif from_row == 16 and from_col == 2 and data.condicion_secado_horno:
+            _inject_shape_text(anchor, data.condicion_secado_horno, ns)
+    
+    # Apply footer shapes (revisado/aprobado)
+    modified_xml = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
     return fill_standard_footer_shapes(
-        drawing_xml,
+        modified_xml,
         revisado_por=data.revisado_por,
         revisado_fecha=data.revisado_fecha,
         aprobado_por=data.aprobado_por,
