@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import re
@@ -59,6 +59,52 @@ class MuestraVerificadaBase(BaseModel):
     planitud_depresiones: Optional[bool] = Field(None, description="[DEPRECATED] Usar planitud_depresiones_aceptacion")
     cumple_tolerancia: Optional[bool] = Field(None, description="[DEPRECATED] Usar aceptacion_diametro")
     conformidad_correccion: Optional[bool] = Field(None, description="[DEPRECATED] Usar conformidad")
+
+    @staticmethod
+    def _normalize_optional_bool(value: Any) -> Any:
+        if value in (None, "", "-"):
+            return None
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"true", "1", "si", "sí", "cumple"}:
+                return True
+            if normalized in {"false", "0", "no", "no cumple"}:
+                return False
+        return value
+
+    @model_validator(mode='before')
+    @classmethod
+    def normalize_placeholder_bools(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        normalized = dict(data)
+        bool_fields = (
+            'perpendicularidad_sup1',
+            'perpendicularidad_sup2',
+            'perpendicularidad_inf1',
+            'perpendicularidad_inf2',
+            'perpendicularidad_medida',
+            'planitud_medida',
+            'perpendicularidad_p1',
+            'perpendicularidad_p2',
+            'perpendicularidad_p3',
+            'perpendicularidad_p4',
+            'perpendicularidad_cumple',
+            'planitud_superior',
+            'planitud_inferior',
+            'planitud_depresiones',
+            'cumple_tolerancia',
+            'conformidad_correccion',
+        )
+
+        for field_name in bool_fields:
+            if field_name in normalized:
+                normalized[field_name] = cls._normalize_optional_bool(normalized.get(field_name))
+
+        return normalized
 
 
 class MuestraVerificadaCreate(MuestraVerificadaBase):
