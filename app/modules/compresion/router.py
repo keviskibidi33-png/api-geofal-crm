@@ -11,6 +11,7 @@ from .schemas import (
     CompressionExportRequest
 )
 from .service import CompresionService
+from .exceptions import DuplicateEnsayoError
 from .excel import generate_compression_excel
 
 router = APIRouter(prefix="/api/compresion", tags=["Compresion"])
@@ -42,6 +43,8 @@ async def crear_ensayo(
         except Exception as e:
             print(f"Error sync trazabilidad: {e}")
         return new_ensayo
+    except DuplicateEnsayoError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -230,6 +233,8 @@ async def actualizar_ensayo(
     """Actualizar ensayo de compresión"""
     try:
         ensayo = compresion_service.actualizar_ensayo(db, ensayo_id, ensayo_data)
+    except DuplicateEnsayoError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     if not ensayo:

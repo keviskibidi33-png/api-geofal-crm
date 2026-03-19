@@ -2,7 +2,7 @@ import os
 import requests
 import io
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, or_
 from typing import Any, List, Optional
 from datetime import datetime
 from .models import EnsayoCompresion, ItemCompresion
@@ -26,6 +26,55 @@ def _get_safe_filename(base_name: str, extension: str = "xlsx") -> str:
 
 class CompresionService:
     """Service for compression test operations"""
+
+    @staticmethod
+    def _build_numero_variants(numero_recepcion: Optional[str]) -> List[str]:
+        numero = (numero_recepcion or "").strip()
+        if not numero:
+            return []
+
+        try:
+            from app.modules.tracing.service import TracingService
+
+            variants = TracingService._build_numero_variantes(numero)
+        except Exception:
+            variants = [numero]
+
+        return list(dict.fromkeys(
+            variant.strip()
+            for variant in variants
+            if isinstance(variant, str) and variant.strip()
+        ))
+
+    def _buscar_ensayo_duplicado(
+        self,
+        db: Session,
+        numero_recepcion: Optional[str],
+        recepcion_id: Optional[int],
+        exclude_id: Optional[int] = None,
+    ) -> Optional[EnsayoCompresion]:
+        filtros = []
+        variantes = self._build_numero_variants(numero_recepcion)
+        if variantes:
+            filtros.append(EnsayoCompresion.numero_recepcion.in_(variantes))
+        if recepcion_id is not None:
+            filtros.append(EnsayoCompresion.recepcion_id == recepcion_id)
+
+        if not filtros:
+            return None
+
+        query = db.query(EnsayoCompresion).filter(or_(*filtros))
+        if exclude_id is not None:
+            query = query.filter(EnsayoCompresion.id != exclude_id)
+
+        return query.order_by(desc(EnsayoCompresion.fecha_creacion), desc(EnsayoCompresion.id)).first()
+
+    @staticmethod
+    def _raise_duplicate_error(ensayo: EnsayoCompresion, numero_recepcion: str) -> None:
+        numero = (ensayo.numero_recepcion or numero_recepcion or "").strip() or "sin número"
+        raise DuplicateEnsayoError(
+            f"Ya existe un formato de ensayo para la recepción {numero} (ID {ensayo.id})"
+        )
     
     def _upload_to_supabase(self, file_content: bytes, filename: str) -> Optional[str]:
         """Upload file to Supabase Storage and return object_key"""
@@ -170,6 +219,22 @@ class CompresionService:
     def crear_ensayo(self, db: Session, ensayo_data: EnsayoCompresionCreate) -> EnsayoCompresion:
         """Create new compression test"""
         try:
+            numero_ot = (ensayo_data.numero_ot or "").strip()
+            numero_recepcion = (ensayo_data.numero_recepcion or "").strip()
+
+            if not numero_ot:
+                raise ValueError("numero_ot es obligatorio")
+            if not numero_recepcion:
+                raise ValueError("numero_recepcion es obligatorio")
+
+            ensayo_existente = self._buscar_ensayo_duplicado(
+                db,
+                numero_recepcion=numero_recepcion,
+                recepcion_id=ensayo_data.recepcion_id,
+            )
+            if ensayo_existente:
+                self._raise_duplicate_error(ensayo_existente, numero_recepcion)
+
             sanitized_items = self._sanitize_items(ensayo_data.items)
             if not sanitized_items:
                 raise ValueError("Debe registrar al menos un item válido de ensayo")
@@ -179,8 +244,8 @@ class CompresionService:
 
             # Create main ensayo
             ensayo = EnsayoCompresion(
-                numero_ot=ensayo_data.numero_ot,
-                numero_recepcion=ensayo_data.numero_recepcion,
+                numero_ot=numero_ot,
+                numero_recepcion=numero_recepcion,
                 recepcion_id=ensayo_data.recepcion_id,
                 codigo_equipo=ensayo_data.codigo_equipo,
                 otros=ensayo_data.otros,
@@ -217,8 +282,8 @@ class CompresionService:
             # Generate Excel and upload
             try:
                 export_request = CompressionExportRequest(
-                    recepcion_numero=ensayo_data.numero_recepcion,
-                    ot_numero=ensayo_data.numero_ot,
+                    recepcion_numero=numero_recepcion,
+                    ot_numero=numero_ot,
                     items=[CompressionItem(**item_data) for item_data in sanitized_items],
                     codigo_equipo=ensayo_data.codigo_equipo,
                     otros=ensayo_data.otros,
@@ -228,7 +293,7 @@ class CompresionService:
                 excel_buffer = generate_compression_excel(export_request)
                 excel_content = excel_buffer.getvalue()
                 
-                filename = _get_safe_filename(f"Compresion_{ensayo_data.numero_ot}")
+                filename = _get_safe_filename(f"Compresion_{numero_ot}")
                 object_key = self._upload_to_supabase(excel_content, filename)
                 
                 if object_key:
@@ -262,7 +327,39 @@ class CompresionService:
         ensayo = self.obtener_ensayo(db, ensayo_id)
         if not ensayo:
             return None
-        
+
+        numero_recepcion_actual = (ensayo.numero_recepcion or "").strip()
+        recepcion_id_actual = ensayo.recepcion_id
+        numero_recepcion_nuevo = (
+            (ensayo_data.numero_recepcion or "").strip()
+            if ensayo_data.numero_recepcion is not None
+            else numero_recepcion_actual
+        )
+        recepcion_id_nuevo = (
+            ensayo_data.recepcion_id
+            if ensayo_data.recepcion_id is not None
+            else recepcion_id_actual
+        )
+
+        numero_cambio = (
+            ensayo_data.numero_recepcion is not None
+            and numero_recepcion_nuevo != numero_recepcion_actual
+        )
+        recepcion_cambio = (
+            ensayo_data.recepcion_id is not None
+            and recepcion_id_nuevo != recepcion_id_actual
+        )
+
+        if numero_cambio or recepcion_cambio:
+            ensayo_existente = self._buscar_ensayo_duplicado(
+                db,
+                numero_recepcion=numero_recepcion_nuevo,
+                recepcion_id=recepcion_id_nuevo,
+                exclude_id=ensayo_id,
+            )
+            if ensayo_existente:
+                self._raise_duplicate_error(ensayo_existente, numero_recepcion_nuevo)
+
         update_data = ensayo_data.dict(exclude_unset=True, exclude={'items'})
         for key, value in update_data.items():
             if value is not None:
