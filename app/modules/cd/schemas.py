@@ -108,6 +108,22 @@ def _coerce_float(value: object | None) -> float | None:
         return None
 
 
+def _coerce_float_list(value: object | None) -> list[float | None]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        return []
+    return [_coerce_float(item) for item in value]
+
+
+def _normalize_text_list(value: object | None) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() if item is not None else "" for item in value]
+
+
 class CDHumedadPunto(BaseModel):
     recipiente_numero: Optional[str] = None
     peso_recipiente_g: Optional[float] = None
@@ -158,6 +174,18 @@ class CDRequest(BaseModel):
     aprobado_fecha: Optional[str] = None
 
     humedad_puntos: list[CDHumedadPunto] = Field(default_factory=list)
+    peso_kg: list[float | None] = Field(default_factory=list)
+    esf_normal: list[float | None] = Field(default_factory=list)
+    carga_kg_1: list[float | None] = Field(default_factory=list)
+    carga_kg_2: list[float | None] = Field(default_factory=list)
+    carga_kg_3: list[float | None] = Field(default_factory=list)
+    def_horizontal: list[float | None] = Field(default_factory=list)
+    hora_1: list[str] = Field(default_factory=list)
+    deform_1: list[float | None] = Field(default_factory=list)
+    hora_2: list[str] = Field(default_factory=list)
+    deform_2: list[float | None] = Field(default_factory=list)
+    hora_3: list[str] = Field(default_factory=list)
+    deform_3: list[float | None] = Field(default_factory=list)
     recipiente_numero: Optional[str] = None
     peso_recipiente_g: Optional[float] = None
     peso_recipiente_suelo_humedo_g: Optional[float] = None
@@ -207,6 +235,27 @@ class CDRequest(BaseModel):
     @classmethod
     def normalize_humedad_numbers(cls, value):
         return _coerce_float(value)
+
+    @field_validator(
+        "peso_kg",
+        "esf_normal",
+        "carga_kg_1",
+        "carga_kg_2",
+        "carga_kg_3",
+        "def_horizontal",
+        "deform_1",
+        "deform_2",
+        "deform_3",
+        mode="before",
+    )
+    @classmethod
+    def normalize_number_lists(cls, value):
+        return _coerce_float_list(value)
+
+    @field_validator("hora_1", "hora_2", "hora_3", mode="before")
+    @classmethod
+    def normalize_text_lists(cls, value):
+        return _normalize_text_list(value)
 
     @field_validator("recipiente_numero", mode="before")
     @classmethod
