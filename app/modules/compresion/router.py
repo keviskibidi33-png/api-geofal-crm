@@ -79,21 +79,32 @@ async def buscar_recepcion(
     """
     from app.modules.recepcion.models import RecepcionMuestra
     from app.modules.verificacion.models import VerificacionMuestras
+    from app.modules.tracing.service import TracingService
     from .models import EnsayoCompresion
-    
+
+    recepcion, _ = TracingService._buscar_recepcion_flexible(db, numero)
+    variantes = TracingService._build_numero_variantes(numero, recepcion.numero_recepcion if recepcion else numero)
+
     # 1. Buscar en Recepción (Base principal)
-    recepcion = db.query(RecepcionMuestra).filter(
-        RecepcionMuestra.numero_recepcion == numero
-    ).first()
-    
-    # 2. Verificar existencia en otros módulos
-    verificacion = db.query(VerificacionMuestras).filter(
-        VerificacionMuestras.numero_verificacion == numero
-    ).first()
-    
-    compresion = db.query(EnsayoCompresion).filter(
-        EnsayoCompresion.numero_recepcion == numero
-    ).first()
+    if not recepcion and numero:
+        recepcion = db.query(RecepcionMuestra).filter(
+            RecepcionMuestra.numero_recepcion == numero
+        ).first()
+
+    # 2. Verificar existencia en otros módulos con variantes para bloquear duplicados de formato
+    verificacion = None
+    compresion = TracingService._buscar_compresion_preferida(
+        db,
+        variantes,
+        recepcion.id if recepcion else None,
+    )
+    for variante in variantes:
+        if not verificacion:
+            verificacion = db.query(VerificacionMuestras).filter(
+                VerificacionMuestras.numero_verificacion == variante
+            ).first()
+        if verificacion:
+            break
     
     # Formatos encontrados
     formatos = {
@@ -141,10 +152,15 @@ async def buscar_verificacion(
     """
     from app.modules.verificacion.models import VerificacionMuestras, MuestraVerificada
     
-    # Buscar verificación
-    verificacion = db.query(VerificacionMuestras).filter(
-        VerificacionMuestras.numero_verificacion == numero
-    ).first()
+    from app.modules.tracing.service import TracingService
+
+    verificacion = None
+    for variante in TracingService._build_numero_variantes(numero, numero):
+        verificacion = db.query(VerificacionMuestras).filter(
+            VerificacionMuestras.numero_verificacion == variante
+        ).first()
+        if verificacion:
+            break
     
     if not verificacion:
         return {

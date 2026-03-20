@@ -165,9 +165,73 @@ class CompresionService:
         except (TypeError, ValueError):
             return None
 
+    @staticmethod
+    def _value_has_content(value: Any) -> bool:
+        if value is None:
+            return False
+        if isinstance(value, str):
+            return value.strip() != ""
+        if isinstance(value, (int, float)):
+            return value != 0
+        return True
+
+    @classmethod
+    def _item_completitud_score(cls, item_data: dict) -> int:
+        score = 0
+
+        codigo = item_data.get("codigo_lem")
+        if codigo and not cls._is_placeholder_codigo_lem(str(codigo)):
+            score += 2
+
+        weighted_fields = {
+            "fecha_ensayo_programado": 1,
+            "fecha_ensayo": 2,
+            "hora_ensayo": 1,
+            "carga_maxima": 4,
+            "tipo_fractura": 4,
+            "defectos": 1,
+            "realizado": 1,
+            "revisado": 1,
+            "fecha_revisado": 1,
+            "aprobado": 1,
+            "fecha_aprobado": 1,
+        }
+
+        for field, weight in weighted_fields.items():
+            if cls._value_has_content(item_data.get(field)):
+                score += weight
+
+        return score
+
+    @classmethod
+    def _merge_duplicate_item_data(cls, current: dict, incoming: dict) -> dict:
+        current_score = cls._item_completitud_score(current)
+        incoming_score = cls._item_completitud_score(incoming)
+
+        if incoming_score >= current_score:
+            primary = dict(incoming)
+            secondary = current
+        else:
+            primary = dict(current)
+            secondary = incoming
+
+        for key, value in secondary.items():
+            current_value = primary.get(key)
+
+            if key == "codigo_lem":
+                if cls._is_placeholder_codigo_lem(current_value) and not cls._is_placeholder_codigo_lem(value):
+                    primary[key] = value
+                continue
+
+            if not cls._value_has_content(current_value) and cls._value_has_content(value):
+                primary[key] = value
+
+        return primary
+
     @classmethod
     def _sanitize_items(cls, items_data: Optional[List[Any]]) -> List[dict]:
-        sanitized: List[dict] = []
+        deduped_by_item: dict[int, dict] = {}
+        next_auto_item = 1
 
         for item in (items_data or []):
             data = cls._item_to_dict(item)
@@ -176,12 +240,20 @@ class CompresionService:
 
             item_num = cls._coerce_item_num(data.get("item")) or cls._coerce_item_num(data.get("item_numero"))
             if item_num is None:
-                item_num = len(sanitized) + 1
+                while next_auto_item in deduped_by_item:
+                    next_auto_item += 1
+                item_num = next_auto_item
+                next_auto_item += 1
             data["item"] = item_num
             data["codigo_lem"] = (data.get("codigo_lem") or "").strip().upper()
-            sanitized.append(data)
+            existing = deduped_by_item.get(item_num)
+            deduped_by_item[item_num] = (
+                cls._merge_duplicate_item_data(existing, data)
+                if existing is not None
+                else data
+            )
 
-        return sanitized
+        return [deduped_by_item[item_num] for item_num in sorted(deduped_by_item)]
     
     @staticmethod
     def _calcular_estado(items_data) -> str:

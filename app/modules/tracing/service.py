@@ -1,11 +1,12 @@
 from types import SimpleNamespace
 from sqlalchemy import text, or_
-from sqlalchemy.orm import Session, load_only
+from sqlalchemy.orm import Session, load_only, selectinload
 from .models import Trazabilidad
 from app.modules.recepcion.models import RecepcionMuestra
 from app.modules.verificacion.models import VerificacionMuestras
 from app.modules.compresion.models import EnsayoCompresion
 from typing import Optional
+from datetime import datetime
 import os
 import re
 import logging
@@ -160,6 +161,117 @@ class TracingService:
         return first_match, first_match.numero_recepcion
 
     @staticmethod
+    def _has_meaningful_value(value) -> bool:
+        if value is None:
+            return False
+        if isinstance(value, str):
+            return value.strip() != ""
+        if isinstance(value, (int, float)):
+            return value != 0
+        return True
+
+    @staticmethod
+    def _item_compresion_score(item) -> int:
+        score = 0
+
+        if TracingService._has_meaningful_value(getattr(item, "codigo_lem", None)):
+            score += 1
+        if TracingService._has_meaningful_value(getattr(item, "carga_maxima", None)):
+            score += 4
+        if TracingService._has_meaningful_value(getattr(item, "tipo_fractura", None)):
+            score += 4
+        if getattr(item, "fecha_ensayo", None):
+            score += 2
+        if TracingService._has_meaningful_value(getattr(item, "hora_ensayo", None)):
+            score += 1
+
+        return score
+
+    @staticmethod
+    def _datetime_sort_value(value: Optional[datetime]) -> float:
+        if not value:
+            return 0.0
+        try:
+            return value.timestamp()
+        except Exception:
+            return 0.0
+
+    @staticmethod
+    def _ensayo_compresion_priority(ensayo: EnsayoCompresion, recepcion_id: Optional[int] = None) -> tuple:
+        estado_priority = {
+            "COMPLETADO": 3,
+            "EN_PROCESO": 2,
+            "PENDIENTE": 1,
+        }.get((ensayo.estado or "").upper(), 0)
+
+        items = list(getattr(ensayo, "items", []) or [])
+        total_score = sum(TracingService._item_compresion_score(item) for item in items)
+        complete_items = sum(
+            1
+            for item in items
+            if TracingService._has_meaningful_value(getattr(item, "carga_maxima", None))
+            and TracingService._has_meaningful_value(getattr(item, "tipo_fractura", None))
+        )
+        items_with_data = sum(1 for item in items if TracingService._item_compresion_score(item) > 0)
+        linked_to_recepcion = 1 if recepcion_id is not None and ensayo.recepcion_id == recepcion_id else 0
+        has_storage = 1 if getattr(ensayo, "object_key", None) else 0
+        updated_sort = TracingService._datetime_sort_value(
+            getattr(ensayo, "fecha_actualizacion", None) or getattr(ensayo, "fecha_creacion", None)
+        )
+
+        return (
+            estado_priority,
+            complete_items,
+            items_with_data,
+            total_score,
+            len(items),
+            linked_to_recepcion,
+            has_storage,
+            updated_sort,
+            ensayo.id or 0,
+        )
+
+    @staticmethod
+    def _buscar_compresion_preferida(
+        db: Session,
+        numeros_busqueda: list[str],
+        recepcion_id: Optional[int] = None,
+    ) -> Optional[EnsayoCompresion]:
+        variantes = list(
+            dict.fromkeys(
+                numero.strip()
+                for numero in (numeros_busqueda or [])
+                if isinstance(numero, str) and numero.strip()
+            )
+        )
+
+        filtros = []
+        if variantes:
+            filtros.append(EnsayoCompresion.numero_recepcion.in_(variantes))
+        if recepcion_id is not None:
+            filtros.append(EnsayoCompresion.recepcion_id == recepcion_id)
+
+        if not filtros:
+            return None
+
+        candidatos = (
+            db.query(EnsayoCompresion)
+            .options(selectinload(EnsayoCompresion.items))
+            .filter(or_(*filtros))
+            .all()
+        )
+        if not candidatos:
+            return None
+
+        return max(
+            candidatos,
+            key=lambda ensayo: TracingService._ensayo_compresion_priority(
+                ensayo,
+                recepcion_id=recepcion_id,
+            ),
+        )
+
+    @staticmethod
     def actualizar_trazabilidad(db: Session, numero_recepcion: str):
         """
         Sincroniza el estado de una recepción en la tabla maestra de trazabilidad.
@@ -175,7 +287,11 @@ class TracingService:
 
         # 2. Buscar en otros módulos usando todas las variantes del número
         verificacion = None
-        compresion = None
+        compresion = TracingService._buscar_compresion_preferida(
+            db,
+            numeros_busqueda,
+            recepcion.id if recepcion else None,
+        )
         
         # Ensure we have a valid list to search
         if not numeros_busqueda:
@@ -196,10 +312,6 @@ class TracingService:
                         if verificacion:
                             break
             
-            if not compresion:
-                compresion = db.query(EnsayoCompresion).filter(EnsayoCompresion.numero_recepcion == num).first()
-            
-            # If we found both, stop searching
             if verificacion and compresion:
                 break
         

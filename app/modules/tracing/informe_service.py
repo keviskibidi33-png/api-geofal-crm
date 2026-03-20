@@ -38,20 +38,21 @@ def _index_by_item_numero(records, item_attr: str = "item_numero") -> dict:
     return {getattr(r, item_attr): r for r in records if getattr(r, item_attr, None) is not None}
 
 
-def _buscar_modulos(db: Session, numero_recepcion: str, canonical: str):
+def _buscar_modulos(
+    db: Session,
+    numero_recepcion: str,
+    canonical: str,
+    recepcion_id: Optional[int] = None,
+):
     """Busca verificación y compresión con variantes de número."""
     search_nums = TracingService._build_numero_variantes(numero_recepcion, canonical)
 
     verificacion = None
-    compresion = None
+    compresion = TracingService._buscar_compresion_preferida(db, search_nums, recepcion_id)
     for num in search_nums:
         if not verificacion:
             verificacion = db.query(VerificacionMuestras).filter(
                 VerificacionMuestras.numero_verificacion == num
-            ).first()
-        if not compresion:
-            compresion = db.query(EnsayoCompresion).filter(
-                EnsayoCompresion.numero_recepcion == num
             ).first()
         if verificacion and compresion:
             break
@@ -141,7 +142,12 @@ class InformeService:
         recepcion, canonical = TracingService._buscar_recepcion_flexible(db, numero_recepcion)
 
         # ── 2. Buscar verificación y compresión ──
-        verificacion, compresion = _buscar_modulos(db, numero_recepcion, canonical)
+        verificacion, compresion = _buscar_modulos(
+            db,
+            numero_recepcion,
+            canonical,
+            recepcion.id if recepcion else None,
+        )
         
         # ── 2b. Validar existencia mínima ──
         # Si no existe NADA en ningún módulo, no podemos generar informe

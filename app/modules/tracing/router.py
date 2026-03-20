@@ -384,6 +384,22 @@ def listar_seguimiento(db: Session = Depends(get_db_session), skip: int = 0, lim
         .all()
     )
 
+    synced_trazas = []
+    for traza in trazas:
+        try:
+            synced_traza = TracingService.actualizar_trazabilidad(db, traza.numero_recepcion)
+            synced_trazas.append(synced_traza or traza)
+        except Exception as exc:
+            logger.error(
+                "Error sincronizando trazabilidad en listar para %s: %s",
+                traza.numero_recepcion,
+                exc,
+                exc_info=True,
+            )
+            synced_trazas.append(traza)
+
+    trazas = synced_trazas
+
     def _normalizar_recep(numero: str) -> str:
         if not numero:
             return ""
