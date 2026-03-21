@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.modules.equi_arena.excel import generate_equi_arena_excel
+from app.modules.equi_arena.excel import TEMPLATE_PATH, generate_equi_arena_excel
 from app.modules.equi_arena.schemas import EquiArenaRequest
 
 
@@ -34,6 +34,22 @@ def _build_payload(**overrides) -> EquiArenaRequest:
     }
     payload.update(overrides)
     return EquiArenaRequest(**payload)
+
+
+def _font_color_signature(cell) -> tuple[str, object, object | None] | None:
+    color = cell.font.color
+    if color is None or color.type is None:
+        return None
+
+    if color.type == "rgb":
+        return ("rgb", color.rgb, None)
+    if color.type == "theme":
+        return ("theme", color.theme, color.tint)
+    if color.type == "indexed":
+        return ("indexed", color.indexed, None)
+    if color.type == "auto":
+        return ("auto", color.auto, None)
+    return (str(color.type), None, None)
 
 
 def test_equi_arena_request_ignora_promedio_del_cliente():
@@ -78,3 +94,23 @@ def test_generate_equi_arena_excel_no_deja_calc_chain_colgante():
         content_types_root = etree.fromstring(workbook_zip.read("[Content_Types].xml"))
         overrides = [override.get("PartName", "") for override in content_types_root]
         assert "/xl/calcChain.xml" not in overrides
+
+
+def test_generate_equi_arena_excel_preserva_colores_de_fuente_del_template():
+    payload = _build_payload()
+
+    template_sheet = load_workbook(TEMPLATE_PATH, data_only=False).active
+    generated_sheet = load_workbook(io.BytesIO(generate_equi_arena_excel(payload)), data_only=False).active
+
+    colored_cells = [
+        (cell.coordinate, signature)
+        for row in template_sheet.iter_rows()
+        for cell in row
+        for signature in [_font_color_signature(cell)]
+        if signature is not None
+    ]
+
+    assert colored_cells, "El template de EquiArena no tiene celdas con color de fuente para validar."
+
+    for coordinate, expected_signature in colored_cells:
+        assert _font_color_signature(generated_sheet[coordinate]) == expected_signature
