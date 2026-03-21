@@ -10,7 +10,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-import requests
+from app.utils.http_client import http_get
 from lxml import etree
 
 from .schemas import CDRequest
@@ -77,7 +77,12 @@ def _fetch_template_from_storage(filename: str) -> bytes | None:
     template_key = f"{filename}"
     url = f"{supabase_url.rstrip('/')}/storage/v1/object/{bucket}/{template_key}"
     try:
-        resp = requests.get(url, headers={"Authorization": f"Bearer {supabase_key}"}, timeout=20)
+        resp = http_get(
+            url,
+            headers={"Authorization": f"Bearer {supabase_key}"},
+            timeout=20,
+            request_name="supabase.cd.template_fetch",
+        )
         if resp.status_code == 200:
             return resp.content
         logger.warning("Template download failed: %s (%s)", filename, resp.status_code)

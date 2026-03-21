@@ -201,7 +201,7 @@ async def buscar_verificacion(
 
 
 @router.get("/{ensayo_id}/excel")
-async def generar_excel_ensayo(
+def generar_excel_ensayo(
     ensayo_id: int,
     db: Session = Depends(get_db_session)
 ):
@@ -280,7 +280,7 @@ async def eliminar_ensayo(
 # ===== BACKWARDS COMPATIBILITY ENDPOINT =====
 
 @router.post("/export")
-async def export_compression(payload: CompressionExportRequest):
+def export_compression(payload: CompressionExportRequest):
     """Export compression directly without DB (backwards compatible)"""
     try:
         excel_file = generate_compression_excel(payload)

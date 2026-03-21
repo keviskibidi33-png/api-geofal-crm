@@ -7,7 +7,7 @@ import logging
 import os
 from pathlib import Path
 
-import requests
+from app.utils.http_client import http_get
 
 from .schemas import SulfatosSolublesRequest
 
@@ -39,7 +39,12 @@ def _fetch_template_from_storage(filename: str) -> bytes | None:
     template_key = f"{filename}"
     url = f"{supabase_url.rstrip('/')}/storage/v1/object/{bucket}/{template_key}"
     try:
-        resp = requests.get(url, headers={"Authorization": f"Bearer {supabase_key}"}, timeout=20)
+        resp = http_get(
+            url,
+            headers={"Authorization": f"Bearer {supabase_key}"},
+            timeout=20,
+            request_name="supabase.sulfatos_solubles.template_fetch",
+        )
         if resp.status_code == 200:
             return resp.content
         logger.warning("Template download failed: %s (%s)", filename, resp.status_code)

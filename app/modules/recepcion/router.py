@@ -244,7 +244,7 @@ async def importar_excel_recepcion(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail=f"Error procesando Excel: {str(e)}")
 
 @router.get("/{recepcion_id}/excel")
-async def generar_excel_recepcion(
+def generar_excel_recepcion(
     recepcion_id: int,
     db: Session = Depends(get_db_session)
 ):

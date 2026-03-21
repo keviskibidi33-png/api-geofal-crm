@@ -86,6 +86,7 @@ from app.modules.sulfatos_solubles.models import SulfatosSolublesEnsayo
 from app.modules.compresion_no_confinada.models import CompresionNoConfinadaEnsayo
 from app.database import engine
 from app.auth import JWTAuthMiddleware
+from app.utils.http_client import http_get, http_patch
 
 logger = logging.getLogger(__name__)
 
@@ -158,6 +159,17 @@ class RoleUpdate(BaseModel):
 
 class HeartbeatRequest(BaseModel):
     user_id: str
+
+
+class DashboardSearchItem(BaseModel):
+    id: str
+    type: str
+    title: str
+    subtitle: str
+
+
+class DashboardSearchResponse(BaseModel):
+    data: list[DashboardSearchItem]
 
 app = FastAPI(title="quotes-service")
 
@@ -657,6 +669,190 @@ async def get_proyectos(cliente_id: str = None, search: str = ""):
             conn.close()
 
 
+@app.get("/dashboard/search", response_model=DashboardSearchResponse)
+async def dashboard_search(q: str = "", limit: int = 10):
+    """Búsqueda rápida unificada para header del CRM."""
+    if not _has_database_url():
+        return DashboardSearchResponse(data=[])
+
+    safe_limit = max(1, min(limit, 20))
+    query_text = (q or "").strip()
+
+    try:
+        conn = _get_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            if not query_text:
+                cur.execute(
+                    """
+                    WITH recent_clients AS (
+                        SELECT
+                            c.id::text AS id,
+                            'cliente'::text AS type,
+                            COALESCE(NULLIF(c.empresa, ''), NULLIF(c.nombre, ''), 'Sin nombre') AS title,
+                            CASE
+                                WHEN COALESCE(c.ruc, '') <> '' THEN 'RUC: ' || c.ruc
+                                ELSE 'Cliente reciente'
+                            END AS subtitle,
+                            1 AS section_order,
+                            c.created_at AS sort_at
+                        FROM clientes c
+                        WHERE c.deleted_at IS NULL
+                        ORDER BY c.created_at DESC NULLS LAST
+                        LIMIT 3
+                    ),
+                    recent_projects AS (
+                        SELECT
+                            p.id::text AS id,
+                            'proyecto'::text AS type,
+                            COALESCE(NULLIF(p.nombre, ''), 'Sin nombre') AS title,
+                            'Estado: ' || COALESCE(NULLIF(p.estado, ''), 'N/A') AS subtitle,
+                            2 AS section_order,
+                            p.created_at AS sort_at
+                        FROM proyectos p
+                        WHERE p.deleted_at IS NULL
+                        ORDER BY p.created_at DESC NULLS LAST
+                        LIMIT 2
+                    ),
+                    recent_quotes AS (
+                        SELECT
+                            c.id::text AS id,
+                            'cotizacion'::text AS type,
+                            COALESCE(NULLIF(c.numero, ''), 'Sin número') AS title,
+                            CASE
+                                WHEN c.total IS NOT NULL THEN 'S/ ' || trim(to_char(c.total, 'FM9999999990.00'))
+                                ELSE 'Cotización reciente'
+                            END AS subtitle,
+                            3 AS section_order,
+                            c.created_at AS sort_at
+                        FROM cotizaciones c
+                        ORDER BY c.created_at DESC NULLS LAST
+                        LIMIT 2
+                    )
+                    SELECT id, type, title, subtitle
+                    FROM (
+                        SELECT * FROM recent_clients
+                        UNION ALL
+                        SELECT * FROM recent_projects
+                        UNION ALL
+                        SELECT * FROM recent_quotes
+                    ) search_results
+                    ORDER BY section_order, sort_at DESC NULLS LAST, title
+                    LIMIT %s
+                    """,
+                    (safe_limit,),
+                )
+            else:
+                like_query = f"%{query_text}%"
+                is_numeric_query = query_text.isdigit()
+                looks_like_quote = "COT" in query_text.upper() or is_numeric_query
+
+                cur.execute(
+                    """
+                    WITH client_matches AS (
+                        SELECT DISTINCT ON (c.id)
+                            c.id::text AS id,
+                            'cliente'::text AS type,
+                            COALESCE(NULLIF(c.empresa, ''), NULLIF(c.nombre, ''), 'Sin nombre') AS title,
+                            CASE
+                                WHEN COALESCE(c.ruc, '') <> '' THEN 'RUC: ' || c.ruc
+                                WHEN COALESCE(con.email, c.email, '') <> '' THEN COALESCE(con.email, c.email)
+                                ELSE 'Sin contacto'
+                            END AS subtitle,
+                            1 AS section_order,
+                            c.created_at AS sort_at
+                        FROM clientes c
+                        LEFT JOIN contactos con ON con.cliente_id = c.id
+                        WHERE c.deleted_at IS NULL
+                          AND (
+                              c.nombre ILIKE %s
+                              OR c.empresa ILIKE %s
+                              OR c.email ILIKE %s
+                              OR c.ruc ILIKE %s
+                              OR con.nombre ILIKE %s
+                          )
+                        ORDER BY c.id, con.es_principal DESC NULLS LAST, c.created_at DESC NULLS LAST
+                        LIMIT 5
+                    ),
+                    project_matches AS (
+                        SELECT
+                            p.id::text AS id,
+                            'proyecto'::text AS type,
+                            COALESCE(NULLIF(p.nombre, ''), 'Sin nombre') AS title,
+                            'Estado: ' || COALESCE(NULLIF(p.estado, ''), 'N/A') AS subtitle,
+                            2 AS section_order,
+                            p.created_at AS sort_at
+                        FROM proyectos p
+                        WHERE p.deleted_at IS NULL
+                          AND p.nombre ILIKE %s
+                        ORDER BY p.created_at DESC NULLS LAST, p.nombre
+                        LIMIT 5
+                    ),
+                    quote_matches AS (
+                        SELECT
+                            c.id::text AS id,
+                            'cotizacion'::text AS type,
+                            COALESCE(NULLIF(c.numero, ''), 'Sin número') AS title,
+                            CASE
+                                WHEN c.total IS NOT NULL THEN 'S/ ' || trim(to_char(c.total, 'FM9999999990.00'))
+                                WHEN COALESCE(c.cliente_nombre, '') <> '' THEN c.cliente_nombre
+                                ELSE 'Sin monto'
+                            END AS subtitle,
+                            3 AS section_order,
+                            c.created_at AS sort_at
+                        FROM cotizaciones c
+                        WHERE %s
+                          AND (
+                              c.numero ILIKE %s
+                              OR c.cliente_nombre ILIKE %s
+                          )
+                        ORDER BY c.created_at DESC NULLS LAST, c.numero
+                        LIMIT 5
+                    )
+                    SELECT id, type, title, subtitle
+                    FROM (
+                        SELECT * FROM client_matches
+                        UNION ALL
+                        SELECT * FROM project_matches
+                        UNION ALL
+                        SELECT * FROM quote_matches
+                    ) search_results
+                    ORDER BY section_order, sort_at DESC NULLS LAST, title
+                    LIMIT %s
+                    """,
+                    (
+                        like_query,
+                        like_query,
+                        like_query,
+                        like_query,
+                        like_query,
+                        like_query,
+                        looks_like_quote,
+                        like_query,
+                        like_query,
+                        safe_limit,
+                    ),
+                )
+
+            rows = cur.fetchall()
+            items = [
+                DashboardSearchItem(
+                    id=str(row["id"]),
+                    type=str(row["type"]),
+                    title=str(row["title"] or "Sin nombre"),
+                    subtitle=str(row["subtitle"] or ""),
+                )
+                for row in rows
+            ]
+
+        return DashboardSearchResponse(data=items)
+    except Exception as exc:
+        logger.exception("Error en dashboard_search q=%s limit=%s", query_text, safe_limit)
+        raise HTTPException(status_code=500, detail=f"Error buscando datos del dashboard: {exc}")
+    finally:
+        if "conn" in locals() and conn:
+            conn.close()
+
+
 @app.post("/proyectos")
 async def create_proyecto(data: dict):
     """Create a new project (requires cliente_id)"""
@@ -876,7 +1072,12 @@ async def get_roles():
     """Get all role definitions using Supabase REST API"""
     try:
         url = f"{_get_supabase_url()}/role_definitions?order=label.asc"
-        response = requests.get(url, headers=_get_supabase_headers())
+        response = http_get(
+            url,
+            headers=_get_supabase_headers(),
+            timeout=5,
+            request_name="supabase.role_definitions.list",
+        )
         
         if response.status_code == 404 or (response.status_code == 200 and response.json() == []):
             # Table doesn't exist or is empty - return default roles
@@ -1064,12 +1265,12 @@ async def get_roles():
             ]
         
         if response.status_code != 200:
-            print(f"Supabase error: {response.status_code} - {response.text}")
+            logger.error("Supabase error fetching roles: %s - %s", response.status_code, response.text)
             raise HTTPException(status_code=500, detail=f"Error fetching roles: {response.text}")
-        
+
         return response.json()
     except requests.RequestException as e:
-        print(f"Request error: {e}")
+        logger.exception("Request error fetching roles")
         # Return default roles on connection error
         return [
             {"role_id": "admin", "label": "Administrador", "description": "Acceso completo", "permissions": {}, "is_system": True},
@@ -1144,8 +1345,14 @@ async def force_logout_user(user_id: str):
     try:
         url = f"{_get_supabase_url()}/perfiles?id=eq.{user_id}"
         update_data = {"last_force_logout_at": datetime.utcnow().isoformat()}
-        
-        response = requests.patch(url, headers=_get_supabase_headers(), json=update_data)
+
+        response = http_patch(
+            url,
+            headers=_get_supabase_headers(),
+            json=update_data,
+            timeout=5,
+            request_name="supabase.perfiles.force_logout",
+        )
         
         if response.status_code not in [200, 204]:
             raise HTTPException(status_code=500, detail=f"Error: {response.text}")
@@ -1161,7 +1368,7 @@ def _sync_heartbeat(user_id: str) -> dict:
     base_url = _get_supabase_url()
 
     # Check if user is active
-    response = requests.get(
+    response = http_get(
         f"{base_url}/perfiles?id=eq.{user_id}&select=activo",
         headers=headers, timeout=5
     )
@@ -1176,7 +1383,7 @@ def _sync_heartbeat(user_id: str) -> dict:
         return {"success": False, "status": "inactive"}
 
     # Update last_seen_at
-    update_response = requests.patch(
+    update_response = http_patch(
         f"{base_url}/perfiles?id=eq.{user_id}",
         headers=headers,
         json={"last_seen_at": datetime.utcnow().isoformat()},
@@ -1194,7 +1401,7 @@ async def user_heartbeat(payload: HeartbeatRequest):
     try:
         return await asyncio.to_thread(_sync_heartbeat, payload.user_id)
     except requests.RequestException as e:
-        print(f"Heartbeat error: {e}")
+        logger.exception("Heartbeat error for user_id=%s", payload.user_id)
         return {"success": False, "error": str(e)}
 
 

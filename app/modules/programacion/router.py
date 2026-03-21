@@ -27,7 +27,7 @@ def _find_template(filename: str) -> Path:
 
 
 @router.post("/export")
-async def export_programacion(payload: ProgramacionExportRequest):
+def export_programacion(payload: ProgramacionExportRequest):
     """Export Programación LAB data to Excel."""
     template_path = _find_template("Template_Programacion.xlsx")
     
@@ -48,7 +48,7 @@ async def export_programacion(payload: ProgramacionExportRequest):
 
 
 @router.post("/export/comercial")
-async def export_programacion_comercial(payload: ProgramacionExportRequest):
+def export_programacion_comercial(payload: ProgramacionExportRequest):
     """Export Programación COMERCIAL data to Excel."""
     template_path = _find_template("Template_Programacion_Comercial.xlsx")
     
@@ -69,7 +69,7 @@ async def export_programacion_comercial(payload: ProgramacionExportRequest):
 
 
 @router.post("/export/administracion")
-async def export_programacion_administracion(payload: ProgramacionExportRequest):
+def export_programacion_administracion(payload: ProgramacionExportRequest):
     """Export Programación ADMINISTRACIÓN data to Excel."""
     template_path = _find_template("Template_Programacion_Administracion.xlsx")
     

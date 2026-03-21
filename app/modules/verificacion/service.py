@@ -18,11 +18,11 @@ import logging
 from datetime import datetime
 import io
 import os
-import requests
 import re
 import unicodedata
 from pathlib import Path
 from .excel import ExcelLogic
+from app.utils.http_client import http_post
 
 logger = logging.getLogger(__name__)
 
@@ -60,25 +60,27 @@ class VerificacionService:
             return None
             
         storage_url = f"{url.rstrip('/')}/storage/v1/object/{bucket}/{path}"
-        
+
         file_data.seek(0)
         try:
-            resp = requests.post(
+            resp = http_post(
                 storage_url,
                 headers={
                     "Authorization": f"Bearer {key}",
                     "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     "x-upsert": "true"
                 },
-                data=file_data.read()
+                data=file_data.read(),
+                timeout=30,
+                request_name="supabase.verificacion.upload_excel",
             )
-            if resp.status_code == 200:
+            if resp.status_code in (200, 201):
                 return f"{bucket}/{path}"
             else:
-                logger.error(f"Storage upload failed: {resp.status_code} - {resp.text}")
+                logger.error("Storage upload failed: %s - %s", resp.status_code, resp.text)
                 return None
         except Exception as e:
-            logger.error(f"Error uploading to storage: {e}")
+            logger.exception("Error uploading verificacion to storage")
             return None
     
     def calcular_formula_diametros(self, request: CalculoFormulaRequest) -> CalculoFormulaResponse:

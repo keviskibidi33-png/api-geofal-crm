@@ -10,7 +10,7 @@ import re
 import unicodedata
 from datetime import date, datetime
 
-import requests
+from app.utils.http_client import http_delete, http_get, http_post
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy import desc, text
@@ -54,7 +54,7 @@ def _upload_to_supabase_storage(file_bytes: bytes, bucket: str, object_path: str
 
     upload_url = f"{supabase_url.rstrip('/')}/storage/v1/object/{bucket}/{object_path}"
     try:
-        resp = requests.post(
+        resp = http_post(
             upload_url,
             headers={
                 "Authorization": f"Bearer {supabase_key}",
@@ -83,7 +83,7 @@ def _delete_from_supabase_storage(bucket: str, object_path: str) -> bool:
 
     delete_url = f"{supabase_url.rstrip('/')}/storage/v1/object/{bucket}/{object_path}"
     try:
-        resp = requests.delete(
+        resp = http_delete(
             delete_url,
             headers={"Authorization": f"Bearer {supabase_key}"},
             timeout=20,
@@ -123,7 +123,7 @@ def _move_to_supabase_trash(bucket: str, object_path: str) -> str | None:
 
     move_url = f"{base_url}/storage/v1/object/move"
     try:
-        resp = requests.post(
+        resp = http_post(
             move_url,
             headers={**auth_headers, "Content-Type": "application/json"},
             json={
@@ -141,7 +141,7 @@ def _move_to_supabase_trash(bucket: str, object_path: str) -> str | None:
     source_url = f"{base_url}/storage/v1/object/{bucket}/{object_path}"
     upload_url = f"{base_url}/storage/v1/object/{bucket}/{destination_key}"
     try:
-        source_resp = requests.get(source_url, headers=auth_headers, timeout=20)
+        source_resp = http_get(source_url, headers=auth_headers, timeout=20)
         if source_resp.status_code != 200:
             return None
 
@@ -149,7 +149,7 @@ def _move_to_supabase_trash(bucket: str, object_path: str) -> str | None:
             source_resp.headers.get("Content-Type")
             or "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-        upload_resp = requests.post(
+        upload_resp = http_post(
             upload_url,
             headers={**auth_headers, "Content-Type": content_type, "x-upsert": "true"},
             data=source_resp.content,
@@ -385,7 +385,7 @@ async def eliminar_ensayo_ge_grueso(
 
 
 @router.post("/excel")
-async def generar_excel_ge_grueso(
+def generar_excel_ge_grueso(
     payload: GeGruesoRequest,
     download: bool = Query(default=False, description="true=guardar+descargar, false=solo guardar"),
     ensayo_id: int | None = Query(default=None, ge=1, description="ID a editar (opcional)"),
@@ -452,3 +452,4 @@ async def generar_excel_ge_grueso(
         db.rollback()
         logger.exception("Error inesperado en generar_excel_ge_grueso")
         raise HTTPException(status_code=500, detail=f"Error generando Excel GE Grueso: {str(exc)}")
+

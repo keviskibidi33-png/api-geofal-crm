@@ -1,5 +1,5 @@
 import os
-import requests
+import logging
 import io
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, or_
@@ -11,6 +11,9 @@ from .exceptions import DuplicateEnsayoError, EnsayoNotFoundError
 from .excel import generate_compression_excel
 import re
 import unicodedata
+from app.utils.http_client import http_post
+
+logger = logging.getLogger(__name__)
 
 
 def _get_safe_filename(base_name: str, extension: str = "xlsx") -> str:
@@ -83,7 +86,7 @@ class CompresionService:
         bucket_name = os.getenv("SUPABASE_BUCKET", "compresiones")
         
         if not supabase_url or not supabase_key:
-            print("WARN: Supabase credentials not configured, skipping upload")
+            logger.warning("Supabase credentials not configured, skipping upload")
             return None
         
         try:
@@ -96,16 +99,21 @@ class CompresionService:
             object_path = f"ensayos/{filename}"
             upload_url = f"{supabase_url}/storage/v1/object/{bucket_name}/{object_path}"
             
-            response = requests.post(upload_url, headers=headers, data=file_content)
+            response = http_post(
+                upload_url,
+                headers=headers,
+                data=file_content,
+                timeout=30,
+                request_name=f"compresion-upload:{bucket_name}",
+            )
             
             if response.status_code in [200, 201]:
                 return object_path
-            else:
-                print(f"Upload failed: {response.status_code} - {response.text}")
-                return None
+            logger.error("Compresion upload failed: %s - %s", response.status_code, response.text)
+            return None
                 
         except Exception as e:
-            print(f"Upload error: {e}")
+            logger.exception("Compresion upload error")
             return None
 
     @staticmethod

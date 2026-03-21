@@ -9,7 +9,7 @@ import re
 import unicodedata
 from datetime import date
 
-import requests
+from app.utils.http_client import http_delete, http_get, http_post
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy import desc, text
@@ -63,7 +63,7 @@ def _upload_to_supabase_storage(file_bytes: bytes, bucket: str, object_path: str
     upload_url = f"{supabase_url.rstrip('/')}/storage/v1/object/{bucket}/{object_path}"
 
     try:
-        resp = requests.post(
+        resp = http_post(
             upload_url,
             headers={
                 "Authorization": f"Bearer {supabase_key}",
@@ -93,7 +93,7 @@ def _delete_from_supabase_storage(bucket: str, object_path: str) -> bool:
 
     delete_url = f"{supabase_url.rstrip('/')}/storage/v1/object/{bucket}/{object_path}"
     try:
-        resp = requests.delete(
+        resp = http_delete(
             delete_url,
             headers={"Authorization": f"Bearer {supabase_key}"},
             timeout=20,
@@ -381,7 +381,7 @@ async def eliminar_ensayo_humedad(
 
 
 @router.post("/excel")
-async def generar_excel_humedad(
+def generar_excel_humedad(
     payload: HumedadRequest,
     download: bool = Query(default=False, description="true=guardar+descargar, false=solo guardar"),
     ensayo_id: int | None = Query(default=None, ge=1, description="ID a editar (opcional)"),
@@ -462,3 +462,4 @@ async def generar_excel_humedad(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error generando Excel de Humedad: {str(e)}")
+

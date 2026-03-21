@@ -1,10 +1,13 @@
 import os
-import requests
+import logging
 from sqlalchemy.orm import Session
 from typing import Optional
 from app.modules.recepcion.models import RecepcionMuestra
 from app.modules.verificacion.models import VerificacionMuestras
 from app.modules.compresion.models import EnsayoCompresion
+from app.utils.http_client import http_delete, http_get
+
+logger = logging.getLogger(__name__)
 
 class StorageUtils:
     @staticmethod
@@ -23,9 +26,10 @@ class StorageUtils:
         headers = {"Authorization": f"Bearer {supabase_key}"}
         
         try:
-            response = requests.get(url, headers=headers)
+            response = http_get(url, headers=headers, timeout=10, request_name=f"storage-info:{bucket}")
             return response.status_code == 200
         except Exception:
+            logger.exception("Error verificando archivo en Supabase bucket=%s key=%s", bucket, object_key)
             return False
 
     @staticmethod
@@ -44,9 +48,10 @@ class StorageUtils:
         headers = {"Authorization": f"Bearer {supabase_key}"}
         
         try:
-            response = requests.delete(url, headers=headers)
-            return response.status_code == 200
+            response = http_delete(url, headers=headers, timeout=10, request_name=f"storage-delete:{bucket}")
+            return response.status_code in (200, 204)
         except Exception:
+            logger.exception("Error eliminando archivo en Supabase bucket=%s key=%s", bucket, object_key)
             return False
 
     @staticmethod
@@ -79,11 +84,11 @@ class StorageUtils:
         # Cleanup Supabase
         if object_key and bucket:
             if not StorageUtils.is_file_referenced(db, object_key=object_key):
-                print(f"[STORAGE] Eliminando Supabase: {bucket}/{object_key}")
+                logger.info("Eliminando Supabase no referenciado: %s/%s", bucket, object_key)
                 StorageUtils.delete_supabase_file(bucket, object_key)
         
         # Cleanup Local
         if local_path:
             if not StorageUtils.is_file_referenced(db, local_path=local_path):
-                print(f"[STORAGE] Eliminando local: {local_path}")
+                logger.info("Eliminando archivo local no referenciado: %s", local_path)
                 StorageUtils.delete_local_file(local_path)

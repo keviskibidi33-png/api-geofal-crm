@@ -1,6 +1,6 @@
 import os
-import requests
 import io
+import logging
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from typing import List, Optional
@@ -11,6 +11,9 @@ from .exceptions import DuplicateRecepcionError
 from .excel import ExcelLogic
 import re
 import unicodedata
+from app.utils.http_client import http_post
+
+logger = logging.getLogger(__name__)
 
 def _get_safe_filename(base_name: str, extension: str = "xlsx") -> str:
     """Sanitiza nombres de archivo para evitar errores en Storage y sistemas de archivos"""
@@ -34,7 +37,7 @@ class RecepcionService:
         bucket_name = "recepciones"
 
         if not supabase_url or not supabase_key:
-            print("Warning: Supabase credentials not found. Skipping upload.")
+            logger.warning("Supabase credentials not found. Skipping reception upload.")
             return None
 
         # Supabase Storage API URL
@@ -47,15 +50,25 @@ class RecepcionService:
         }
 
         try:
-            response = requests.post(upload_url, headers=headers, data=file_content)
+            response = http_post(
+                upload_url,
+                headers=headers,
+                data=file_content,
+                timeout=30,
+                request_name="supabase.recepciones.upload_excel",
+            )
             if response.status_code in [200, 201]:
                 # Retornar el path relativo (object_key)
                 return filename
             else:
-                print(f"Error uploading to Supabase: {response.status_code} - {response.text}")
+                logger.error(
+                    "Error uploading recepcion to Supabase: %s - %s",
+                    response.status_code,
+                    response.text,
+                )
                 return None
         except Exception as e:
-            print(f"Exception uploading to Supabase: {e}")
+            logger.exception("Exception uploading recepcion to Supabase")
             return None
 
     def crear_recepcion(self, db: Session, recepcion_data: RecepcionMuestraCreate) -> RecepcionMuestra:
@@ -140,7 +153,7 @@ class RecepcionService:
                     db.commit()
                     db.refresh(recepcion)
             except Exception as e:
-                print(f"Error post-procesamiento (Excel/Supabase): {e}")
+                logger.exception("Error post-procesamiento de recepción (Excel/Supabase)")
 
             return recepcion
             
@@ -220,7 +233,7 @@ class RecepcionService:
             from app.modules.tracing.service import TracingService
             TracingService.actualizar_trazabilidad(db, numero_backup)
         except Exception as tr_e:
-            print(f"Error syncing trazabilidad on delete reception: {tr_e}")
+            logger.warning("Error syncing trazabilidad on delete reception: %s", tr_e)
 
         return True
 

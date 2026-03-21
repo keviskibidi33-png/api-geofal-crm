@@ -1,6 +1,6 @@
 import os
 import io
-import requests
+import logging
 import psycopg2
 import re
 from datetime import date, datetime
@@ -9,6 +9,9 @@ from psycopg2.extras import RealDictCursor
 from pathlib import Path
 from dotenv import load_dotenv
 from .schemas import QuoteExportRequest
+from app.utils.http_client import http_delete, http_post
+
+logger = logging.getLogger(__name__)
 
 # Load env from parent of module (app level)
 # app/modules/cotizacion -> app/modules -> app -> root
@@ -85,22 +88,23 @@ def _upload_to_supabase_storage(file_data: io.BytesIO, bucket: str, path: str) -
     
     file_data.seek(0)
     try:
-        resp = requests.post(
+        resp = http_post(
             storage_url,
             headers={
                 "Authorization": f"Bearer {key}",
                 "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 "x-upsert": "true"
             },
-            data=file_data.read()
+            data=file_data.read(),
+            timeout=30,
+            request_name=f"cotizacion-upload:{bucket}",
         )
         if resp.status_code == 200:
             return f"{bucket}/{path}"
-        else:
-            print(f"Storage upload failed: {resp.status_code} - {resp.text}")
-            return None
+        logger.error("Storage upload failed: %s - %s", resp.status_code, resp.text)
+        return None
     except Exception as e:
-        print(f"Error uploading to storage: {e}")
+        logger.exception("Error uploading quote to storage")
         return None
 
 def _delete_from_supabase_storage(bucket: str, path: str) -> bool:
@@ -114,20 +118,21 @@ def _delete_from_supabase_storage(bucket: str, path: str) -> bool:
     storage_url = f"{url.rstrip('/')}/storage/v1/object/{bucket}/{path}"
     
     try:
-        resp = requests.delete(
+        resp = http_delete(
             storage_url,
             headers={
                 "Authorization": f"Bearer {key}",
             },
+            timeout=20,
+            request_name=f"cotizacion-delete:{bucket}",
         )
         if resp.status_code in (200, 204):
-            print(f"Storage delete OK: {bucket}/{path}")
+            logger.info("Storage delete OK: %s/%s", bucket, path)
             return True
-        else:
-            print(f"Storage delete failed: {resp.status_code} - {resp.text}")
-            return False
+        logger.warning("Storage delete failed: %s - %s", resp.status_code, resp.text)
+        return False
     except Exception as e:
-        print(f"Error deleting from storage: {e}")
+        logger.exception("Error deleting quote from storage")
         return False
 
 
