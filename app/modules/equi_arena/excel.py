@@ -17,7 +17,7 @@ from lxml import etree
 
 from app.utils.excel_footer import fill_standard_footer_shapes
 
-from .schemas import EquiArenaRequest
+from .schemas import EquiArenaRequest, _compute_equivalente_por_prueba
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +125,25 @@ def _set_trial_row(sheet_data: etree._Element, row_num: int, values: list[float 
         _set_cell(sheet_data, f"{col}{row_num}", values[idx], is_number=is_number)
 
 
+def _remove_calc_chain_relationships(rels_xml: bytes) -> bytes:
+    root = etree.fromstring(rels_xml)
+    for rel in list(root):
+        rel_type = rel.get("Type", "")
+        target = rel.get("Target", "")
+        if rel_type.endswith("/calcChain") or target.endswith("calcChain.xml"):
+            root.remove(rel)
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
+def _remove_calc_chain_content_type(content_types_xml: bytes) -> bytes:
+    root = etree.fromstring(content_types_xml)
+    for override in list(root):
+        part_name = override.get("PartName", "")
+        if part_name == "/xl/calcChain.xml":
+            root.remove(override)
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
 def _fill_sheet(sheet_xml: bytes, data: EquiArenaRequest) -> bytes:
     root = etree.fromstring(sheet_xml)
     sd = root.find(f".//{{{NS_SHEET}}}sheetData")
@@ -138,20 +157,14 @@ def _fill_sheet(sheet_xml: bytes, data: EquiArenaRequest) -> bytes:
     _set_cell(sd, "H11", data.realizado_por)
 
     # Condiciones
-    if data.tipo_muestra == "SUELO":
-        _set_cell(sd, "B17", "X")
-    elif data.tipo_muestra == "AGREGADO FINO":
-        _set_cell(sd, "B18", "X")
+    if data.tipo_muestra != "-":
+        _set_cell(sd, "B17", data.tipo_muestra)
 
-    if data.metodo_agitacion == "MANUAL":
-        _set_cell(sd, "F17", "X")
-    elif data.metodo_agitacion == "MECÁNICO":
-        _set_cell(sd, "F18", "X")
+    if data.metodo_agitacion != "-":
+        _set_cell(sd, "F17", data.metodo_agitacion)
 
-    if data.preparacion_muestra == "PROCEDIMIENTO A":
-        _set_cell(sd, "F21", "X")
-    elif data.preparacion_muestra == "PROCEDIMIENTO B":
-        _set_cell(sd, "F22", "X")
+    if data.preparacion_muestra != "-":
+        _set_cell(sd, "F21", data.preparacion_muestra)
 
     _set_cell(sd, "J16", data.temperatura_solucion_c, is_number=True)
     _set_cell(sd, "D20", data.masa_4_medidas_g, is_number=True)
@@ -162,6 +175,7 @@ def _fill_sheet(sheet_xml: bytes, data: EquiArenaRequest) -> bytes:
     _set_trial_row(sd, 32, data.tiempo_decantacion_min)
     _set_trial_row(sd, 33, data.lectura_arcilla_in)
     _set_trial_row(sd, 34, data.lectura_arena_in)
+    _set_trial_row(sd, 35, _compute_equivalente_por_prueba(data.lectura_arcilla_in, data.lectura_arena_in))
     _set_cell(sd, "H36", data.equivalente_arena_promedio_pct, is_number=True)
 
     # Equipos y observaciones
@@ -203,8 +217,15 @@ def generate_equi_arena_excel(data: EquiArenaRequest) -> bytes:
         sheet_xml = _fill_sheet(sheet_original, data)
 
         for item in zin.infolist():
+            if item.filename == "xl/calcChain.xml":
+                continue
+
             if item.filename == "xl/worksheets/sheet1.xml":
                 raw = sheet_xml
+            elif item.filename == "xl/_rels/workbook.xml.rels":
+                raw = _remove_calc_chain_relationships(zin.read(item.filename))
+            elif item.filename == "[Content_Types].xml":
+                raw = _remove_calc_chain_content_type(zin.read(item.filename))
             else:
                 raw = zin.read(item.filename)
 

@@ -121,15 +121,25 @@ def _normalize_float_list(values: list[float | None], size: int) -> list[float |
     return normalized
 
 
-def _compute_equivalente_promedio(arcilla: list[float | None], arena: list[float | None]) -> float | None:
-    ensayos_validos: list[float] = []
+def _compute_equivalente_por_prueba(
+    arcilla: list[float | None],
+    arena: list[float | None],
+) -> list[float | None]:
+    resultados: list[float | None] = []
     for arcilla_val, arena_val in zip(arcilla, arena):
         if arcilla_val is None or arena_val is None:
+            resultados.append(None)
             continue
         if arcilla_val <= 0:
+            resultados.append(None)
             continue
         porcentaje = (arena_val / arcilla_val) * 100.0
-        ensayos_validos.append(float(math.ceil(porcentaje)))
+        resultados.append(float(math.ceil(porcentaje)))
+    return resultados
+
+
+def _compute_equivalente_promedio(arcilla: list[float | None], arena: list[float | None]) -> float | None:
+    ensayos_validos = [value for value in _compute_equivalente_por_prueba(arcilla, arena) if value is not None]
 
     if not ensayos_validos:
         return None
@@ -201,7 +211,6 @@ class EquiArenaRequest(BaseModel):
     def normalize_payload(self):
         self.temperatura_solucion_c = _coerce_float(self.temperatura_solucion_c)
         self.masa_4_medidas_g = _coerce_float(self.masa_4_medidas_g)
-        self.equivalente_arena_promedio_pct = _coerce_float(self.equivalente_arena_promedio_pct)
 
         self.tiempo_saturacion_min = _normalize_float_list(self.tiempo_saturacion_min, TRIAL_COUNT)
         self.tiempo_agitacion_seg = _normalize_float_list(self.tiempo_agitacion_seg, TRIAL_COUNT)
@@ -212,11 +221,10 @@ class EquiArenaRequest(BaseModel):
         if self.metodo_agitacion == "MECANICO":
             self.metodo_agitacion = "MECÁNICO"
 
-        if self.equivalente_arena_promedio_pct is None:
-            self.equivalente_arena_promedio_pct = _compute_equivalente_promedio(
-                self.lectura_arcilla_in,
-                self.lectura_arena_in,
-            )
+        self.equivalente_arena_promedio_pct = _compute_equivalente_promedio(
+            self.lectura_arcilla_in,
+            self.lectura_arena_in,
+        )
 
         text_fields = [
             "realizado_por",
