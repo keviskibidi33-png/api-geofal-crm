@@ -31,7 +31,7 @@ def _fill_sheet(sheet_xml: bytes, payload: SulMagnesioRequest) -> bytes:
         set_cell(sheet_data, f"G{index}", row.masa_perdida_g, is_number=True, merge_anchor_map=merge_anchor_map, style_ref=f"G{index}")
         set_cell(sheet_data, f"H{index}", row.pct_pasa_post_ensayo, is_number=True, merge_anchor_map=merge_anchor_map, style_ref=f"H{index}")
         set_cell(sheet_data, f"I{index}", row.pct_perdida_ponderado, is_number=True, merge_anchor_map=merge_anchor_map, style_ref=f"I{index}")
-    set_cell(sheet_data, "H25", payload.fino_total_pct, is_number=True, merge_anchor_map=merge_anchor_map, style_ref="H25")
+    set_cell(sheet_data, "I25", payload.fino_total_pct, is_number=True, merge_anchor_map=merge_anchor_map, style_ref="I25")
 
     for index, row in enumerate(payload.grueso_rows, start=31):
         set_cell(sheet_data, f"D{index}", row.gradacion_pct, is_number=True, merge_anchor_map=merge_anchor_map, style_ref=f"D{index}")
@@ -41,7 +41,7 @@ def _fill_sheet(sheet_xml: bytes, payload: SulMagnesioRequest) -> bytes:
         set_cell(sheet_data, f"H{index}", row.masa_perdida_g, is_number=True, merge_anchor_map=merge_anchor_map, style_ref=f"H{index}")
         set_cell(sheet_data, f"I{index}", row.pct_pasa_post_ensayo, is_number=True, merge_anchor_map=merge_anchor_map, style_ref=f"I{index}")
         set_cell(sheet_data, f"J{index}", row.pct_perdida_ponderado, is_number=True, merge_anchor_map=merge_anchor_map, style_ref=f"J{index}")
-    set_cell(sheet_data, "I38", payload.grueso_total_pct, is_number=True, merge_anchor_map=merge_anchor_map, style_ref="I38")
+    set_cell(sheet_data, "J38", payload.grueso_total_pct, is_number=True, merge_anchor_map=merge_anchor_map, style_ref="J38")
 
     for row_index, row in enumerate(payload.cualitativo_rows, start=45):
         set_cell(sheet_data, f"D{row_index}", row.total_particulas, is_number=True, merge_anchor_map=merge_anchor_map, style_ref=f"D{row_index}")
