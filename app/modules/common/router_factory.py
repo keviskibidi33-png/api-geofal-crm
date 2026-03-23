@@ -124,6 +124,23 @@ def has_text_value(value: Any) -> bool:
     return value is not None and str(value).strip() != ""
 
 
+def normalize_footer_text(value: Any, fallback: str) -> str:
+    text_value = str(value or "").replace("\t", "\n").strip()
+    return text_value or fallback
+
+
+def apply_footer_defaults(payload: Any) -> None:
+    fecha_base = normalize_footer_text(getattr(payload, "fecha_ensayo", None), "")
+    if hasattr(payload, "revisado_por"):
+        payload.revisado_por = normalize_footer_text(getattr(payload, "revisado_por", None), "-")
+    if hasattr(payload, "revisado_fecha"):
+        payload.revisado_fecha = normalize_footer_text(getattr(payload, "revisado_fecha", None), fecha_base)
+    if hasattr(payload, "aprobado_por"):
+        payload.aprobado_por = normalize_footer_text(getattr(payload, "aprobado_por", None), "-")
+    if hasattr(payload, "aprobado_fecha"):
+        payload.aprobado_fecha = normalize_footer_text(getattr(payload, "aprobado_fecha", None), fecha_base)
+
+
 def create_lab_router(
     *,
     api_slug: str,

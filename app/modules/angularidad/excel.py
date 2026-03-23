@@ -101,10 +101,13 @@ def _fill_sheet(sheet_xml: bytes, payload: AngularidadRequest) -> bytes:
     set_cell(sheet_data, "G58", payload.horno_codigo or "", merge_anchor_map=merge_anchor_map, style_ref="G58")
     set_cell(sheet_data, "G59", payload.balanza_01_codigo or "", merge_anchor_map=merge_anchor_map, style_ref="G59")
     set_cell(sheet_data, "G60", payload.tamiz_codigo or "", merge_anchor_map=merge_anchor_map, style_ref="G60")
+    set_cell(sheet_data, "B63", f"Revisado: {payload.revisado_por or '-'}", merge_anchor_map=merge_anchor_map, style_ref="B63")
+    set_cell(sheet_data, "B64", f"Fecha: {payload.revisado_fecha or payload.fecha_ensayo or '-'}", merge_anchor_map=merge_anchor_map, style_ref="B64")
+    set_cell(sheet_data, "F63", f"Aprobado: {payload.aprobado_por or '-'}", merge_anchor_map=merge_anchor_map, style_ref="F63")
+    set_cell(sheet_data, "F64", f"Fecha: {payload.aprobado_fecha or payload.fecha_ensayo or '-'}", merge_anchor_map=merge_anchor_map, style_ref="F64")
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
 def generate_angularidad_excel(payload: AngularidadRequest) -> bytes:
     return transform_template_sheet(TEMPLATE_FILE, SHEET_NAME, lambda xml: _fill_sheet(xml, payload))
-

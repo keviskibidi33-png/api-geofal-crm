@@ -56,10 +56,13 @@ def _fill_sheet(sheet_xml: bytes, payload: SulMagnesioRequest) -> bytes:
 
     set_cell(sheet_data, "J50", payload.horno_codigo or "", merge_anchor_map=merge_anchor_map, style_ref="J50")
     set_cell(sheet_data, "J51", payload.balanza_01_codigo or "", merge_anchor_map=merge_anchor_map, style_ref="J51")
+    set_cell(sheet_data, "C61", f"Revisado: {payload.revisado_por or '-'}", merge_anchor_map=merge_anchor_map, style_ref="C61")
+    set_cell(sheet_data, "C62", f"Fecha: {payload.revisado_fecha or payload.fecha_ensayo or '-'}", merge_anchor_map=merge_anchor_map, style_ref="C62")
+    set_cell(sheet_data, "F61", f"Aprobado: {payload.aprobado_por or '-'}", merge_anchor_map=merge_anchor_map, style_ref="F61")
+    set_cell(sheet_data, "F62", f"Fecha: {payload.aprobado_fecha or payload.fecha_ensayo or '-'}", merge_anchor_map=merge_anchor_map, style_ref="F62")
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
 def generate_sul_magnesio_excel(payload: SulMagnesioRequest) -> bytes:
     return transform_template_sheet(TEMPLATE_FILE, SHEET_NAME, lambda xml: _fill_sheet(xml, payload))
-

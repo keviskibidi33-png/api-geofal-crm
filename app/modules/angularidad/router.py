@@ -1,4 +1,4 @@
-from app.modules.common.router_factory import create_lab_router
+from app.modules.common.router_factory import apply_footer_defaults, create_lab_router
 from app.utils.export_filename import build_formato_filename
 
 from .excel import generate_angularidad_excel
@@ -16,4 +16,5 @@ router = create_lab_router(
     generate_excel=generate_angularidad_excel,
     build_numero_ensayo=lambda payload: f"{payload.numero_ot}-ANG",
     build_download_filename=lambda payload: build_formato_filename(payload.muestra, "AG", "ANGULARIDAD"),
+    payload_preprocessor=apply_footer_defaults,
 )
