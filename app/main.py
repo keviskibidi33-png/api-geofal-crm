@@ -58,6 +58,13 @@ from app.modules.cloro_soluble.router import router as cloro_soluble_router
 from app.modules.sales_solubles.router import router as sales_solubles_router
 from app.modules.sulfatos_solubles.router import router as sulfatos_solubles_router
 from app.modules.compresion_no_confinada.router import router as compresion_no_confinada_router
+from app.modules.cont_mat_organica.router import router as cont_mat_organica_router
+from app.modules.terrones_fino_grueso.router import router as terrones_fino_grueso_router
+from app.modules.azul_metileno.router import router as azul_metileno_router
+from app.modules.part_livianas.router import router as part_livianas_router
+from app.modules.imp_organicas.router import router as imp_organicas_router
+from app.modules.sul_magnesio.router import router as sul_magnesio_router
+from app.modules.angularidad.router import router as angularidad_router
 from app.modules.recepcion.models import Base as RecepcionBase
 from app.modules.verificacion.models import Base as VerificacionBase
 from app.modules.tracing.models import Trazabilidad
@@ -84,6 +91,13 @@ from app.modules.cloro_soluble.models import CloroSolubleEnsayo
 from app.modules.sales_solubles.models import SalesSolublesEnsayo
 from app.modules.sulfatos_solubles.models import SulfatosSolublesEnsayo
 from app.modules.compresion_no_confinada.models import CompresionNoConfinadaEnsayo
+from app.modules.cont_mat_organica.models import ContMatOrganicaEnsayo
+from app.modules.terrones_fino_grueso.models import TerronesFinoGruesoEnsayo
+from app.modules.azul_metileno.models import AzulMetilenoEnsayo
+from app.modules.part_livianas.models import PartLivianasEnsayo
+from app.modules.imp_organicas.models import ImpOrganicasEnsayo
+from app.modules.sul_magnesio.models import SulMagnesioEnsayo
+from app.modules.angularidad.models import AngularidadEnsayo
 from app.database import engine
 from app.auth import JWTAuthMiddleware
 from app.utils.http_client import http_get, http_patch
@@ -135,6 +149,13 @@ class RolePermissions(BaseModel):
     sales_solubles: ModulePermission | None = None
     sulfatos_solubles: ModulePermission | None = None
     compresion_no_confinada: ModulePermission | None = None
+    cont_mat_organica: ModulePermission | None = None
+    terrones_fino_grueso: ModulePermission | None = None
+    azul_metileno: ModulePermission | None = None
+    part_livianas: ModulePermission | None = None
+    imp_organicas: ModulePermission | None = None
+    sul_magnesio: ModulePermission | None = None
+    angularidad: ModulePermission | None = None
     usuarios: ModulePermission | None = None
     auditoria: ModulePermission | None = None
     configuracion: ModulePermission | None = None
@@ -229,6 +250,7 @@ def _get_cors_origins() -> list[str]:
         "http://localhost:3026", # Sales Solubles CRM (Vite local)
         "http://localhost:3027", # Sulfatos Solubles CRM (Vite local)
         "http://localhost:3028", # Compresion No Confinada CRM (Vite local)
+        "http://localhost:3029", # Ensayos Especiales CRM (Vite local)
         "http://localhost:5173", # Cotizador
         "http://localhost:5174",
         "http://localhost:5175", # Compresion (Vite)
@@ -254,6 +276,7 @@ def _get_cors_origins() -> list[str]:
         "http://127.0.0.1:3026",
         "http://127.0.0.1:3027",
         "http://127.0.0.1:3028",
+        "http://127.0.0.1:3029",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:5174",
         "http://127.0.0.1:5175",
@@ -287,6 +310,7 @@ def _get_cors_origins() -> list[str]:
         "https://sales-solubles.geofal.com.pe",
         "https://sulfatos-solubles.geofal.com.pe",
         "https://compresion-no-confinada.geofal.com.pe",
+        "https://ensayos-especiales.geofal.com.pe",
         "https://comp.noconfinada.geofal.com.pe",
         "https://verificacion.geofal.com.pe",
         "https://verifiacion.geofal.com.pe",
@@ -346,6 +370,13 @@ app.add_middleware(
         "X-SS-Id",
         "X-SULF-Id",
         "X-CNC-Id",
+        "X-CMO-Id",
+        "X-TFG-Id",
+        "X-AZM-Id",
+        "X-PLV-Id",
+        "X-IMP-Id",
+        "X-SMAG-Id",
+        "X-ANG-Id",
         "X-Storage-Object-Key",
     ],
     max_age=3600,
@@ -455,6 +486,13 @@ app.include_router(cloro_soluble_router)
 app.include_router(sales_solubles_router)
 app.include_router(sulfatos_solubles_router)
 app.include_router(compresion_no_confinada_router)
+app.include_router(cont_mat_organica_router)
+app.include_router(terrones_fino_grueso_router)
+app.include_router(azul_metileno_router)
+app.include_router(part_livianas_router)
+app.include_router(imp_organicas_router)
+app.include_router(sul_magnesio_router)
+app.include_router(angularidad_router)
 
 # Note: All legacy endpoints for Quotes and Programacion have been moved to their respective modules.
 # Check app/modules/cotizacion and app/modules/programacion.
@@ -1067,6 +1105,42 @@ def _get_supabase_url():
     return f"{url}/rest/v1"
 
 
+def _permission(read: bool = False, write: bool = False, delete: bool = False) -> dict[str, bool]:
+    return {"read": read, "write": write, "delete": delete}
+
+
+def _extra_special_lab_permissions(role_id: str) -> dict[str, dict[str, bool]]:
+    normalized = (role_id or "").strip().lower()
+    new_modules = (
+        "cont_mat_organica",
+        "terrones_fino_grueso",
+        "azul_metileno",
+        "part_livianas",
+        "imp_organicas",
+        "sul_magnesio",
+        "angularidad",
+    )
+
+    if normalized == "admin":
+        return {module: _permission(True, True, True) for module in new_modules}
+    if normalized in {"laboratorio", "tecnico_suelos"}:
+        return {module: _permission(True, True, False) for module in new_modules}
+    return {module: _permission(False, False, False) for module in new_modules}
+
+
+def _apply_role_permission_extensions(role_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    extended_roles: list[dict[str, Any]] = []
+    for row in role_rows:
+        role_data = dict(row)
+        permissions = dict(role_data.get("permissions") or {})
+        extra_permissions = _extra_special_lab_permissions(str(role_data.get("role_id") or ""))
+        for module_key, permission in extra_permissions.items():
+            permissions.setdefault(module_key, permission)
+        role_data["permissions"] = permissions
+        extended_roles.append(role_data)
+    return extended_roles
+
+
 @app.get("/roles")
 async def get_roles():
     """Get all role definitions using Supabase REST API"""
@@ -1081,7 +1155,7 @@ async def get_roles():
         
         if response.status_code == 404 or (response.status_code == 200 and response.json() == []):
             # Table doesn't exist or is empty - return default roles
-            return [
+            return _apply_role_permission_extensions([
                 {
                     "role_id": "admin",
                     "label": "Administrador",
@@ -1262,20 +1336,20 @@ async def get_roles():
                     },
                     "is_system": True
                 }
-            ]
+            ])
         
         if response.status_code != 200:
             logger.error("Supabase error fetching roles: %s - %s", response.status_code, response.text)
             raise HTTPException(status_code=500, detail=f"Error fetching roles: {response.text}")
 
-        return response.json()
+        return _apply_role_permission_extensions(response.json())
     except requests.RequestException as e:
         logger.exception("Request error fetching roles")
         # Return default roles on connection error
-        return [
+        return _apply_role_permission_extensions([
             {"role_id": "admin", "label": "Administrador", "description": "Acceso completo", "permissions": {}, "is_system": True},
             {"role_id": "vendor", "label": "Vendedor", "description": "Acceso ventas", "permissions": {}, "is_system": True}
-        ]
+        ])
 
 
 @app.put("/roles/{role_id}")

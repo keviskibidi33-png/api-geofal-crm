@@ -1,0 +1,2 @@
+"""Azul de metileno module."""
+

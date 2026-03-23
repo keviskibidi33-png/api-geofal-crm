@@ -1,0 +1,2 @@
+"""Impurezas organicas module."""
+

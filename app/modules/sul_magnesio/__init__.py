@@ -1,0 +1,2 @@
+"""Sulfato de magnesio module."""
+

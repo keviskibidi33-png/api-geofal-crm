@@ -33,6 +33,7 @@ Thumbs.db
 
 # Excel stuff
 *.xlsx
+~$*.xlsx
 !Temp_Cotizacion.xlsx
 !Temp_Recepcion.xlsx
 !Template.xlsx
@@ -73,6 +74,13 @@ Thumbs.db
 !app/templates/Template_PH.xlsx
 !app/templates/Template_SALES_SOLUBLES.xlsx
 !app/templates/Template_SULFATOS_SOLUBLES.xlsx
+!app/templates/Template_Angularidad.xlsx
+!app/templates/Template_Azul_Metileno.xlsx
+!app/templates/Template_Cont_Mat_Organica.xlsx
+!app/templates/Template_Imp_Organicas.xlsx
+!app/templates/Template_Part_Livinas_Fino_Grueso.xlsx
+!app/templates/Template_Sul_Magnesio.xlsx
+!app/templates/Template_Terrones_Fino_Grueso.xlsx
 !Temp_CBR_ASTM.xlsx
 !app/templates/Temp_CBR_ASTM.xlsx
 !Resumen N-XXX-26 Compresion.xlsx
