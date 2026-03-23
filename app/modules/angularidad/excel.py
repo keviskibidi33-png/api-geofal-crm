@@ -79,7 +79,12 @@ def _fill_sheet(sheet_xml: bytes, payload: AngularidadRequest) -> bytes:
         "D27": payload.metodo_a_n50_n100_masa_g,
         "D28": payload.metodo_a_total_masa_g,
         "D31": payload.metodo_a_prueba_1_masa_agregado_cilindro_g,
+        "E31": payload.metodo_a_prueba_1_masa_neta_agregado_g,
+        "F31": payload.metodo_a_prueba_1_vacio_pct,
         "D32": payload.metodo_a_prueba_2_masa_agregado_cilindro_g,
+        "E32": payload.metodo_a_prueba_2_masa_neta_agregado_g,
+        "F32": payload.metodo_a_prueba_2_vacio_pct,
+        "G32": payload.metodo_a_angularidad_promedio_us_pct,
     }
     for ref, value in method_a_cells.items():
         set_cell(sheet_data, ref, value, is_number=True, merge_anchor_map=merge_anchor_map, style_ref=ref)
@@ -90,11 +95,24 @@ def _fill_sheet(sheet_xml: bytes, payload: AngularidadRequest) -> bytes:
         "D37": payload.metodo_b_n30_n50_masa_g,
         "D38": payload.metodo_b_total_masa_g,
         "D41": payload.metodo_b_n8_n16_prueba_1_masa_agregado_cilindro_g,
+        "E41": payload.metodo_b_n8_n16_prueba_1_masa_neta_agregado_g,
+        "F41": payload.metodo_b_n8_n16_prueba_1_vacio_pct,
         "D42": payload.metodo_b_n8_n16_prueba_2_masa_agregado_cilindro_g,
+        "E42": payload.metodo_b_n8_n16_prueba_2_masa_neta_agregado_g,
+        "F42": payload.metodo_b_n8_n16_prueba_2_vacio_pct,
         "D43": payload.metodo_b_n16_n30_prueba_1_masa_agregado_cilindro_g,
+        "E43": payload.metodo_b_n16_n30_prueba_1_masa_neta_agregado_g,
+        "F43": payload.metodo_b_n16_n30_prueba_1_vacio_pct,
         "D44": payload.metodo_b_n16_n30_prueba_2_masa_agregado_cilindro_g,
+        "E44": payload.metodo_b_n16_n30_prueba_2_masa_neta_agregado_g,
+        "F44": payload.metodo_b_n16_n30_prueba_2_vacio_pct,
         "D45": payload.metodo_b_n30_n50_prueba_1_masa_agregado_cilindro_g,
+        "E45": payload.metodo_b_n30_n50_prueba_1_masa_neta_agregado_g,
+        "F45": payload.metodo_b_n30_n50_prueba_1_vacio_pct,
         "D46": payload.metodo_b_n30_n50_prueba_2_masa_agregado_cilindro_g,
+        "E46": payload.metodo_b_n30_n50_prueba_2_masa_neta_agregado_g,
+        "F46": payload.metodo_b_n30_n50_prueba_2_vacio_pct,
+        "G46": payload.metodo_b_angularidad_promedio_um_pct,
     }
     for ref, value in method_b_cells.items():
         set_cell(sheet_data, ref, value, is_number=True, merge_anchor_map=merge_anchor_map, style_ref=ref)
@@ -103,11 +121,17 @@ def _fill_sheet(sheet_xml: bytes, payload: AngularidadRequest) -> bytes:
         "D49": payload.metodo_c_n8_n200_masa_g,
         "D50": payload.metodo_c_total_masa_g,
         "D53": payload.metodo_c_prueba_1_masa_agregado_cilindro_g,
+        "E53": payload.metodo_c_prueba_1_masa_neta_agregado_g,
+        "F53": payload.metodo_c_prueba_1_vacio_pct,
         "D54": payload.metodo_c_prueba_2_masa_agregado_cilindro_g,
+        "E54": payload.metodo_c_prueba_2_masa_neta_agregado_g,
+        "F54": payload.metodo_c_prueba_2_vacio_pct,
+        "G54": payload.metodo_c_angularidad_promedio_ur_pct,
     }
     for ref, value in method_c_cells.items():
         set_cell(sheet_data, ref, value, is_number=True, merge_anchor_map=merge_anchor_map, style_ref=ref)
 
+    set_cell(sheet_data, "A58", payload.observaciones or "", merge_anchor_map=merge_anchor_map, style_ref="A58")
     set_cell(sheet_data, "G58", payload.horno_codigo or "", merge_anchor_map=merge_anchor_map, style_ref="G58")
     set_cell(sheet_data, "G59", payload.balanza_01_codigo or "", merge_anchor_map=merge_anchor_map, style_ref="G59")
     set_cell(sheet_data, "G60", payload.tamiz_codigo or "", merge_anchor_map=merge_anchor_map, style_ref="G60")
