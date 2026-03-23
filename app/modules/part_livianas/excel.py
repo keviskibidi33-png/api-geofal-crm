@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from lxml import etree
 
-from app.modules.common.excel_xml import NS_SHEET, build_merge_anchor_map, set_cell, transform_template_sheet
+from app.modules.common.excel_xml import NS_SHEET, build_merge_anchor_map, fill_footer_drawing, set_cell, transform_template_sheet
 
 from .schemas import PartLivianasRequest
 
@@ -42,13 +42,20 @@ def _fill_sheet(sheet_xml: bytes, payload: PartLivianasRequest) -> bytes:
     set_cell(sheet_data, "F29", payload.grueso_suma_masa_porcion_g, is_number=True, merge_anchor_map=merge_anchor_map, style_ref="F29")
     set_cell(sheet_data, "G29", payload.grueso_suma_masa_flotan_g, is_number=True, merge_anchor_map=merge_anchor_map, style_ref="G29")
     set_cell(sheet_data, "F30", payload.grueso_particulas_livianas_pct, is_number=True, merge_anchor_map=merge_anchor_map, style_ref="F30")
-    set_cell(sheet_data, "B49", f"Revisado: {payload.revisado_por or '-'}", merge_anchor_map=merge_anchor_map, style_ref="B49")
-    set_cell(sheet_data, "B50", f"Fecha: {payload.revisado_fecha or payload.fecha_ensayo or '-'}", merge_anchor_map=merge_anchor_map, style_ref="B50")
-    set_cell(sheet_data, "D49", f"Aprobado: {payload.aprobado_por or '-'}", merge_anchor_map=merge_anchor_map, style_ref="D49")
-    set_cell(sheet_data, "D50", f"Fecha: {payload.aprobado_fecha or payload.fecha_ensayo or '-'}", merge_anchor_map=merge_anchor_map, style_ref="D50")
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
 def generate_part_livianas_excel(payload: PartLivianasRequest) -> bytes:
-    return transform_template_sheet(TEMPLATE_FILE, SHEET_NAME, lambda xml: _fill_sheet(xml, payload))
+    return transform_template_sheet(
+        TEMPLATE_FILE,
+        SHEET_NAME,
+        lambda xml: _fill_sheet(xml, payload),
+        drawing_transform=lambda xml: fill_footer_drawing(
+            xml,
+            revisado_por=payload.revisado_por,
+            revisado_fecha=payload.revisado_fecha or payload.fecha_ensayo,
+            aprobado_por=payload.aprobado_por,
+            aprobado_fecha=payload.aprobado_fecha or payload.fecha_ensayo,
+        ),
+    )

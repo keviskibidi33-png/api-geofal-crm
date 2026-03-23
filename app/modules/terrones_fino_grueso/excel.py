@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from lxml import etree
 
-from app.modules.common.excel_xml import NS_SHEET, build_merge_anchor_map, set_cell, transform_template_sheet
+from app.modules.common.excel_xml import NS_SHEET, build_merge_anchor_map, fill_footer_drawing, set_cell, transform_template_sheet
 
 from .schemas import TerronesFinoGruesoRequest
 
@@ -43,14 +43,21 @@ def _fill_sheet(sheet_xml: bytes, payload: TerronesFinoGruesoRequest) -> bytes:
     set_cell(sheet_data, "F31", payload.secado_horno or "", merge_anchor_map=merge_anchor_map, style_ref="F31")
     set_cell(sheet_data, "H34", payload.balanza_01_codigo or "", merge_anchor_map=merge_anchor_map, style_ref="H34")
     set_cell(sheet_data, "H35", payload.horno_codigo or "", merge_anchor_map=merge_anchor_map, style_ref="H35")
-    set_cell(sheet_data, "B41", payload.observaciones or "", merge_anchor_map=merge_anchor_map, style_ref="B41")
-    set_cell(sheet_data, "C44", f"Revisado: {payload.revisado_por or '-'}", merge_anchor_map=merge_anchor_map, style_ref="C44")
-    set_cell(sheet_data, "C45", f"Fecha: {payload.revisado_fecha or payload.fecha_ensayo or '-'}", merge_anchor_map=merge_anchor_map, style_ref="C45")
-    set_cell(sheet_data, "G44", f"Aprobado: {payload.aprobado_por or '-'}", merge_anchor_map=merge_anchor_map, style_ref="G44")
-    set_cell(sheet_data, "G45", f"Fecha: {payload.aprobado_fecha or payload.fecha_ensayo or '-'}", merge_anchor_map=merge_anchor_map, style_ref="G45")
+    set_cell(sheet_data, "D40", payload.observaciones or "", merge_anchor_map=merge_anchor_map, style_ref="D40")
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
 def generate_terrones_fino_grueso_excel(payload: TerronesFinoGruesoRequest) -> bytes:
-    return transform_template_sheet(TEMPLATE_FILE, SHEET_NAME, lambda xml: _fill_sheet(xml, payload))
+    return transform_template_sheet(
+        TEMPLATE_FILE,
+        SHEET_NAME,
+        lambda xml: _fill_sheet(xml, payload),
+        drawing_transform=lambda xml: fill_footer_drawing(
+            xml,
+            revisado_por=payload.revisado_por,
+            revisado_fecha=payload.revisado_fecha or payload.fecha_ensayo,
+            aprobado_por=payload.aprobado_por,
+            aprobado_fecha=payload.aprobado_fecha or payload.fecha_ensayo,
+        ),
+    )

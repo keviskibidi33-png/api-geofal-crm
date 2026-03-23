@@ -15,6 +15,8 @@ from lxml import etree
 logger = logging.getLogger(__name__)
 
 NS_SHEET = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+NS_DRAW = "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"
+NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
 
 def find_template_path(filename: str) -> Path:
@@ -234,16 +236,158 @@ def resolve_sheet_path(zin: zipfile.ZipFile, sheet_name: str) -> str | None:
     return f"xl/{target.lstrip('/')}"
 
 
+def resolve_sheet_and_drawing_paths(zin: zipfile.ZipFile, sheet_name: str) -> tuple[str | None, str | None]:
+    sheet_path = resolve_sheet_path(zin, sheet_name)
+    if sheet_path is None:
+        return None, None
+
+    rels_path = sheet_path.replace("worksheets/", "worksheets/_rels/") + ".rels"
+    try:
+        rels_xml = zin.read(rels_path)
+    except KeyError:
+        return sheet_path, None
+
+    rels_root = etree.fromstring(rels_xml)
+    rel_ns = {"rel": "http://schemas.openxmlformats.org/package/2006/relationships"}
+    drawing_target: str | None = None
+
+    for rel in rels_root.findall("rel:Relationship", rel_ns):
+        rel_type = rel.get("Type", "")
+        if rel_type.endswith("/drawing"):
+            drawing_target = rel.get("Target")
+            break
+
+    if not drawing_target:
+        return sheet_path, None
+
+    clean_target = drawing_target.lstrip("/")
+    if clean_target.startswith("../"):
+        clean_target = clean_target[3:]
+    drawing_path = f"xl/{clean_target}"
+    return sheet_path, drawing_path
+
+
+def _set_paragraph_text(paragraph: etree._Element, text: str) -> None:
+    ns = {"a": NS_A}
+    run_tag = f"{{{NS_A}}}r"
+    field_tag = f"{{{NS_A}}}fld"
+    break_tag = f"{{{NS_A}}}br"
+    run_props_tag = f"{{{NS_A}}}rPr"
+    text_tag = f"{{{NS_A}}}t"
+
+    first_run_props = paragraph.find("a:r/a:rPr", ns)
+    end_para_props = paragraph.find("a:endParaRPr", ns)
+
+    for child in list(paragraph):
+        if child.tag in (run_tag, field_tag, break_tag):
+            paragraph.remove(child)
+
+    if not text:
+        return
+
+    run = etree.Element(run_tag)
+    run_props = etree.SubElement(run, run_props_tag)
+
+    style_source = first_run_props if first_run_props is not None else end_para_props
+    if style_source is not None:
+        for attr, attr_val in style_source.attrib.items():
+            run_props.set(attr, attr_val)
+        for style_child in style_source:
+            run_props.append(etree.fromstring(etree.tostring(style_child)))
+    else:
+        run_props.set("lang", "es-PE")
+        run_props.set("sz", "1000")
+
+    text_node = etree.SubElement(run, text_tag)
+    if "\n" in text or text.endswith(" "):
+        text_node.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+    text_node.text = text
+
+    end_para_props = paragraph.find("a:endParaRPr", ns)
+    if end_para_props is not None:
+        paragraph.insert(list(paragraph).index(end_para_props), run)
+    else:
+        paragraph.append(run)
+
+
+def fill_footer_drawing(
+    drawing_xml: bytes,
+    *,
+    revisado_por: str | None,
+    revisado_fecha: str | None,
+    aprobado_por: str | None,
+    aprobado_fecha: str | None,
+) -> bytes:
+    has_footer = any([revisado_por, revisado_fecha, aprobado_por, aprobado_fecha])
+    if not has_footer:
+        return drawing_xml
+
+    ns = {"xdr": NS_DRAW, "a": NS_A}
+    root = etree.fromstring(drawing_xml)
+
+    def _fill_footer_anchor(anchor: etree._Element, role_label: str, person: str | None, footer_date: str | None) -> bool:
+        paragraphs = anchor.findall(".//xdr:txBody/a:p", ns)
+        if len(paragraphs) < 2:
+            return False
+
+        _set_paragraph_text(paragraphs[0], f"{role_label}: {(person or '').strip()}".rstrip())
+        _set_paragraph_text(paragraphs[1], f"Fecha: {(footer_date or '').strip()}".rstrip())
+        for paragraph in paragraphs[2:]:
+            _set_paragraph_text(paragraph, "")
+        return True
+
+    revisado_nombre = (revisado_por or "").strip()
+    revisado_fecha_text = (revisado_fecha or "").strip()
+    aprobado_nombre = (aprobado_por or "").strip()
+    aprobado_fecha_text = (aprobado_fecha or "").strip()
+
+    for anchor in root.findall(".//xdr:twoCellAnchor", ns):
+        all_texts = [(t.text or "").strip() for t in anchor.findall(".//a:t", ns)]
+        text_blob = " ".join(all_texts)
+
+        is_revisado = "Revisado" in text_blob
+        is_aprobado = "Aprobado" in text_blob
+
+        if not is_revisado and not is_aprobado:
+            continue
+
+        if is_revisado:
+            if _fill_footer_anchor(anchor, "Revisado", revisado_nombre, revisado_fecha_text):
+                continue
+            replacements = {"Revisado:": revisado_nombre, "Revisado": revisado_nombre, "Fecha:": revisado_fecha_text}
+        else:
+            if _fill_footer_anchor(anchor, "Aprobado", aprobado_nombre, aprobado_fecha_text):
+                continue
+            replacements = {"Aprobado:": aprobado_nombre, "Aprobado": aprobado_nombre, "Fecha:": aprobado_fecha_text}
+
+        for run in anchor.findall(".//a:r", ns):
+            text_node = run.find("a:t", ns)
+            if text_node is None or text_node.text is None:
+                continue
+            raw_text = text_node.text.strip()
+            if raw_text in replacements and replacements[raw_text]:
+                text_node.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+                if raw_text.startswith("Fecha"):
+                    text_node.text = f"Fecha: {replacements[raw_text]}"
+                else:
+                    label = "Revisado:" if is_revisado else "Aprobado:"
+                    text_node.text = f"{label} {replacements[raw_text]}"
+
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
 def transform_template_sheet(
     template_filename: str,
     sheet_name: str,
     transform: Callable[[bytes], bytes],
+    *,
+    drawing_transform: Callable[[bytes], bytes] | None = None,
 ) -> bytes:
     template_bytes = get_template_bytes(template_filename)
     output = io.BytesIO()
 
     with zipfile.ZipFile(io.BytesIO(template_bytes), "r") as zin, zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zout:
-        sheet_path = resolve_sheet_path(zin, sheet_name)
+        sheet_path, drawing_path = resolve_sheet_and_drawing_paths(zin, sheet_name)
         if sheet_path is None:
             raise FileNotFoundError(f"Sheet {sheet_name} not found in {template_filename}")
 
@@ -254,8 +398,9 @@ def transform_template_sheet(
             raw = zin.read(item.filename)
             if item.filename == sheet_path:
                 raw = transform(raw)
+            elif drawing_transform and drawing_path and item.filename == drawing_path:
+                raw = drawing_transform(raw)
             zout.writestr(item, raw)
 
     output.seek(0)
     return output.read()
-

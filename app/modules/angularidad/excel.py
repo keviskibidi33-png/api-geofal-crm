@@ -4,12 +4,21 @@ from __future__ import annotations
 
 from lxml import etree
 
-from app.modules.common.excel_xml import NS_SHEET, build_merge_anchor_map, set_cell, transform_template_sheet
+from app.modules.common.excel_xml import NS_SHEET, build_merge_anchor_map, fill_footer_drawing, set_cell, transform_template_sheet
 
 from .schemas import AngularidadRequest
 
 TEMPLATE_FILE = "Template_Angularidad.xlsx"
 SHEET_NAME = "Caras Fracturadas"
+
+
+def _rewrite_formula_refs(root: etree._Element, replacements: dict[str, str]) -> None:
+    for formula in root.findall(f".//{{{NS_SHEET}}}f"):
+        if formula.text:
+            updated = formula.text
+            for old_ref, new_ref in replacements.items():
+                updated = updated.replace(old_ref, new_ref)
+            formula.text = updated
 
 
 def _fill_sheet(sheet_xml: bytes, payload: AngularidadRequest) -> bytes:
@@ -34,33 +43,34 @@ def _fill_sheet(sheet_xml: bytes, payload: AngularidadRequest) -> bytes:
     )
     set_cell(
         sheet_data,
-        "F16",
+        "G16",
         payload.volumen_cilindro_medida_ml,
         is_number=True,
         merge_anchor_map=merge_anchor_map,
-        style_ref="F16",
+        style_ref="G16",
     )
     set_cell(
         sheet_data,
-        "F17",
+        "G17",
         payload.masa_cilindro_vacio_g,
         is_number=True,
         merge_anchor_map=merge_anchor_map,
-        style_ref="F17",
+        style_ref="G17",
     )
     set_cell(
         sheet_data,
-        "F18",
+        "G18",
         payload.gravedad_especifica_agregado_fino_gs,
         is_number=True,
         merge_anchor_map=merge_anchor_map,
-        style_ref="F18",
+        style_ref="G18",
     )
 
-    # Hidden/internal references used by the workbook formulas.
-    set_cell(sheet_data, "D6", payload.volumen_cilindro_medida_ml, is_number=True, merge_anchor_map=merge_anchor_map, style_ref="F16")
-    set_cell(sheet_data, "D7", payload.masa_cilindro_vacio_g, is_number=True, merge_anchor_map=merge_anchor_map, style_ref="F17")
-    set_cell(sheet_data, "D8", payload.gravedad_especifica_agregado_fino_gs, is_number=True, merge_anchor_map=merge_anchor_map, style_ref="F18")
+    # Keep workbook formulas working without leaking helper values into the visible header area.
+    set_cell(sheet_data, "Z6", payload.volumen_cilindro_medida_ml, is_number=True, merge_anchor_map=merge_anchor_map, style_ref="G16")
+    set_cell(sheet_data, "Z7", payload.masa_cilindro_vacio_g, is_number=True, merge_anchor_map=merge_anchor_map, style_ref="G17")
+    set_cell(sheet_data, "Z8", payload.gravedad_especifica_agregado_fino_gs, is_number=True, merge_anchor_map=merge_anchor_map, style_ref="G18")
+    _rewrite_formula_refs(root, {"$D$6": "$Z$6", "$D$7": "$Z$7", "$D$8": "$Z$8"})
 
     method_a_cells = {
         "D24": payload.metodo_a_n8_n16_masa_g,
@@ -101,13 +111,20 @@ def _fill_sheet(sheet_xml: bytes, payload: AngularidadRequest) -> bytes:
     set_cell(sheet_data, "G58", payload.horno_codigo or "", merge_anchor_map=merge_anchor_map, style_ref="G58")
     set_cell(sheet_data, "G59", payload.balanza_01_codigo or "", merge_anchor_map=merge_anchor_map, style_ref="G59")
     set_cell(sheet_data, "G60", payload.tamiz_codigo or "", merge_anchor_map=merge_anchor_map, style_ref="G60")
-    set_cell(sheet_data, "B63", f"Revisado: {payload.revisado_por or '-'}", merge_anchor_map=merge_anchor_map, style_ref="B63")
-    set_cell(sheet_data, "B64", f"Fecha: {payload.revisado_fecha or payload.fecha_ensayo or '-'}", merge_anchor_map=merge_anchor_map, style_ref="B64")
-    set_cell(sheet_data, "F63", f"Aprobado: {payload.aprobado_por or '-'}", merge_anchor_map=merge_anchor_map, style_ref="F63")
-    set_cell(sheet_data, "F64", f"Fecha: {payload.aprobado_fecha or payload.fecha_ensayo or '-'}", merge_anchor_map=merge_anchor_map, style_ref="F64")
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
 def generate_angularidad_excel(payload: AngularidadRequest) -> bytes:
-    return transform_template_sheet(TEMPLATE_FILE, SHEET_NAME, lambda xml: _fill_sheet(xml, payload))
+    return transform_template_sheet(
+        TEMPLATE_FILE,
+        SHEET_NAME,
+        lambda xml: _fill_sheet(xml, payload),
+        drawing_transform=lambda xml: fill_footer_drawing(
+            xml,
+            revisado_por=payload.revisado_por,
+            revisado_fecha=payload.revisado_fecha or payload.fecha_ensayo,
+            aprobado_por=payload.aprobado_por,
+            aprobado_fecha=payload.aprobado_fecha or payload.fecha_ensayo,
+        ),
+    )

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from lxml import etree
 
-from app.modules.common.excel_xml import NS_SHEET, build_merge_anchor_map, set_cell, transform_template_sheet
+from app.modules.common.excel_xml import NS_SHEET, build_merge_anchor_map, fill_footer_drawing, set_cell, transform_template_sheet
 
 from .schemas import ContMatOrganicaRequest
 
@@ -23,8 +23,9 @@ def _fill_sheet(sheet_xml: bytes, payload: ContMatOrganicaRequest) -> bytes:
     set_cell(sheet_data, "D13", payload.numero_ot, merge_anchor_map=merge_anchor_map, style_ref="D13")
     set_cell(sheet_data, "E13", payload.fecha_ensayo, merge_anchor_map=merge_anchor_map, style_ref="E13")
     set_cell(sheet_data, "F13", payload.realizado_por or "", merge_anchor_map=merge_anchor_map, style_ref="F13")
+    set_cell(sheet_data, "H13", "", merge_anchor_map=merge_anchor_map, style_ref="H13")
 
-    set_cell(sheet_data, "F19", payload.crisol_numero or "", merge_anchor_map=merge_anchor_map, style_ref="F19")
+    set_cell(sheet_data, "G19", payload.crisol_numero or "", merge_anchor_map=merge_anchor_map, style_ref="G19")
     set_cell(sheet_data, "G20", payload.peso_especimen_seco_crisol_g, is_number=True, merge_anchor_map=merge_anchor_map, style_ref="G20")
     set_cell(sheet_data, "G21", payload.peso_especimen_calcinado_g, is_number=True, merge_anchor_map=merge_anchor_map, style_ref="G21")
     set_cell(sheet_data, "G22", payload.peso_crisol_g, is_number=True, merge_anchor_map=merge_anchor_map, style_ref="G22")
@@ -37,5 +38,15 @@ def _fill_sheet(sheet_xml: bytes, payload: ContMatOrganicaRequest) -> bytes:
 
 
 def generate_cont_mat_organica_excel(payload: ContMatOrganicaRequest) -> bytes:
-    return transform_template_sheet(TEMPLATE_FILE, SHEET_NAME, lambda xml: _fill_sheet(xml, payload))
-
+    return transform_template_sheet(
+        TEMPLATE_FILE,
+        SHEET_NAME,
+        lambda xml: _fill_sheet(xml, payload),
+        drawing_transform=lambda xml: fill_footer_drawing(
+            xml,
+            revisado_por=payload.revisado_por,
+            revisado_fecha=payload.revisado_fecha or payload.fecha_ensayo,
+            aprobado_por=payload.aprobado_por,
+            aprobado_fecha=payload.aprobado_fecha or payload.fecha_ensayo,
+        ),
+    )

@@ -1,4 +1,4 @@
-from app.modules.common.router_factory import create_lab_router
+from app.modules.common.router_factory import apply_footer_defaults, create_lab_router
 from app.utils.export_filename import build_formato_filename
 
 from .excel import generate_azul_metileno_excel
@@ -13,8 +13,8 @@ router = create_lab_router(
     id_header_name="X-AM-Id",
     model=AzulMetilenoEnsayo,
     request_model=AzulMetilenoRequest,
+    payload_preprocessor=apply_footer_defaults,
     generate_excel=generate_azul_metileno_excel,
     build_numero_ensayo=lambda payload: f"{payload.numero_ot}-AM",
     build_download_filename=lambda payload: build_formato_filename(payload.muestra, "AG", "AZUL METILENO"),
 )
-

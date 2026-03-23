@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from lxml import etree
 
-from app.modules.common.excel_xml import NS_SHEET, build_merge_anchor_map, set_cell, transform_template_sheet
+from app.modules.common.excel_xml import NS_SHEET, build_merge_anchor_map, fill_footer_drawing, set_cell, transform_template_sheet
 
 from .schemas import AzulMetilenoRequest
 
@@ -38,5 +38,15 @@ def _fill_sheet(sheet_xml: bytes, payload: AzulMetilenoRequest) -> bytes:
 
 
 def generate_azul_metileno_excel(payload: AzulMetilenoRequest) -> bytes:
-    return transform_template_sheet(TEMPLATE_FILE, SHEET_NAME, lambda xml: _fill_sheet(xml, payload))
-
+    return transform_template_sheet(
+        TEMPLATE_FILE,
+        SHEET_NAME,
+        lambda xml: _fill_sheet(xml, payload),
+        drawing_transform=lambda xml: fill_footer_drawing(
+            xml,
+            revisado_por=payload.revisado_por,
+            revisado_fecha=payload.revisado_fecha or payload.fecha_ensayo,
+            aprobado_por=payload.aprobado_por,
+            aprobado_fecha=payload.aprobado_fecha or payload.fecha_ensayo,
+        ),
+    )
