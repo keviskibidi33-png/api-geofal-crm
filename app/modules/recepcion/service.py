@@ -125,6 +125,7 @@ class RecepcionService:
             # Crear muestras
             for i, muestra_data in enumerate(recepcion_data.muestras, 1):
                 muestra_dict = muestra_data.dict()
+                muestra_dict['item_numero'] = i
                 
                 # Asegurar que campos requeridos no estén vacíos
                 if not muestra_dict.get('identificacion_muestra') or muestra_dict.get('identificacion_muestra', '').strip() == '':
@@ -200,6 +201,8 @@ class RecepcionService:
             
             # 2. Crear nuevas muestras
             for i, m_dict in enumerate(muestras_data):
+                m_dict['item_numero'] = i + 1
+
                 # Ensure defaults
                 if not m_dict.get('identificacion_muestra') or m_dict.get('identificacion_muestra', '').strip() == '':
                      m_dict['identificacion_muestra'] = f"Muestra {m_dict.get('item_numero', i+1)}"

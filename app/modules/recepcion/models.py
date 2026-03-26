@@ -71,7 +71,12 @@ class RecepcionMuestra(Base):
     creado_por_id = Column(Integer, nullable=True, comment="Usuario que creó la recepción")
     
     # Relación con muestras
-    muestras = relationship("MuestraConcreto", back_populates="recepcion_parent", cascade="all, delete-orphan")
+    muestras = relationship(
+        "MuestraConcreto",
+        back_populates="recepcion_parent",
+        cascade="all, delete-orphan",
+        order_by="MuestraConcreto.item_numero",
+    )
 
 class MuestraConcreto(Base):
     """
