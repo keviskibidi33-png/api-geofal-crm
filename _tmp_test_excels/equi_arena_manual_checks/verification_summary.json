@@ -1,0 +1,60 @@
+[
+  {
+    "file": "c:\\Users\\Lenovo\\Documents\\crmnew\\api-geofal-crm\\_tmp_test_excels\\equi_arena_manual_checks\\caso_suelo_manual_A.xlsx",
+    "name": "caso_suelo_manual_A",
+    "computed_average": 25.0,
+    "cells": {
+      "B17": "SUELO",
+      "F17": "MANUAL",
+      "F21": "PROCEDIMIENTO A",
+      "H35": 26.0,
+      "I35": 24.0,
+      "J35": 24.0,
+      "H36": 25.0,
+      "D39": "-",
+      "F39": "Verificacion manual de formato"
+    },
+    "locked": {
+      "H35": true,
+      "I35": true,
+      "J35": true,
+      "H36": true
+    },
+    "sheet_protection": true,
+    "merged_ranges_check": [
+      "H36:J36",
+      "B17:D17",
+      "F17:G17",
+      "F21:H21"
+    ]
+  },
+  {
+    "file": "c:\\Users\\Lenovo\\Documents\\crmnew\\api-geofal-crm\\_tmp_test_excels\\equi_arena_manual_checks\\caso_agregado_mecanico_B.xlsx",
+    "name": "caso_agregado_mecanico_B",
+    "computed_average": 50.0,
+    "cells": {
+      "B17": "AGREGADO FINO",
+      "F17": "MECÁNICO",
+      "F21": "PROCEDIMIENTO B",
+      "H35": 50.0,
+      "I35": 50.0,
+      "J35": 50.0,
+      "H36": 50.0,
+      "D39": "-",
+      "F39": "Segundo caso de validacion"
+    },
+    "locked": {
+      "H35": true,
+      "I35": true,
+      "J35": true,
+      "H36": true
+    },
+    "sheet_protection": true,
+    "merged_ranges_check": [
+      "H36:J36",
+      "B17:D17",
+      "F17:G17",
+      "F21:H21"
+    ]
+  }
+]

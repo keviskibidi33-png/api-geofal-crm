@@ -1,0 +1,684 @@
+<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+  <xdr:twoCellAnchor>
+    <xdr:from>
+      <xdr:col>0</xdr:col>
+      <xdr:colOff>45720</xdr:colOff>
+      <xdr:row>50</xdr:row>
+      <xdr:rowOff>121920</xdr:rowOff>
+    </xdr:from>
+    <xdr:to>
+      <xdr:col>9</xdr:col>
+      <xdr:colOff>0</xdr:colOff>
+      <xdr:row>50</xdr:row>
+      <xdr:rowOff>121920</xdr:rowOff>
+    </xdr:to>
+    <xdr:cxnSp macro="">
+      <xdr:nvCxnSpPr>
+        <xdr:cNvPr id="2" name="2 Conector recto">
+          <a:extLst>
+            <a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">
+              <a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{9A0D046F-3422-4578-8A35-6CAEE54DDD2C}"/>
+            </a:ext>
+          </a:extLst>
+        </xdr:cNvPr>
+        <xdr:cNvCxnSpPr>
+          <a:cxnSpLocks noChangeShapeType="1"/>
+        </xdr:cNvCxnSpPr>
+      </xdr:nvCxnSpPr>
+      <xdr:spPr bwMode="auto">
+        <a:xfrm flipV="1">
+          <a:off x="45720" y="11066145"/>
+          <a:ext cx="6383655" cy="0"/>
+        </a:xfrm>
+        <a:prstGeom prst="line">
+          <a:avLst/>
+        </a:prstGeom>
+        <a:noFill/>
+        <a:ln w="28575" algn="ctr">
+          <a:solidFill>
+            <a:srgbClr val="002060"/>
+          </a:solidFill>
+          <a:round/>
+          <a:headEnd/>
+          <a:tailEnd/>
+        </a:ln>
+        <a:extLst>
+          <a:ext uri="{909E8E84-426E-40DD-AFC4-6F175D3DCCD1}">
+            <a14:hiddenFill xmlns:a14="http://schemas.microsoft.com/office/drawing/2010/main">
+              <a:noFill/>
+            </a14:hiddenFill>
+          </a:ext>
+        </a:extLst>
+      </xdr:spPr>
+    </xdr:cxnSp>
+    <xdr:clientData/>
+  </xdr:twoCellAnchor>
+  <xdr:twoCellAnchor>
+    <xdr:from>
+      <xdr:col>2</xdr:col>
+      <xdr:colOff>478155</xdr:colOff>
+      <xdr:row>14</xdr:row>
+      <xdr:rowOff>95250</xdr:rowOff>
+    </xdr:from>
+    <xdr:to>
+      <xdr:col>5</xdr:col>
+      <xdr:colOff>472755</xdr:colOff>
+      <xdr:row>15</xdr:row>
+      <xdr:rowOff>174090</xdr:rowOff>
+    </xdr:to>
+    <xdr:sp macro="" textlink="">
+      <xdr:nvSpPr>
+        <xdr:cNvPr id="9" name="8 CuadroTexto">
+          <a:extLst>
+            <a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">
+              <a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{81261A9F-48F2-4059-BAAB-6EFE119A3F04}"/>
+            </a:ext>
+          </a:extLst>
+        </xdr:cNvPr>
+        <xdr:cNvSpPr txBox="1"/>
+      </xdr:nvSpPr>
+      <xdr:spPr>
+        <a:xfrm>
+          <a:off x="1764030" y="3105150"/>
+          <a:ext cx="2480625" cy="221715"/>
+        </a:xfrm>
+        <a:prstGeom prst="rect">
+          <a:avLst/>
+        </a:prstGeom>
+        <a:solidFill>
+          <a:schemeClr val="lt1"/>
+        </a:solidFill>
+        <a:ln w="9525" cmpd="sng">
+          <a:solidFill>
+            <a:sysClr val="windowText" lastClr="000000"/>
+          </a:solidFill>
+        </a:ln>
+      </xdr:spPr>
+      <xdr:style>
+        <a:lnRef idx="0">
+          <a:scrgbClr r="0" g="0" b="0"/>
+        </a:lnRef>
+        <a:fillRef idx="0">
+          <a:scrgbClr r="0" g="0" b="0"/>
+        </a:fillRef>
+        <a:effectRef idx="0">
+          <a:scrgbClr r="0" g="0" b="0"/>
+        </a:effectRef>
+        <a:fontRef idx="minor">
+          <a:schemeClr val="dk1"/>
+        </a:fontRef>
+      </xdr:style>
+      <xdr:txBody>
+        <a:bodyPr vertOverflow="clip" horzOverflow="clip" wrap="square" rtlCol="0" anchor="t"/>
+        <a:lstStyle/>
+        <a:p>
+          <a:pPr algn="ctr"/>
+          <a:r>
+            <a:rPr lang="es-PE" sz="800">
+              <a:latin typeface="Arial" panose="020B0604020202020204" pitchFamily="34" charset="0"/>
+              <a:cs typeface="Arial" panose="020B0604020202020204" pitchFamily="34" charset="0"/>
+            </a:rPr>
+            <a:t>CONDICIONES DE SECADO</a:t>
+          </a:r>
+        </a:p>
+      </xdr:txBody>
+    </xdr:sp>
+    <xdr:clientData/>
+  </xdr:twoCellAnchor>
+  <xdr:twoCellAnchor>
+    <xdr:from>
+      <xdr:col>2</xdr:col>
+      <xdr:colOff>478155</xdr:colOff>
+      <xdr:row>15</xdr:row>
+      <xdr:rowOff>171450</xdr:rowOff>
+    </xdr:from>
+    <xdr:to>
+      <xdr:col>4</xdr:col>
+      <xdr:colOff>507135</xdr:colOff>
+      <xdr:row>16</xdr:row>
+      <xdr:rowOff>189330</xdr:rowOff>
+    </xdr:to>
+    <xdr:sp macro="" textlink="">
+      <xdr:nvSpPr>
+        <xdr:cNvPr id="10" name="8 CuadroTexto">
+          <a:extLst>
+            <a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">
+              <a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{86D04776-C8D7-4FCC-AFE7-EB6F01B756ED}"/>
+            </a:ext>
+          </a:extLst>
+        </xdr:cNvPr>
+        <xdr:cNvSpPr txBox="1"/>
+      </xdr:nvSpPr>
+      <xdr:spPr>
+        <a:xfrm>
+          <a:off x="1764030" y="3324225"/>
+          <a:ext cx="1686330" cy="217905"/>
+        </a:xfrm>
+        <a:prstGeom prst="rect">
+          <a:avLst/>
+        </a:prstGeom>
+        <a:solidFill>
+          <a:schemeClr val="lt1"/>
+        </a:solidFill>
+        <a:ln w="9525" cmpd="sng">
+          <a:solidFill>
+            <a:sysClr val="windowText" lastClr="000000"/>
+          </a:solidFill>
+        </a:ln>
+      </xdr:spPr>
+      <xdr:style>
+        <a:lnRef idx="0">
+          <a:scrgbClr r="0" g="0" b="0"/>
+        </a:lnRef>
+        <a:fillRef idx="0">
+          <a:scrgbClr r="0" g="0" b="0"/>
+        </a:fillRef>
+        <a:effectRef idx="0">
+          <a:scrgbClr r="0" g="0" b="0"/>
+        </a:effectRef>
+        <a:fontRef idx="minor">
+          <a:schemeClr val="dk1"/>
+        </a:fontRef>
+      </xdr:style>
+      <xdr:txBody>
+        <a:bodyPr vertOverflow="clip" horzOverflow="clip" wrap="square" rtlCol="0" anchor="t"/>
+        <a:lstStyle/>
+        <a:p>
+          <a:pPr algn="l"/>
+          <a:r>
+            <a:rPr lang="es-PE" sz="700">
+              <a:latin typeface="Arial" panose="020B0604020202020204" pitchFamily="34" charset="0"/>
+              <a:cs typeface="Arial" panose="020B0604020202020204" pitchFamily="34" charset="0"/>
+            </a:rPr>
+            <a:t>SECADO AL AIRE</a:t>
+          </a:r>
+        </a:p>
+      </xdr:txBody>
+    </xdr:sp>
+    <xdr:clientData/>
+  </xdr:twoCellAnchor>
+  <xdr:twoCellAnchor>
+    <xdr:from>
+      <xdr:col>2</xdr:col>
+      <xdr:colOff>478155</xdr:colOff>
+      <xdr:row>16</xdr:row>
+      <xdr:rowOff>186690</xdr:rowOff>
+    </xdr:from>
+    <xdr:to>
+      <xdr:col>4</xdr:col>
+      <xdr:colOff>507135</xdr:colOff>
+      <xdr:row>18</xdr:row>
+      <xdr:rowOff>4545</xdr:rowOff>
+    </xdr:to>
+    <xdr:sp macro="" textlink="">
+      <xdr:nvSpPr>
+        <xdr:cNvPr id="11" name="8 CuadroTexto">
+          <a:extLst>
+            <a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">
+              <a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{5C287F73-8EFB-4A9F-89A5-AD3E73DFA584}"/>
+            </a:ext>
+          </a:extLst>
+        </xdr:cNvPr>
+        <xdr:cNvSpPr txBox="1"/>
+      </xdr:nvSpPr>
+      <xdr:spPr>
+        <a:xfrm>
+          <a:off x="1764030" y="3539490"/>
+          <a:ext cx="1686330" cy="217905"/>
+        </a:xfrm>
+        <a:prstGeom prst="rect">
+          <a:avLst/>
+        </a:prstGeom>
+        <a:solidFill>
+          <a:schemeClr val="lt1"/>
+        </a:solidFill>
+        <a:ln w="9525" cmpd="sng">
+          <a:solidFill>
+            <a:sysClr val="windowText" lastClr="000000"/>
+          </a:solidFill>
+        </a:ln>
+      </xdr:spPr>
+      <xdr:style>
+        <a:lnRef idx="0">
+          <a:scrgbClr r="0" g="0" b="0"/>
+        </a:lnRef>
+        <a:fillRef idx="0">
+          <a:scrgbClr r="0" g="0" b="0"/>
+        </a:fillRef>
+        <a:effectRef idx="0">
+          <a:scrgbClr r="0" g="0" b="0"/>
+        </a:effectRef>
+        <a:fontRef idx="minor">
+          <a:schemeClr val="dk1"/>
+        </a:fontRef>
+      </xdr:style>
+      <xdr:txBody>
+        <a:bodyPr vertOverflow="clip" horzOverflow="clip" wrap="square" rtlCol="0" anchor="t"/>
+        <a:lstStyle/>
+        <a:p>
+          <a:pPr algn="l"/>
+          <a:r>
+            <a:rPr lang="es-PE" sz="700">
+              <a:latin typeface="Arial" panose="020B0604020202020204" pitchFamily="34" charset="0"/>
+              <a:cs typeface="Arial" panose="020B0604020202020204" pitchFamily="34" charset="0"/>
+            </a:rPr>
+            <a:t>SECADO EN HORNO 60°C</a:t>
+          </a:r>
+        </a:p>
+      </xdr:txBody>
+    </xdr:sp>
+    <xdr:clientData/>
+  </xdr:twoCellAnchor>
+  <xdr:twoCellAnchor>
+    <xdr:from>
+      <xdr:col>4</xdr:col>
+      <xdr:colOff>508635</xdr:colOff>
+      <xdr:row>15</xdr:row>
+      <xdr:rowOff>171450</xdr:rowOff>
+    </xdr:from>
+    <xdr:to>
+      <xdr:col>5</xdr:col>
+      <xdr:colOff>474255</xdr:colOff>
+      <xdr:row>16</xdr:row>
+      <xdr:rowOff>189330</xdr:rowOff>
+    </xdr:to>
+    <xdr:sp macro="" textlink="">
+      <xdr:nvSpPr>
+        <xdr:cNvPr id="12" name="8 CuadroTexto">
+          <a:extLst>
+            <a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">
+              <a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{B2DE53D7-6CAF-417E-AD74-E44EAAAC40D2}"/>
+            </a:ext>
+          </a:extLst>
+        </xdr:cNvPr>
+        <xdr:cNvSpPr txBox="1"/>
+      </xdr:nvSpPr>
+      <xdr:spPr>
+        <a:xfrm>
+          <a:off x="3451860" y="3324225"/>
+          <a:ext cx="794295" cy="217905"/>
+        </a:xfrm>
+        <a:prstGeom prst="rect">
+          <a:avLst/>
+        </a:prstGeom>
+        <a:solidFill>
+          <a:schemeClr val="lt1"/>
+        </a:solidFill>
+        <a:ln w="9525" cmpd="sng">
+          <a:solidFill>
+            <a:sysClr val="windowText" lastClr="000000"/>
+          </a:solidFill>
+        </a:ln>
+      </xdr:spPr>
+      <xdr:style>
+        <a:lnRef idx="0">
+          <a:scrgbClr r="0" g="0" b="0"/>
+        </a:lnRef>
+        <a:fillRef idx="0">
+          <a:scrgbClr r="0" g="0" b="0"/>
+        </a:fillRef>
+        <a:effectRef idx="0">
+          <a:scrgbClr r="0" g="0" b="0"/>
+        </a:effectRef>
+        <a:fontRef idx="minor">
+          <a:schemeClr val="dk1"/>
+        </a:fontRef>
+      </xdr:style>
+      <xdr:txBody>
+        <a:bodyPr vertOverflow="clip" horzOverflow="clip" wrap="square" rtlCol="0" anchor="t"/>
+        <a:lstStyle/>
+        <a:p>
+          <a:pPr algn="l"/>
+          <a:endParaRPr lang="es-PE" sz="800">
+            <a:latin typeface="Arial" panose="020B0604020202020204" pitchFamily="34" charset="0"/>
+            <a:cs typeface="Arial" panose="020B0604020202020204" pitchFamily="34" charset="0"/>
+          </a:endParaRPr>
+        </a:p>
+      </xdr:txBody>
+    </xdr:sp>
+    <xdr:clientData/>
+  </xdr:twoCellAnchor>
+  <xdr:twoCellAnchor>
+    <xdr:from>
+      <xdr:col>4</xdr:col>
+      <xdr:colOff>508635</xdr:colOff>
+      <xdr:row>16</xdr:row>
+      <xdr:rowOff>186690</xdr:rowOff>
+    </xdr:from>
+    <xdr:to>
+      <xdr:col>5</xdr:col>
+      <xdr:colOff>474255</xdr:colOff>
+      <xdr:row>18</xdr:row>
+      <xdr:rowOff>4545</xdr:rowOff>
+    </xdr:to>
+    <xdr:sp macro="" textlink="">
+      <xdr:nvSpPr>
+        <xdr:cNvPr id="13" name="8 CuadroTexto">
+          <a:extLst>
+            <a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">
+              <a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{EDF2FDE4-1607-4FF0-9841-CAAD56CAA1F8}"/>
+            </a:ext>
+          </a:extLst>
+        </xdr:cNvPr>
+        <xdr:cNvSpPr txBox="1"/>
+      </xdr:nvSpPr>
+      <xdr:spPr>
+        <a:xfrm>
+          <a:off x="3451860" y="3539490"/>
+          <a:ext cx="794295" cy="217905"/>
+        </a:xfrm>
+        <a:prstGeom prst="rect">
+          <a:avLst/>
+        </a:prstGeom>
+        <a:solidFill>
+          <a:schemeClr val="lt1"/>
+        </a:solidFill>
+        <a:ln w="9525" cmpd="sng">
+          <a:solidFill>
+            <a:sysClr val="windowText" lastClr="000000"/>
+          </a:solidFill>
+        </a:ln>
+      </xdr:spPr>
+      <xdr:style>
+        <a:lnRef idx="0">
+          <a:scrgbClr r="0" g="0" b="0"/>
+        </a:lnRef>
+        <a:fillRef idx="0">
+          <a:scrgbClr r="0" g="0" b="0"/>
+        </a:fillRef>
+        <a:effectRef idx="0">
+          <a:scrgbClr r="0" g="0" b="0"/>
+        </a:effectRef>
+        <a:fontRef idx="minor">
+          <a:schemeClr val="dk1"/>
+        </a:fontRef>
+      </xdr:style>
+      <xdr:txBody>
+        <a:bodyPr vertOverflow="clip" horzOverflow="clip" wrap="square" rtlCol="0" anchor="t"/>
+        <a:lstStyle/>
+        <a:p>
+          <a:pPr algn="l"/>
+          <a:endParaRPr lang="es-PE" sz="800">
+            <a:latin typeface="Arial" panose="020B0604020202020204" pitchFamily="34" charset="0"/>
+            <a:cs typeface="Arial" panose="020B0604020202020204" pitchFamily="34" charset="0"/>
+          </a:endParaRPr>
+        </a:p>
+      </xdr:txBody>
+    </xdr:sp>
+    <xdr:clientData/>
+  </xdr:twoCellAnchor>
+  <xdr:oneCellAnchor>
+    <xdr:from>
+      <xdr:col>14</xdr:col>
+      <xdr:colOff>624840</xdr:colOff>
+      <xdr:row>6</xdr:row>
+      <xdr:rowOff>7620</xdr:rowOff>
+    </xdr:from>
+    <xdr:ext cx="184731" cy="264560"/>
+    <xdr:sp macro="" textlink="">
+      <xdr:nvSpPr>
+        <xdr:cNvPr id="14" name="CuadroTexto 13">
+          <a:extLst>
+            <a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">
+              <a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{A06A5535-A570-4F3A-8B34-11F24E1EA970}"/>
+            </a:ext>
+          </a:extLst>
+        </xdr:cNvPr>
+        <xdr:cNvSpPr txBox="1"/>
+      </xdr:nvSpPr>
+      <xdr:spPr>
+        <a:xfrm>
+          <a:off x="10130790" y="1207770"/>
+          <a:ext cx="184731" cy="264560"/>
+        </a:xfrm>
+        <a:prstGeom prst="rect">
+          <a:avLst/>
+        </a:prstGeom>
+        <a:noFill/>
+      </xdr:spPr>
+      <xdr:style>
+        <a:lnRef idx="0">
+          <a:scrgbClr r="0" g="0" b="0"/>
+        </a:lnRef>
+        <a:fillRef idx="0">
+          <a:scrgbClr r="0" g="0" b="0"/>
+        </a:fillRef>
+        <a:effectRef idx="0">
+          <a:scrgbClr r="0" g="0" b="0"/>
+        </a:effectRef>
+        <a:fontRef idx="minor">
+          <a:schemeClr val="tx1"/>
+        </a:fontRef>
+      </xdr:style>
+      <xdr:txBody>
+        <a:bodyPr vertOverflow="clip" horzOverflow="clip" wrap="none" rtlCol="0" anchor="t">
+          <a:spAutoFit/>
+        </a:bodyPr>
+        <a:lstStyle/>
+        <a:p>
+          <a:endParaRPr lang="es-PE" sz="1100"/>
+        </a:p>
+      </xdr:txBody>
+    </xdr:sp>
+    <xdr:clientData/>
+  </xdr:oneCellAnchor>
+  <xdr:twoCellAnchor>
+    <xdr:from>
+      <xdr:col>0</xdr:col>
+      <xdr:colOff>1000125</xdr:colOff>
+      <xdr:row>42</xdr:row>
+      <xdr:rowOff>19050</xdr:rowOff>
+    </xdr:from>
+    <xdr:to>
+      <xdr:col>3</xdr:col>
+      <xdr:colOff>819842</xdr:colOff>
+      <xdr:row>45</xdr:row>
+      <xdr:rowOff>97471</xdr:rowOff>
+    </xdr:to>
+    <xdr:sp macro="" textlink="">
+      <xdr:nvSpPr>
+        <xdr:cNvPr id="22" name="12 Rectángulo">
+          <a:extLst>
+            <a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">
+              <a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{40DD37E1-D5BA-41CB-8CD0-01AABF2AB309}"/>
+            </a:ext>
+          </a:extLst>
+        </xdr:cNvPr>
+        <xdr:cNvSpPr/>
+      </xdr:nvSpPr>
+      <xdr:spPr>
+        <a:xfrm>
+          <a:off x="1000125" y="9363075"/>
+          <a:ext cx="1934267" cy="678496"/>
+        </a:xfrm>
+        <a:prstGeom prst="rect">
+          <a:avLst/>
+        </a:prstGeom>
+        <a:ln w="3175"/>
+      </xdr:spPr>
+      <xdr:style>
+        <a:lnRef idx="2">
+          <a:schemeClr val="dk1"/>
+        </a:lnRef>
+        <a:fillRef idx="1">
+          <a:schemeClr val="lt1"/>
+        </a:fillRef>
+        <a:effectRef idx="0">
+          <a:schemeClr val="dk1"/>
+        </a:effectRef>
+        <a:fontRef idx="minor">
+          <a:schemeClr val="dk1"/>
+        </a:fontRef>
+      </xdr:style>
+      <xdr:txBody>
+        <a:bodyPr vertOverflow="clip" horzOverflow="clip" rtlCol="0" anchor="t"/>
+        <a:lstStyle/>
+        <a:p>
+          <a:r>
+            <a:rPr lang="es-PE" sz="1000">
+              <a:latin typeface="Arial" panose="020B0604020202020204" pitchFamily="34" charset="0"/>
+              <a:cs typeface="Arial" panose="020B0604020202020204" pitchFamily="34" charset="0"/>
+            </a:rPr>
+            <a:t>Revisado:</a:t>
+          </a:r>
+        </a:p>
+        <a:p>
+          <a:endParaRPr lang="es-PE" sz="1000">
+            <a:latin typeface="Arial" panose="020B0604020202020204" pitchFamily="34" charset="0"/>
+            <a:cs typeface="Arial" panose="020B0604020202020204" pitchFamily="34" charset="0"/>
+          </a:endParaRPr>
+        </a:p>
+        <a:p>
+          <a:r>
+            <a:rPr lang="es-PE" sz="1000">
+              <a:latin typeface="Arial" panose="020B0604020202020204" pitchFamily="34" charset="0"/>
+              <a:cs typeface="Arial" panose="020B0604020202020204" pitchFamily="34" charset="0"/>
+            </a:rPr>
+            <a:t>Fecha:</a:t>
+          </a:r>
+        </a:p>
+      </xdr:txBody>
+    </xdr:sp>
+    <xdr:clientData/>
+  </xdr:twoCellAnchor>
+  <xdr:twoCellAnchor>
+    <xdr:from>
+      <xdr:col>4</xdr:col>
+      <xdr:colOff>353118</xdr:colOff>
+      <xdr:row>42</xdr:row>
+      <xdr:rowOff>7622</xdr:rowOff>
+    </xdr:from>
+    <xdr:to>
+      <xdr:col>7</xdr:col>
+      <xdr:colOff>160021</xdr:colOff>
+      <xdr:row>45</xdr:row>
+      <xdr:rowOff>69486</xdr:rowOff>
+    </xdr:to>
+    <xdr:sp macro="" textlink="">
+      <xdr:nvSpPr>
+        <xdr:cNvPr id="23" name="12 Rectángulo">
+          <a:extLst>
+            <a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">
+              <a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{4CB5452E-B785-4BA3-972C-2B3C9B1CE9D3}"/>
+            </a:ext>
+          </a:extLst>
+        </xdr:cNvPr>
+        <xdr:cNvSpPr/>
+      </xdr:nvSpPr>
+      <xdr:spPr>
+        <a:xfrm>
+          <a:off x="3296343" y="9351647"/>
+          <a:ext cx="2064328" cy="661939"/>
+        </a:xfrm>
+        <a:prstGeom prst="rect">
+          <a:avLst/>
+        </a:prstGeom>
+        <a:ln w="3175"/>
+      </xdr:spPr>
+      <xdr:style>
+        <a:lnRef idx="2">
+          <a:schemeClr val="dk1"/>
+        </a:lnRef>
+        <a:fillRef idx="1">
+          <a:schemeClr val="lt1"/>
+        </a:fillRef>
+        <a:effectRef idx="0">
+          <a:schemeClr val="dk1"/>
+        </a:effectRef>
+        <a:fontRef idx="minor">
+          <a:schemeClr val="dk1"/>
+        </a:fontRef>
+      </xdr:style>
+      <xdr:txBody>
+        <a:bodyPr vertOverflow="clip" horzOverflow="clip" rtlCol="0" anchor="t"/>
+        <a:lstStyle/>
+        <a:p>
+          <a:r>
+            <a:rPr lang="es-PE" sz="1000">
+              <a:latin typeface="Arial" panose="020B0604020202020204" pitchFamily="34" charset="0"/>
+              <a:cs typeface="Arial" panose="020B0604020202020204" pitchFamily="34" charset="0"/>
+            </a:rPr>
+            <a:t>Aprobado:</a:t>
+          </a:r>
+        </a:p>
+        <a:p>
+          <a:endParaRPr lang="es-PE" sz="1000">
+            <a:latin typeface="Arial" panose="020B0604020202020204" pitchFamily="34" charset="0"/>
+            <a:cs typeface="Arial" panose="020B0604020202020204" pitchFamily="34" charset="0"/>
+          </a:endParaRPr>
+        </a:p>
+        <a:p>
+          <a:r>
+            <a:rPr lang="es-PE" sz="1000">
+              <a:latin typeface="Arial" panose="020B0604020202020204" pitchFamily="34" charset="0"/>
+              <a:cs typeface="Arial" panose="020B0604020202020204" pitchFamily="34" charset="0"/>
+            </a:rPr>
+            <a:t>Fecha:</a:t>
+          </a:r>
+        </a:p>
+      </xdr:txBody>
+    </xdr:sp>
+    <xdr:clientData/>
+  </xdr:twoCellAnchor>
+  <xdr:twoCellAnchor editAs="oneCell">
+    <xdr:from>
+      <xdr:col>3</xdr:col>
+      <xdr:colOff>447676</xdr:colOff>
+      <xdr:row>0</xdr:row>
+      <xdr:rowOff>47625</xdr:rowOff>
+    </xdr:from>
+    <xdr:to>
+      <xdr:col>5</xdr:col>
+      <xdr:colOff>285750</xdr:colOff>
+      <xdr:row>4</xdr:row>
+      <xdr:rowOff>152319</xdr:rowOff>
+    </xdr:to>
+    <xdr:pic>
+      <xdr:nvPicPr>
+        <xdr:cNvPr id="20" name="Imagen 19">
+          <a:extLst>
+            <a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">
+              <a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{D31F69EF-DF4C-45DA-82A2-FE82B0D685EF}"/>
+            </a:ext>
+          </a:extLst>
+        </xdr:cNvPr>
+        <xdr:cNvPicPr>
+          <a:picLocks noChangeAspect="1" noChangeArrowheads="1"/>
+        </xdr:cNvPicPr>
+      </xdr:nvPicPr>
+      <xdr:blipFill>
+        <a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="rId1" cstate="print">
+          <a:extLst>
+            <a:ext uri="{28A0092B-C50C-407E-A947-70E740481C1C}">
+              <a14:useLocalDpi xmlns:a14="http://schemas.microsoft.com/office/drawing/2010/main" val="0"/>
+            </a:ext>
+          </a:extLst>
+        </a:blip>
+        <a:srcRect/>
+        <a:stretch>
+          <a:fillRect/>
+        </a:stretch>
+      </xdr:blipFill>
+      <xdr:spPr bwMode="auto">
+        <a:xfrm>
+          <a:off x="2562226" y="47625"/>
+          <a:ext cx="1495424" cy="904794"/>
+        </a:xfrm>
+        <a:prstGeom prst="rect">
+          <a:avLst/>
+        </a:prstGeom>
+        <a:noFill/>
+        <a:extLst>
+          <a:ext uri="{909E8E84-426E-40DD-AFC4-6F175D3DCCD1}">
+            <a14:hiddenFill xmlns:a14="http://schemas.microsoft.com/office/drawing/2010/main">
+              <a:solidFill>
+                <a:srgbClr val="FFFFFF"/>
+              </a:solidFill>
+            </a14:hiddenFill>
+          </a:ext>
+        </a:extLst>
+      </xdr:spPr>
+    </xdr:pic>
+    <xdr:clientData/>
+  </xdr:twoCellAnchor>
+</xdr:wsDr>
