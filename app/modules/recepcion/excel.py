@@ -482,6 +482,17 @@ class ExcelLogic:
             if isinstance(val, (datetime, date)): return val.strftime("%d/%m/%Y")
             return str(val).strip()
 
+        def normalize_ruc_candidate(val) -> str:
+            candidate = safe_str(val)
+            if not candidate:
+                return ""
+
+            digits_only = re.sub(r"\D", "", candidate)
+            if 8 <= len(digits_only) <= 20:
+                return digits_only
+
+            return ""
+
         data = {}
 
         # Fallback Coordinates (derived from "REC Nº 1000-26")
@@ -592,7 +603,10 @@ class ExcelLogic:
                     data['numero_recepcion'] = f"{nr.strip()}-{year_suffix}"
         
         data['cliente'] = extract_right("CLIENTE", 1)
-        data['ruc'] = extract_right("RUC", 1)
+        raw_ruc = extract_right("RUC", 1)
+        data['ruc'] = normalize_ruc_candidate(raw_ruc)
+        if raw_ruc and not data['ruc']:
+            print(f"[DEBUG] Discarded invalid RUC candidate: '{raw_ruc}'")
         # Handle duplicate Domicilio Legal
         # Logic: First one is Client, Second is Solicitante (if exists)
         dl_locs = anchors_list.get("DOMICILIO LEGAL", [])
