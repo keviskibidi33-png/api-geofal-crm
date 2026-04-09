@@ -56,7 +56,7 @@ async def crear_ensayo(
 @router.get("/", response_model=List[EnsayoCompresionResponse])
 async def listar_ensayos(
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 1000,
     db: Session = Depends(get_db_session)
 ):
     """Listar ensayos de compresión"""

@@ -321,7 +321,7 @@ def _to_detalle_response(ensayo: HumedadEnsayo) -> HumedadDetalleResponse:
 @router.get("/", response_model=list[HumedadEnsayoResponse])
 async def listar_ensayos_humedad(
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 1000,
     db: Session = Depends(get_db_session),
 ):
     """Listado para la tabla del dashboard CRM."""

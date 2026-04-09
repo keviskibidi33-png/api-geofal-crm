@@ -344,7 +344,7 @@ def _to_detalle_response(ensayo: CBREnsayo) -> CBRDetalleResponse:
 @router.get("/", response_model=list[CBREnsayoResponse])
 async def listar_ensayos_cbr(
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 1000,
     db: Session = Depends(get_db_session),
 ):
     _ensure_payload_column(db)

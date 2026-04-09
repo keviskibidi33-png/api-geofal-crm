@@ -308,7 +308,7 @@ def _to_detalle_response(ensayo: GeFinoEnsayo) -> GeFinoDetalleResponse:
 @router.get("/", response_model=list[GeFinoEnsayoResponse])
 async def listar_ensayos_ge_fino(
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 1000,
     db: Session = Depends(get_db_session),
 ):
     _ensure_payload_column(db)

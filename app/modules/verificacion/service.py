@@ -5,6 +5,7 @@ Implementa la lógica de fórmulas y patrones según los requerimientos
 
 from typing import Dict, Any, Optional, List
 from sqlalchemy.orm import Session
+from sqlalchemy import desc
 from .models import VerificacionMuestras, MuestraVerificada
 from .schemas import (
     VerificacionMuestrasCreate, 
@@ -305,7 +306,13 @@ class VerificacionService:
         return self.db.query(VerificacionMuestras).filter(VerificacionMuestras.id == verificacion_id).first()
     
     def listar_verificaciones(self, skip: int = 0, limit: int = 100) -> List[VerificacionMuestras]:
-        return self.db.query(VerificacionMuestras).offset(skip).limit(limit).all()
+        return (
+            self.db.query(VerificacionMuestras)
+            .order_by(desc(VerificacionMuestras.fecha_creacion), desc(VerificacionMuestras.id))
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
 
     def obtener_por_numero(self, numero: str) -> Optional[VerificacionMuestras]:
         """Obtener verificación por su número (EJ: V-2024-001)"""

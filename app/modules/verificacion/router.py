@@ -38,7 +38,7 @@ def crear_verificacion(verificacion: VerificacionMuestrasCreate, db: Session = D
     return new_verificacion
 
 @router.get("/", response_model=List[VerificacionMuestrasResponse])
-def listar_verificaciones(skip: int = 0, limit: int = 100, db: Session = Depends(get_db_session)):
+def listar_verificaciones(skip: int = 0, limit: int = 1000, db: Session = Depends(get_db_session)):
     service = VerificacionService(db)
     return service.listar_verificaciones(skip=skip, limit=limit)
 

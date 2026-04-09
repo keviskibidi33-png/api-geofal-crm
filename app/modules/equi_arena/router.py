@@ -314,7 +314,7 @@ def _to_detalle_response(ensayo: EquiArenaEnsayo) -> EquiArenaDetalleResponse:
 @router.get("/", response_model=list[EquiArenaEnsayoResponse])
 async def listar_ensayos_equi_arena(
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 1000,
     db: Session = Depends(get_db_session),
 ):
     _ensure_payload_column(db)

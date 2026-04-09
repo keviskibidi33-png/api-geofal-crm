@@ -46,7 +46,7 @@ async def crear_recepcion(
 @router.get("/", response_model=List[RecepcionMuestraResponse])
 async def listar_recepciones(
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 1000,
     db: Session = Depends(get_db_session)
 ):
     """Listar recepciones de muestras"""

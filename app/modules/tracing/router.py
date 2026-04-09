@@ -352,7 +352,7 @@ def validar_estado(numero_recepcion: str, db: Session = Depends(get_db_session))
 
 
 @router.get("/listar", response_model=List[TracingSummary])
-def listar_seguimiento(db: Session = Depends(get_db_session), skip: int = 0, limit: int = 100):
+def listar_seguimiento(db: Session = Depends(get_db_session), skip: int = 0, limit: int = 1000):
     """
     Lista las recepciones usando la tabla maestra (Bibliotecas de estados).
     """

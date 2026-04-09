@@ -285,7 +285,7 @@ def _to_detalle_response(ensayo: SulfatosSolublesEnsayo) -> SulfatosSolublesDeta
 @router.get("/", response_model=list[SulfatosSolublesEnsayoResponse])
 async def listar_ensayos(
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 1000,
     db: Session = Depends(get_db_session),
 ):
     _ensure_payload_column(db)
