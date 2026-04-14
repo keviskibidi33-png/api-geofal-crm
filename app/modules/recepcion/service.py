@@ -2,7 +2,7 @@ import os
 import io
 import logging
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, func, or_
 from typing import List, Optional
 from datetime import datetime
 from .models import RecepcionMuestra, MuestraConcreto, RecepcionPlantilla
@@ -29,6 +29,20 @@ def _get_safe_filename(base_name: str, extension: str = "xlsx") -> str:
 class RecepcionService:
     def __init__(self):
         self.excel_logic = ExcelLogic()
+
+    @staticmethod
+    def _apply_recepcion_search_filters(query, search: Optional[str]):
+        if search and search.strip():
+            like_value = f"%{search.strip()}%"
+            query = query.filter(
+                or_(
+                    RecepcionMuestra.numero_ot.ilike(like_value),
+                    RecepcionMuestra.numero_recepcion.ilike(like_value),
+                    RecepcionMuestra.cliente.ilike(like_value),
+                    RecepcionMuestra.proyecto.ilike(like_value),
+                )
+            )
+        return query
 
     def _upload_to_supabase(self, file_content: bytes, filename: str) -> Optional[str]:
         """Subir archivo a Supabase Storage y retornar el object_key"""
@@ -168,6 +182,80 @@ class RecepcionService:
     def listar_recepciones(self, db: Session, skip: int = 0, limit: int = 100) -> List[RecepcionMuestra]:
         """Listar recepciones de muestras con paginación"""
         return db.query(RecepcionMuestra).order_by(desc(RecepcionMuestra.fecha_creacion)).offset(skip).limit(limit).all()
+
+    def listar_recepciones_resumen_paginadas(
+        self,
+        db: Session,
+        page: int = 1,
+        page_size: int = 25,
+        search: Optional[str] = None,
+    ) -> dict:
+        """Listado paginado liviano para tabla del shell (sin cargar muestras completas)."""
+        safe_page_size = max(1, min(page_size, 100))
+        requested_page = max(1, page)
+
+        total_query = self._apply_recepcion_search_filters(
+            db.query(func.count(RecepcionMuestra.id)),
+            search,
+        )
+        total = int(total_query.scalar() or 0)
+        total_pages = max(1, (total + safe_page_size - 1) // safe_page_size)
+        safe_page = min(requested_page, total_pages) if total > 0 else 1
+        offset = (safe_page - 1) * safe_page_size
+
+        muestras_count_subquery = (
+            db.query(
+                MuestraConcreto.recepcion_id.label("recepcion_id"),
+                func.count(MuestraConcreto.id).label("muestras_count"),
+            )
+            .group_by(MuestraConcreto.recepcion_id)
+            .subquery()
+        )
+
+        rows_query = db.query(
+            RecepcionMuestra.id.label("id"),
+            RecepcionMuestra.numero_ot.label("numero_ot"),
+            RecepcionMuestra.numero_recepcion.label("numero_recepcion"),
+            RecepcionMuestra.cliente.label("cliente"),
+            RecepcionMuestra.proyecto.label("proyecto"),
+            RecepcionMuestra.fecha_recepcion.label("fecha_recepcion"),
+            RecepcionMuestra.estado.label("estado"),
+            func.coalesce(muestras_count_subquery.c.muestras_count, 0).label("muestras_count"),
+        ).outerjoin(
+            muestras_count_subquery,
+            muestras_count_subquery.c.recepcion_id == RecepcionMuestra.id,
+        )
+
+        rows_query = self._apply_recepcion_search_filters(rows_query, search)
+        rows = (
+            rows_query
+            .order_by(desc(RecepcionMuestra.fecha_creacion))
+            .offset(offset)
+            .limit(safe_page_size)
+            .all()
+        )
+
+        items = [
+            {
+                "id": row.id,
+                "numero_ot": row.numero_ot,
+                "numero_recepcion": row.numero_recepcion,
+                "cliente": row.cliente,
+                "proyecto": row.proyecto,
+                "fecha_recepcion": row.fecha_recepcion,
+                "estado": row.estado,
+                "muestras_count": int(row.muestras_count or 0),
+            }
+            for row in rows
+        ]
+
+        return {
+            "items": items,
+            "total": total,
+            "page": safe_page,
+            "page_size": safe_page_size,
+            "total_pages": total_pages,
+        }
     
     def obtener_recepcion(self, db: Session, recepcion_id: int) -> Optional[RecepcionMuestra]:
         """Obtener recepción por ID"""

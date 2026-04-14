@@ -1,13 +1,18 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, File
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError, DataError
-from typing import List
+from typing import List, Optional
 import unicodedata
 import re
 import io
 import openpyxl
 from app.database import get_db, get_db_session
-from .schemas import RecepcionMuestraCreate, RecepcionMuestraResponse, RecepcionMuestraUpdate
+from .schemas import (
+    RecepcionMuestraCreate,
+    RecepcionMuestraResponse,
+    RecepcionMuestraUpdate,
+    RecepcionListPaginatedResponse,
+)
 from .service import RecepcionService
 from .exceptions import DuplicateRecepcionError
 from .excel import ExcelLogic
@@ -51,6 +56,22 @@ async def listar_recepciones(
 ):
     """Listar recepciones de muestras"""
     return recepcion_service.listar_recepciones(db, skip=skip, limit=limit)
+
+
+@router.get("/paginated", response_model=RecepcionListPaginatedResponse)
+async def listar_recepciones_paginadas(
+    page: int = 1,
+    page_size: int = 25,
+    q: Optional[str] = None,
+    db: Session = Depends(get_db_session),
+):
+    """Listado paginado y liviano para tablas del dashboard (sin muestras completas)."""
+    return recepcion_service.listar_recepciones_resumen_paginadas(
+        db,
+        page=page,
+        page_size=page_size,
+        search=q,
+    )
 
 @router.get("/buscar-recepcion")
 async def buscar_recepcion(

@@ -119,6 +119,36 @@ class RecepcionMuestraResponse(RecepcionMuestraBase):
     class Config:
         from_attributes = True
 
+
+class RecepcionListItem(BaseModel):
+    """Item resumido para listados paginados de recepciones"""
+    id: int
+    numero_ot: str
+    numero_recepcion: str
+    cliente: Optional[str] = ""
+    proyecto: Optional[str] = ""
+    fecha_recepcion: Optional[str] = None
+    estado: Optional[str] = None
+    muestras_count: int = 0
+
+    @validator('fecha_recepcion', pre=True)
+    def convert_datetime_to_string(cls, v):
+        if isinstance(v, datetime):
+            return v.strftime('%d/%m/%Y')
+        return v
+
+    class Config:
+        from_attributes = True
+
+
+class RecepcionListPaginatedResponse(BaseModel):
+    """Respuesta paginada para listado liviano de recepciones"""
+    items: List[RecepcionListItem] = Field(default_factory=list)
+    total: int = Field(0, ge=0)
+    page: int = Field(1, ge=1)
+    page_size: int = Field(25, ge=1, le=100)
+    total_pages: int = Field(1, ge=1)
+
 class MuestraConcretoUpdate(BaseModel):
     """Esquema para actualizar muestra de concreto"""
     item_numero: Optional[int] = None
