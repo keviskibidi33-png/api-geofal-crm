@@ -15,6 +15,16 @@ from app.utils.http_client import http_post
 
 logger = logging.getLogger(__name__)
 
+def _normalize_lem_code(val: str) -> str:
+    """Auto-append -CO-{year} if LEM code is just a number."""
+    if not val:
+        return val
+    cleaned = str(val).strip()
+    if re.match(r'^\d+$', cleaned):
+        year_suffix = str(datetime.now().year)[-2:]
+        return f"{cleaned}-CO-{year_suffix}"
+    return cleaned
+
 def _get_safe_filename(base_name: str, extension: str = "xlsx") -> str:
     """Sanitiza nombres de archivo para evitar errores en Storage y sistemas de archivos"""
     # Eliminar acentos y caracteres especiales
@@ -148,6 +158,11 @@ class RecepcionService:
                 if not muestra_dict.get('estructura') or muestra_dict.get('estructura', '').strip() == '':
                     muestra_dict['estructura'] = "Sin especificar"
                 
+                # Normalize LEM code: auto-append -CO-{year} if just a number
+                lem = muestra_dict.get('codigo_muestra_lem', '')
+                if lem:
+                    muestra_dict['codigo_muestra_lem'] = _normalize_lem_code(lem)
+
                 muestra = MuestraConcreto(recepcion_id=recepcion.id, **muestra_dict)
                 db.add(muestra)
             
@@ -299,6 +314,11 @@ class RecepcionService:
                     m_dict['estructura'] = "Sin especificar"
 
                 # Parse update model to dict if needed, typically it's already dict
+                # Normalize LEM code: auto-append -CO-{year} if just a number
+                lem = m_dict.get('codigo_muestra_lem', '')
+                if lem:
+                    m_dict['codigo_muestra_lem'] = _normalize_lem_code(lem)
+
                 new_muestra = MuestraConcreto(recepcion_id=recepcion.id, **m_dict)
                 db.add(new_muestra)
 

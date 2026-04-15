@@ -480,7 +480,21 @@ class ExcelLogic:
         def safe_str(val):
             if val is None: return ""
             if isinstance(val, (datetime, date)): return val.strftime("%d/%m/%Y")
+            # Handle numeric floats that are actually integers (e.g. 5120.0 → "5120")
+            if isinstance(val, float) and val == int(val):
+                return str(int(val))
             return str(val).strip()
+
+        def normalize_lem_code(val: str) -> str:
+            """Auto-append -CO-{year} if LEM code is just a number."""
+            if not val:
+                return val
+            cleaned = val.strip()
+            # If purely numeric (e.g. "5120"), append -CO-YY
+            if re.match(r'^\d+$', cleaned):
+                year_suffix = str(datetime.now().year)[-2:]
+                return f"{cleaned}-CO-{year_suffix}"
+            return cleaned
 
         def normalize_ruc_candidate(val) -> str:
             candidate = safe_str(val)
@@ -804,7 +818,7 @@ class ExcelLogic:
                     continue
 
                 m = {
-                    "codigo_muestra_lem": safe_str(lem),
+                    "codigo_muestra_lem": normalize_lem_code(safe_str(lem)),
                     "identificacion_muestra": safe_str(ident),
                     "estructura": safe_str(get_val(r, c_est)),
                     "fc_kg_cm2": 210, # Default
