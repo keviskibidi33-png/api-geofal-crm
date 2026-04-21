@@ -16,6 +16,92 @@ logger = logging.getLogger(__name__)
 
 class TracingService:
     @staticmethod
+    def _normalize_tracking_number(value: str) -> str:
+        if not value:
+            return ""
+        return re.sub(r"[^A-Z0-9]", "", str(value).upper())
+
+    @staticmethod
+    def _verificacion_match_score(
+        verificacion: VerificacionMuestras,
+        target_numbers: list[str],
+        canonical_number: str,
+    ) -> tuple:
+        numero = (getattr(verificacion, "numero_verificacion", "") or "").strip()
+        numero_norm = TracingService._normalize_tracking_number(numero)
+        canonical_norm = TracingService._normalize_tracking_number(canonical_number)
+        target_norms = {
+            TracingService._normalize_tracking_number(item)
+            for item in (target_numbers or [])
+            if item
+        }
+        target_norms.discard("")
+
+        exact_norm = 1 if numero_norm in target_norms else 0
+        prefix_norm = 1 if canonical_norm and numero_norm.startswith(canonical_norm) else 0
+        overlap_norm = 1 if canonical_norm and canonical_norm in numero_norm else 0
+        len_closeness = -abs(len(numero_norm) - len(canonical_norm)) if canonical_norm else 0
+        updated_sort = TracingService._datetime_sort_value(
+            getattr(verificacion, "fecha_actualizacion", None) or getattr(verificacion, "fecha_creacion", None)
+        )
+
+        return (
+            exact_norm,
+            prefix_norm,
+            overlap_norm,
+            len_closeness,
+            updated_sort,
+            verificacion.id or 0,
+        )
+
+    @staticmethod
+    def _buscar_verificacion_flexible(
+        db: Session,
+        numeros_busqueda: list[str],
+        canonical_numero: str,
+    ) -> Optional[VerificacionMuestras]:
+        variantes = list(
+            dict.fromkeys(
+                numero.strip()
+                for numero in (numeros_busqueda or [])
+                if isinstance(numero, str) and numero.strip()
+            )
+        )
+
+        if not variantes and canonical_numero:
+            variantes = [canonical_numero]
+
+        if not variantes:
+            return None
+
+        candidatos: list[VerificacionMuestras] = (
+            db.query(VerificacionMuestras)
+            .filter(VerificacionMuestras.numero_verificacion.in_(variantes))
+            .all()
+        )
+
+        if not candidatos and canonical_numero:
+            canonical = canonical_numero.strip()
+            prefix_candidates = (
+                db.query(VerificacionMuestras)
+                .filter(VerificacionMuestras.numero_verificacion.ilike(f"{canonical}%"))
+                .all()
+            )
+            candidatos.extend(prefix_candidates)
+
+        if not candidatos:
+            return None
+
+        return max(
+            candidatos,
+            key=lambda ver: TracingService._verificacion_match_score(
+                ver,
+                target_numbers=variantes,
+                canonical_number=canonical_numero or variantes[0],
+            ),
+        )
+
+    @staticmethod
     def _has_fecha_entrega_column(db: Session) -> bool:
         cached = db.info.get("trazabilidad_has_fecha_entrega")
         if cached is not None:
@@ -297,23 +383,11 @@ class TracingService:
         if not numeros_busqueda:
             numeros_busqueda = [numero_recepcion] if numero_recepcion else []
 
-        for num in numeros_busqueda:
-            if not verificacion:
-                # Primary search by number
-                verificacion = db.query(VerificacionMuestras).filter(VerificacionMuestras.numero_verificacion == num).first()
-                
-                # If not found, try smart verification formats
-                if not verificacion:
-                    # Common formats: "1111", "REC-1111-26", "1111-REC", "1111-REC-26"
-                    for variant in TracingService._build_numero_variantes(numero_recepcion, canonical_numero):
-                        verificacion = db.query(VerificacionMuestras).filter(
-                            VerificacionMuestras.numero_verificacion == variant
-                        ).first()
-                        if verificacion:
-                            break
-            
-            if verificacion and compresion:
-                break
+        verificacion = TracingService._buscar_verificacion_flexible(
+            db,
+            numeros_busqueda,
+            canonical_numero or numero_recepcion,
+        )
         
         has_fecha_entrega = TracingService._has_fecha_entrega_column(db)
         persist_traza = True
