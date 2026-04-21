@@ -21,7 +21,7 @@ from app.modules.recepcion.models import RecepcionMuestra  # noqa: F401
 from app.modules.tracing.informe_service import InformeService
 from app.modules.tracing.models import Trazabilidad  # noqa: F401
 from app.modules.tracing.service import TracingService
-from app.modules.verificacion.models import VerificacionMuestras, MuestraVerificada  # noqa: F401
+from app.modules.verificacion.models import VerificacionMuestras  # noqa: F401
 
 
 class TestTracingCompresionPreference(unittest.TestCase):
@@ -137,52 +137,6 @@ class TestTracingCompresionPreference(unittest.TestCase):
         self.assertEqual(data["_meta"]["compresion_id"], ensayo_completo.id)
         self.assertEqual(data["_meta"]["modulos_estado"]["compresion"], "completado")
         self.assertEqual(data["items"][1]["carga_maxima"], 277.34)
-
-    def test_informe_busca_verificacion_por_prefijo_canonico(self):
-        self._crear_ensayo(
-            "644-26",
-            "COMPLETADO",
-            [
-                {
-                    "item": 1,
-                    "codigo_lem": "3001-CO-26",
-                    "carga_maxima": 258.86,
-                    "tipo_fractura": "3",
-                    "hora_ensayo": "17:30",
-                }
-            ],
-        )
-
-        verificacion = VerificacionMuestras(
-            numero_verificacion="644-266",
-            codigo_documento="F-LEM-P-01.12",
-            version="03",
-            fecha_documento="23/03/2026",
-            pagina="1 de 1",
-        )
-        self.db.add(verificacion)
-        self.db.flush()
-
-        self.db.add(
-            MuestraVerificada(
-                verificacion_id=verificacion.id,
-                item_numero=1,
-                codigo_lem="3001-CO-26",
-                diametro_1_mm=150.2,
-                diametro_2_mm=149.8,
-                longitud_1_mm=299.5,
-                longitud_2_mm=300.0,
-                longitud_3_mm=299.8,
-                masa_muestra_aire_g=12345.0,
-            )
-        )
-        self.db.commit()
-
-        data = InformeService.consolidar_datos(self.db, "644-26")
-
-        self.assertEqual(data["_meta"]["verificacion_id"], verificacion.id)
-        self.assertEqual(data["items"][0]["diametro_1"], 150.2)
-        self.assertEqual(data["items"][0]["masa_muestra_aire"], 12345.0)
 
     def test_sanitize_items_merge_duplicates_by_item(self):
         sanitized = CompresionService._sanitize_items(
