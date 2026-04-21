@@ -65,6 +65,8 @@ from app.modules.part_livianas.router import router as part_livianas_router
 from app.modules.imp_organicas.router import router as imp_organicas_router
 from app.modules.sul_magnesio.router import router as sul_magnesio_router
 from app.modules.angularidad.router import router as angularidad_router
+from app.modules.ingenieria_archivos.router import router as ingenieria_archivos_router
+from app.modules.correlativos.router import router as correlativos_router
 from app.modules.recepcion.models import Base as RecepcionBase
 from app.modules.verificacion.models import Base as VerificacionBase
 from app.modules.tracing.models import Trazabilidad
@@ -98,6 +100,8 @@ from app.modules.part_livianas.models import PartLivianasEnsayo
 from app.modules.imp_organicas.models import ImpOrganicasEnsayo
 from app.modules.sul_magnesio.models import SulMagnesioEnsayo
 from app.modules.angularidad.models import AngularidadEnsayo
+from app.modules.ingenieria_archivos.models import IngenieriaArchivo
+from app.modules.correlativos.models import CorrelativoReserva, CorrelativoTurno
 from app.database import engine
 from app.auth import JWTAuthMiddleware
 from app.utils.http_client import http_get, http_patch
@@ -156,6 +160,8 @@ class RolePermissions(BaseModel):
     imp_organicas: ModulePermission | None = None
     sul_magnesio: ModulePermission | None = None
     angularidad: ModulePermission | None = None
+    ingenieria_archivos: ModulePermission | None = None
+    correlativos: ModulePermission | None = None
     usuarios: ModulePermission | None = None
     auditoria: ModulePermission | None = None
     configuracion: ModulePermission | None = None
@@ -493,6 +499,8 @@ app.include_router(part_livianas_router)
 app.include_router(imp_organicas_router)
 app.include_router(sul_magnesio_router)
 app.include_router(angularidad_router)
+app.include_router(ingenieria_archivos_router)
+app.include_router(correlativos_router)
 
 # Note: All legacy endpoints for Quotes and Programacion have been moved to their respective modules.
 # Check app/modules/cotizacion and app/modules/programacion.
@@ -1197,7 +1205,8 @@ async def get_roles():
                         "laboratorio": {"read": True, "write": True, "delete": True},
                         "comercial": {"read": True, "write": True, "delete": True},
                         "administracion": {"read": True, "write": True, "delete": True},
-                        "permisos": {"read": True, "write": True, "delete": True}
+                        "permisos": {"read": True, "write": True, "delete": True},
+                        "correlativos": {"read": True, "write": True, "delete": True}
                     },
                     "is_system": True
                 },
@@ -1242,7 +1251,8 @@ async def get_roles():
                         "laboratorio": {"read": False, "write": False, "delete": False},
                         "comercial": {"read": True, "write": True, "delete": False},
                         "administracion": {"read": False, "write": False, "delete": False},
-                        "permisos": {"read": False, "write": False, "delete": False}
+                        "permisos": {"read": False, "write": False, "delete": False},
+                        "correlativos": {"read": False, "write": False, "delete": False}
                     },
                     "is_system": True
                 },
@@ -1287,7 +1297,8 @@ async def get_roles():
                         "laboratorio": {"read": False, "write": False, "delete": False},
                         "comercial": {"read": True, "write": True, "delete": False},
                         "administracion": {"read": False, "write": False, "delete": False},
-                        "permisos": {"read": False, "write": False, "delete": False}
+                        "permisos": {"read": False, "write": False, "delete": False},
+                        "correlativos": {"read": False, "write": False, "delete": False}
                     },
                     "is_system": True
                 },
@@ -1332,7 +1343,8 @@ async def get_roles():
                         "laboratorio": {"read": True, "write": True, "delete": False},
                         "comercial": {"read": False, "write": False, "delete": False},
                         "administracion": {"read": False, "write": False, "delete": False},
-                        "permisos": {"read": False, "write": False, "delete": False}
+                        "permisos": {"read": False, "write": False, "delete": False},
+                        "correlativos": {"read": False, "write": False, "delete": False}
                     },
                     "is_system": True
                 }

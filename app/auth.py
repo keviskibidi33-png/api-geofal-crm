@@ -116,6 +116,12 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next):
+        # Local dev bypass: allow requests without JWT and inject a synthetic user
+        if _allow_insecure_dev_auth():
+            dev_user = (request.headers.get("x-dev-user-id") or request.headers.get("x-user-id") or "local-dev-user").strip()
+            request.state.user = {"sub": dev_user, "role": "dev"}
+            return await call_next(request)
+
         # Always allow CORS preflight
         if request.method == "OPTIONS":
             return await call_next(request)
