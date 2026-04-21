@@ -16,7 +16,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.modules.recepcion.models import RecepcionMuestra, MuestraConcreto
-from app.modules.verificacion.models import VerificacionMuestras, MuestraVerificada
+from app.modules.verificacion.models import MuestraVerificada
 from app.modules.compresion.models import EnsayoCompresion, ItemCompresion
 from .service import TracingService
 from .models import Trazabilidad, InformeVersion
@@ -47,15 +47,12 @@ def _buscar_modulos(
     """Busca verificación y compresión con variantes de número."""
     search_nums = TracingService._build_numero_variantes(numero_recepcion, canonical)
 
-    verificacion = None
     compresion = TracingService._buscar_compresion_preferida(db, search_nums, recepcion_id)
-    for num in search_nums:
-        if not verificacion:
-            verificacion = db.query(VerificacionMuestras).filter(
-                VerificacionMuestras.numero_verificacion == num
-            ).first()
-        if verificacion and compresion:
-            break
+    verificacion = TracingService._buscar_verificacion_flexible(
+        db,
+        search_nums,
+        canonical or numero_recepcion,
+    )
 
     return verificacion, compresion
 
