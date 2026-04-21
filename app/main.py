@@ -184,6 +184,10 @@ class RoleUpdate(BaseModel):
     description: str | None = None
     permissions: RolePermissions | None = None
 
+class UserPermissionOverrideUpdate(BaseModel):
+    enabled: bool = True
+    permissions: dict[str, ModulePermission] = Field(default_factory=dict)
+
 class HeartbeatRequest(BaseModel):
     user_id: str
 
@@ -1140,13 +1144,70 @@ def _apply_role_permission_extensions(role_rows: list[dict[str, Any]]) -> list[d
     extended_roles: list[dict[str, Any]] = []
     for row in role_rows:
         role_data = dict(row)
+        normalized_role = str(role_data.get("role_id") or "").strip().lower()
         permissions = dict(role_data.get("permissions") or {})
         extra_permissions = _extra_special_lab_permissions(str(role_data.get("role_id") or ""))
         for module_key, permission in extra_permissions.items():
             permissions.setdefault(module_key, permission)
+
+        # Compatibility: keep old/new module keys aligned
+        if "ingenieria_archivos" not in permissions and "correlativos" in permissions:
+            permissions["ingenieria_archivos"] = permissions["correlativos"]
+        if "correlativos" not in permissions and "ingenieria_archivos" in permissions:
+            permissions["correlativos"] = permissions["ingenieria_archivos"]
+
+        # Business rule: Administración must have access to Correlativo ING
+        if normalized_role in {"administracion", "administrativo"}:
+            permissions["ingenieria_archivos"] = _permission(True, True, False)
+            permissions["correlativos"] = _permission(True, True, False)
+
         role_data["permissions"] = permissions
         extended_roles.append(role_data)
     return extended_roles
+
+
+def _extract_request_user_id(request: Request) -> str | None:
+    user_payload = getattr(request.state, "user", None)
+    if not isinstance(user_payload, dict):
+        return None
+    candidate = user_payload.get("sub") or user_payload.get("id")
+    return str(candidate).strip() if candidate else None
+
+
+def _normalize_role_name(value: str | None) -> str:
+    return (value or "").strip().lower()
+
+
+def _permission_from_payload(raw: Any) -> dict[str, bool]:
+    source = raw if isinstance(raw, dict) else {}
+    return {
+        "read": bool(source.get("read", False)),
+        "write": bool(source.get("write", False)),
+        "delete": bool(source.get("delete", False)),
+    }
+
+
+def _normalize_permission_map(raw: Any) -> dict[str, dict[str, bool]]:
+    if not isinstance(raw, dict):
+        return {}
+
+    normalized: dict[str, dict[str, bool]] = {}
+    for module_key, permission_data in raw.items():
+        key = str(module_key or "").strip()
+        if not key:
+            continue
+        normalized[key] = _permission_from_payload(permission_data)
+    return normalized
+
+
+def _get_profile_role(cur, user_id: str) -> str | None:
+    cur.execute("SELECT role FROM perfiles WHERE id = %s LIMIT 1", (user_id,))
+    row = cur.fetchone()
+    if not row:
+        return None
+    if isinstance(row, dict):
+        return row.get("role")
+    return row[0] if row else None
 
 
 @app.get("/roles")
@@ -1415,6 +1476,140 @@ async def update_role(role_id: str, payload: RoleUpdate):
             
     except Exception as e:
         print(f"Error updating role via SQL: {e}")
+        if 'conn' in locals() and conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if 'conn' in locals() and conn:
+            conn.close()
+
+
+# --- User granular permission overrides ---
+
+@app.get("/users/{user_id}/permissions-override")
+async def get_user_permissions_override(user_id: str, request: Request):
+    if not _has_database_url():
+        raise HTTPException(status_code=400, detail="Database not configured")
+
+    current_user_id = _extract_request_user_id(request)
+    if not current_user_id:
+        raise HTTPException(status_code=401, detail="Usuario no autenticado")
+
+    try:
+        conn = _get_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            current_role = _normalize_role_name(_get_profile_role(cur, current_user_id))
+            is_admin = current_role in {"admin", "admin_general"}
+            if not is_admin and current_user_id != user_id:
+                raise HTTPException(status_code=403, detail="No autorizado para ver permisos de otro usuario")
+
+            cur.execute(
+                """
+                SELECT user_id::text as user_id, enabled, permissions, updated_by::text as updated_by, updated_at
+                FROM user_permission_overrides
+                WHERE user_id = %s
+                LIMIT 1
+                """,
+                (user_id,),
+            )
+            row = cur.fetchone()
+            if not row:
+                return {
+                    "user_id": user_id,
+                    "enabled": False,
+                    "permissions": {},
+                    "updated_by": None,
+                    "updated_at": None,
+                }
+            return {
+                "user_id": row.get("user_id"),
+                "enabled": bool(row.get("enabled")),
+                "permissions": _normalize_permission_map(row.get("permissions")),
+                "updated_by": row.get("updated_by"),
+                "updated_at": row.get("updated_at"),
+            }
+    finally:
+        if 'conn' in locals() and conn:
+            conn.close()
+
+
+@app.put("/users/{user_id}/permissions-override")
+async def upsert_user_permissions_override(user_id: str, payload: UserPermissionOverrideUpdate, request: Request):
+    if not _has_database_url():
+        raise HTTPException(status_code=400, detail="Database not configured")
+
+    current_user_id = _extract_request_user_id(request)
+    if not current_user_id:
+        raise HTTPException(status_code=401, detail="Usuario no autenticado")
+
+    try:
+        conn = _get_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            current_role = _normalize_role_name(_get_profile_role(cur, current_user_id))
+            if current_role not in {"admin", "admin_general"}:
+                raise HTTPException(status_code=403, detail="Solo administradores pueden editar permisos granulares")
+
+            normalized_permissions = _normalize_permission_map(payload.permissions)
+            cur.execute(
+                """
+                INSERT INTO user_permission_overrides (user_id, enabled, permissions, updated_by, updated_at)
+                VALUES (%s::uuid, %s, %s::jsonb, %s::uuid, NOW())
+                ON CONFLICT (user_id)
+                DO UPDATE SET
+                    enabled = EXCLUDED.enabled,
+                    permissions = EXCLUDED.permissions,
+                    updated_by = EXCLUDED.updated_by,
+                    updated_at = NOW()
+                RETURNING user_id::text as user_id, enabled, permissions, updated_by::text as updated_by, updated_at
+                """,
+                (user_id, payload.enabled, json.dumps(normalized_permissions), current_user_id),
+            )
+            result = cur.fetchone()
+            conn.commit()
+            return {
+                "user_id": result.get("user_id"),
+                "enabled": bool(result.get("enabled")),
+                "permissions": _normalize_permission_map(result.get("permissions")),
+                "updated_by": result.get("updated_by"),
+                "updated_at": result.get("updated_at"),
+            }
+    except HTTPException:
+        if 'conn' in locals() and conn:
+            conn.rollback()
+        raise
+    except Exception as e:
+        if 'conn' in locals() and conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if 'conn' in locals() and conn:
+            conn.close()
+
+
+@app.delete("/users/{user_id}/permissions-override")
+async def clear_user_permissions_override(user_id: str, request: Request):
+    if not _has_database_url():
+        raise HTTPException(status_code=400, detail="Database not configured")
+
+    current_user_id = _extract_request_user_id(request)
+    if not current_user_id:
+        raise HTTPException(status_code=401, detail="Usuario no autenticado")
+
+    try:
+        conn = _get_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            current_role = _normalize_role_name(_get_profile_role(cur, current_user_id))
+            if current_role not in {"admin", "admin_general"}:
+                raise HTTPException(status_code=403, detail="Solo administradores pueden limpiar permisos granulares")
+
+            cur.execute("DELETE FROM user_permission_overrides WHERE user_id = %s::uuid", (user_id,))
+            conn.commit()
+            return {"success": True, "user_id": user_id}
+    except HTTPException:
+        if 'conn' in locals() and conn:
+            conn.rollback()
+        raise
+    except Exception as e:
         if 'conn' in locals() and conn:
             conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
