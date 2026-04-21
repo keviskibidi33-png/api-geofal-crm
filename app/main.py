@@ -67,6 +67,7 @@ from app.modules.sul_magnesio.router import router as sul_magnesio_router
 from app.modules.angularidad.router import router as angularidad_router
 from app.modules.ingenieria_archivos.router import router as ingenieria_archivos_router
 from app.modules.correlativos.router import router as correlativos_router
+from app.modules.control_informes.router import router as control_informes_router
 from app.modules.recepcion.models import Base as RecepcionBase
 from app.modules.verificacion.models import Base as VerificacionBase
 from app.modules.tracing.models import Trazabilidad
@@ -102,6 +103,12 @@ from app.modules.sul_magnesio.models import SulMagnesioEnsayo
 from app.modules.angularidad.models import AngularidadEnsayo
 from app.modules.ingenieria_archivos.models import IngenieriaArchivo
 from app.modules.correlativos.models import CorrelativoReserva, CorrelativoTurno
+from app.modules.control_informes.models import (
+    ControlEnsayoCatalogo,
+    ControlEnsayoCounter,
+    ControlInforme,
+    ControlInformeDetalle,
+)
 from app.database import engine
 from app.auth import JWTAuthMiddleware
 from app.utils.http_client import http_get, http_patch
@@ -161,6 +168,7 @@ class RolePermissions(BaseModel):
     sul_magnesio: ModulePermission | None = None
     angularidad: ModulePermission | None = None
     ingenieria_archivos: ModulePermission | None = None
+    control_informes: ModulePermission | None = None
     correlativos: ModulePermission | None = None
     usuarios: ModulePermission | None = None
     auditoria: ModulePermission | None = None
@@ -407,7 +415,7 @@ def _has_database_url() -> bool:
 
 def _get_connection():
     dsn = _get_database_url()
-    return psycopg2.connect(dsn)
+    return psycopg2.connect(dsn, connect_timeout=3)
 
 @app.exception_handler(ValueError)
 async def value_error_handler(request, exc):
@@ -505,6 +513,7 @@ app.include_router(sul_magnesio_router)
 app.include_router(angularidad_router)
 app.include_router(ingenieria_archivos_router)
 app.include_router(correlativos_router)
+app.include_router(control_informes_router)
 
 # Note: All legacy endpoints for Quotes and Programacion have been moved to their respective modules.
 # Check app/modules/cotizacion and app/modules/programacion.
@@ -1215,10 +1224,11 @@ async def get_roles():
     """Get all role definitions using Supabase REST API"""
     try:
         url = f"{_get_supabase_url()}/role_definitions?order=label.asc"
+        logger.info(f"[Auth] Fetching role definitions from: {url}")
         response = http_get(
             url,
             headers=_get_supabase_headers(),
-            timeout=5,
+            timeout=3,
             request_name="supabase.role_definitions.list",
         )
         
@@ -1528,6 +1538,16 @@ async def get_user_permissions_override(user_id: str, request: Request):
                 "updated_by": row.get("updated_by"),
                 "updated_at": row.get("updated_at"),
             }
+    except Exception as e:
+        logger.warning(f"Error fetching permissions-override (DB might be down): {e}")
+        # Retornar override vacío como fallback para no romper el dashboard
+        return {
+            "user_id": user_id,
+            "enabled": False,
+            "permissions": {},
+            "updated_by": None,
+            "updated_at": None,
+        }
     finally:
         if 'conn' in locals() and conn:
             conn.close()
