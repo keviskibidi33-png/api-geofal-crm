@@ -174,6 +174,7 @@ class RolePermissions(BaseModel):
     auditoria: ModulePermission | None = None
     configuracion: ModulePermission | None = None
     laboratorio: ModulePermission | None = None
+    oficina_tecnica: ModulePermission | None = None
     comercial: ModulePermission | None = None
     administracion: ModulePermission | None = None
     permisos: ModulePermission | None = None
@@ -1130,6 +1131,62 @@ def _permission(read: bool = False, write: bool = False, delete: bool = False) -
     return {"read": read, "write": write, "delete": delete}
 
 
+_PERMISSION_MODULE_KEYS: tuple[str, ...] = (
+    "tracing",
+    "ingenieria_archivos",
+    "clientes",
+    "proyectos",
+    "cotizadora",
+    "programacion",
+    "recepcion",
+    "verificacion_muestras",
+    "compresion",
+    "humedad",
+    "cont_humedad",
+    "cbr",
+    "proctor",
+    "llp",
+    "gran_suelo",
+    "gran_agregado",
+    "cont_mat_organica",
+    "terrones_fino_grueso",
+    "azul_metileno",
+    "part_livianas",
+    "imp_organicas",
+    "sul_magnesio",
+    "angularidad",
+    "abra",
+    "abrass",
+    "peso_unitario",
+    "tamiz",
+    "planas",
+    "caras",
+    "equi_arena",
+    "ge_fino",
+    "ge_grueso",
+    "cd",
+    "ph",
+    "cloro_soluble",
+    "sales_solubles",
+    "sulfatos_solubles",
+    "compresion_no_confinada",
+    "laboratorio",
+    "oficina_tecnica",
+    "comercial",
+    "administracion",
+    "usuarios",
+    "permisos",
+    "auditoria",
+    "configuracion",
+)
+
+_PERMISSION_KEY_ALIASES: dict[str, str] = {
+    "correlativos": "ingenieria_archivos",
+    "control_informes": "ingenieria_archivos",
+    "verificacion": "verificacion_muestras",
+}
+
+
 def _extra_special_lab_permissions(role_id: str) -> dict[str, dict[str, bool]]:
     normalized = (role_id or "").strip().lower()
     new_modules = (
@@ -1202,11 +1259,34 @@ def _normalize_permission_map(raw: Any) -> dict[str, dict[str, bool]]:
 
     normalized: dict[str, dict[str, bool]] = {}
     for module_key, permission_data in raw.items():
-        key = str(module_key or "").strip()
+        key = str(module_key or "").strip().lower()
         if not key:
             continue
+        key = _PERMISSION_KEY_ALIASES.get(key, key)
+        if key not in _PERMISSION_MODULE_KEYS:
+            continue
         normalized[key] = _permission_from_payload(permission_data)
+
+    # Compatibility for older frontends still expecting "correlativos" key.
+    if "ingenieria_archivos" in normalized and "correlativos" not in normalized:
+        normalized["correlativos"] = dict(normalized["ingenieria_archivos"])
     return normalized
+
+
+def _merge_permission_maps(
+    base: dict[str, dict[str, bool]] | None,
+    override: dict[str, dict[str, bool]] | None,
+) -> dict[str, dict[str, bool]]:
+    merged: dict[str, dict[str, bool]] = {}
+    for module in _PERMISSION_MODULE_KEYS:
+        merged[module] = _permission_from_payload((base or {}).get(module))
+    for module, values in (override or {}).items():
+        canonical = _PERMISSION_KEY_ALIASES.get(module, module)
+        if canonical in _PERMISSION_MODULE_KEYS:
+            merged[canonical] = _permission_from_payload(values)
+    if "ingenieria_archivos" in merged:
+        merged["correlativos"] = dict(merged["ingenieria_archivos"])
+    return merged
 
 
 def _get_profile_role(cur, user_id: str) -> str | None:
@@ -1523,18 +1603,39 @@ async def get_user_permissions_override(user_id: str, request: Request):
                 (user_id,),
             )
             row = cur.fetchone()
+            cur.execute(
+                """
+                SELECT rd.permissions
+                FROM perfiles p
+                LEFT JOIN role_definitions rd ON rd.role_id = p.role
+                WHERE p.id = %s
+                LIMIT 1
+                """,
+                (user_id,),
+            )
+            role_row = cur.fetchone()
+            role_permissions = _normalize_permission_map((role_row or {}).get("permissions") if isinstance(role_row, dict) else None)
             if not row:
+                effective_permissions = _merge_permission_maps(role_permissions, {})
                 return {
                     "user_id": user_id,
                     "enabled": False,
                     "permissions": {},
+                    "role_permissions": role_permissions,
+                    "effective_permissions": effective_permissions,
+                    "available_modules": list(_PERMISSION_MODULE_KEYS),
                     "updated_by": None,
                     "updated_at": None,
                 }
+            override_permissions = _normalize_permission_map(row.get("permissions"))
+            effective_permissions = _merge_permission_maps(role_permissions, override_permissions if bool(row.get("enabled")) else {})
             return {
                 "user_id": row.get("user_id"),
                 "enabled": bool(row.get("enabled")),
-                "permissions": _normalize_permission_map(row.get("permissions")),
+                "permissions": override_permissions,
+                "role_permissions": role_permissions,
+                "effective_permissions": effective_permissions,
+                "available_modules": list(_PERMISSION_MODULE_KEYS),
                 "updated_by": row.get("updated_by"),
                 "updated_at": row.get("updated_at"),
             }
@@ -1545,6 +1646,9 @@ async def get_user_permissions_override(user_id: str, request: Request):
             "user_id": user_id,
             "enabled": False,
             "permissions": {},
+            "role_permissions": {},
+            "effective_permissions": {},
+            "available_modules": list(_PERMISSION_MODULE_KEYS),
             "updated_by": None,
             "updated_at": None,
         }
@@ -1585,11 +1689,14 @@ async def upsert_user_permissions_override(user_id: str, payload: UserPermission
                 (user_id, payload.enabled, json.dumps(normalized_permissions), current_user_id),
             )
             result = cur.fetchone()
+            effective_permissions = _merge_permission_maps({}, _normalize_permission_map(result.get("permissions")) if bool(result.get("enabled")) else {})
             conn.commit()
             return {
                 "user_id": result.get("user_id"),
                 "enabled": bool(result.get("enabled")),
                 "permissions": _normalize_permission_map(result.get("permissions")),
+                "effective_permissions": effective_permissions,
+                "available_modules": list(_PERMISSION_MODULE_KEYS),
                 "updated_by": result.get("updated_by"),
                 "updated_at": result.get("updated_at"),
             }
