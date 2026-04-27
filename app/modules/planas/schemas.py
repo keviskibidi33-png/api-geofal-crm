@@ -26,37 +26,51 @@ def _normalize_flexible_date(raw: str) -> str:
 
     digits = re.sub(r"\D", "", value)
     yy = _year_short()
+    yyyy = datetime.now().strftime("%Y")
 
-    def _build(day: str, month: str, year: str = yy) -> str:
-        return f"{_pad2(day)}/{_pad2(month)}/{_pad2(year)}"
+    def _build_ymd(year: str, month: str, day: str) -> str:
+        y = re.sub(r"\D", "", year)
+        if len(y) == 2:
+            y = f"20{y}"
+        if len(y) != 4:
+            y = yyyy
+        return f"{y}/{_pad2(month)}/{_pad2(day)}"
 
     if "/" in value:
         parts = [p.strip() for p in value.split("/")]
         if len(parts) >= 2 and parts[0] and parts[1]:
+            # Accept YYYY/MM/DD or YYYY/MM/DD
+            if len(parts[0]) == 4:
+                year, month, day = parts[0], parts[1], (parts[2] if len(parts) >= 3 else "")
+                if not day:
+                    day = "01"
+                return _build_ymd(year, month, day)
+
             day, month = parts[0], parts[1]
             raw_year = parts[2] if len(parts) >= 3 else ""
             year_digits = re.sub(r"\D", "", raw_year)
-            if len(year_digits) == 4:
-                year_digits = year_digits[-2:]
-            elif len(year_digits) == 1:
-                year_digits = f"0{year_digits}"
             if not year_digits:
-                year_digits = yy
-            return _build(day, month, year_digits)
+                year_digits = yyyy
+            return _build_ymd(year_digits, month, day)
         return value
 
     if len(digits) == 2:
-        return _build(digits[0], digits[1])
+        return _build_ymd(yyyy, digits[1], digits[0])
     if len(digits) == 3:
-        return _build(digits[0], digits[1:3])
+        return _build_ymd(yyyy, digits[1:3], digits[0])
     if len(digits) == 4:
-        return _build(digits[0:2], digits[2:4])
+        # Prefer MMDD current year on short inputs
+        return _build_ymd(yyyy, digits[0:2], digits[2:4])
     if len(digits) == 5:
-        return _build(digits[0], digits[1:3], digits[3:5])
+        return _build_ymd(f"20{digits[3:5]}", digits[1:3], digits[0])
     if len(digits) == 6:
-        return _build(digits[0:2], digits[2:4], digits[4:6])
+        return _build_ymd(f"20{digits[4:6]}", digits[2:4], digits[0:2])
     if len(digits) >= 8:
-        return _build(digits[0:2], digits[2:4], digits[6:8])
+        # Prefer YYYYMMDD first; fallback DDMMYYYY
+        ymd_candidate = _build_ymd(digits[0:4], digits[4:6], digits[6:8])
+        if ymd_candidate:
+            return ymd_candidate
+        return _build_ymd(digits[4:8], digits[2:4], digits[0:2])
 
     return value
 
@@ -207,7 +221,7 @@ class PlanasRequest(BaseModel):
     # Encabezado
     muestra: str = Field(..., description="Codigo de muestra")
     numero_ot: str = Field(..., description="Numero OT")
-    fecha_ensayo: str = Field(..., description="Fecha de ensayo DD/MM/AA")
+    fecha_ensayo: str = Field(..., description="Fecha de ensayo YYYY/MM/DD")
     realizado_por: str = Field(..., description="Realizado por")
 
     # Configuracion

@@ -41,8 +41,8 @@ def parse_fecha_rotura(raw: Optional[str]) -> Optional[datetime]:
         return None
 
     formats = [
-        "%d/%m/%Y",
-        "%d/%m/%y",
+        "%Y/%m/%d",
+        "%Y/%m/%d",
         "%Y-%m-%d",
         "%Y-%m-%d %H:%M:%S",
         "%Y-%m-%dT%H:%M:%S",

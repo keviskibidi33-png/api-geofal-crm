@@ -17,6 +17,7 @@ from .service import RecepcionService
 from .exceptions import DuplicateRecepcionError
 from .excel import ExcelLogic
 from app.modules.tracing.service import TracingService
+from app.utils.date_format import parse_flexible_date
 
 # Standardized to /api/recepcion to match frontend expectations
 router = APIRouter(prefix="/api/recepcion", tags=["Laboratorio Recepciones"])
@@ -193,18 +194,8 @@ async def actualizar_recepcion(
         update_data["numero_recepcion"] = numero_recepcion
     
     # 3. Parsear fechas si existen (Lógica espejada de crear_recepcion)
-    from datetime import datetime
-    
     def parse_date(date_str):
-        if not date_str or date_str.strip() == "":
-            return None
-        try:
-            return datetime.strptime(date_str.strip(), '%d/%m/%Y')
-        except ValueError:
-            try:
-                return datetime.fromisoformat(date_str.strip())
-            except ValueError:
-                return None
+        return parse_flexible_date(date_str)
 
     if 'fecha_recepcion' in update_data and update_data['fecha_recepcion']:
         update_data['fecha_recepcion'] = parse_date(update_data['fecha_recepcion'])

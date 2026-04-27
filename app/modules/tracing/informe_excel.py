@@ -164,12 +164,12 @@ def _remove_merged_cells_in_range(root: etree._Element, start_row: int, end_row:
 
 def _format_date(val) -> str:
     if val is None: return ""
-    if isinstance(val, datetime): return val.strftime("%d/%m/%Y")
+    if isinstance(val, datetime): return val.strftime("%Y/%m/%d")
     if isinstance(val, str):
         if "/" in val: return val
         try:
             dt = datetime.fromisoformat(val.replace("Z", "+00:00"))
-            return dt.strftime("%d/%m/%Y")
+            return dt.strftime("%Y/%m/%d")
         except: return val
     return str(val)
 

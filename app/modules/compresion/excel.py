@@ -242,16 +242,16 @@ def generate_compression_excel(data: CompressionExportRequest) -> io.BytesIO:
                 _set_cell_value(sheet_data, f'B{row_idx}', item.item, ns, is_number=True)
                 _set_cell_value(sheet_data, f'C{row_idx}', item.codigo_lem, ns)
                 fecha_item = item.fecha_ensayo or item.fecha_ensayo_programado
-                _set_cell_value(sheet_data, f'D{row_idx}', fecha_item.strftime('%d/%m/%Y') if fecha_item else '', ns)
+                _set_cell_value(sheet_data, f'D{row_idx}', fecha_item.strftime('%Y/%m/%d') if fecha_item else '', ns)
                 _set_cell_value(sheet_data, f'E{row_idx}', item.carga_maxima, ns, is_number=True)
                 _set_cell_value(sheet_data, f'F{row_idx}', item.tipo_fractura or '', ns)
                 _set_cell_value(sheet_data, f'G{row_idx}', item.defectos or '', ns)
                 _set_cell_value(sheet_data, f'H{row_idx}', item.realizado or '', ns)
-                _set_cell_value(sheet_data, f'I{row_idx}', item.fecha_revisado.strftime('%d/%m/%Y') if item.fecha_revisado else '', ns)
+                _set_cell_value(sheet_data, f'I{row_idx}', item.fecha_revisado.strftime('%Y/%m/%d') if item.fecha_revisado else '', ns)
                 _set_cell_value(sheet_data, f'J{row_idx}', item.hora_ensayo or '', ns)
                 _set_cell_value(sheet_data, f'K{row_idx}', item.revisado or '', ns)
                 _set_cell_value(sheet_data, f'L{row_idx}', item.aprobado or '', ns)
-                _set_cell_value(sheet_data, f'M{row_idx}', item.fecha_aprobado.strftime('%d/%m/%Y') if item.fecha_aprobado else '', ns)
+                _set_cell_value(sheet_data, f'M{row_idx}', item.fecha_aprobado.strftime('%Y/%m/%d') if item.fecha_aprobado else '', ns)
             
             # Footer data (columns shifted left by 1 after removing old Hora column)
             f_row = 35 + extra_rows

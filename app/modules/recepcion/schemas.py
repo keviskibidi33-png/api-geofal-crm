@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field, validator
 from typing import List, Optional
 from datetime import datetime
 import re
+from app.utils.date_format import parse_flexible_date, normalize_date_ymd
 
 # ===== SCHEMAS PARA MUESTRAS DE CONCRETO =====
 class MuestraConcretoBase(BaseModel):
@@ -12,18 +13,21 @@ class MuestraConcretoBase(BaseModel):
     identificacion_muestra: Optional[str] = Field("", max_length=500, description="Identificación/Código de la muestra (multilínea)")
     estructura: Optional[str] = Field("", max_length=500, description="Tipo de estructura (multilínea)")
     fc_kg_cm2: float = Field(280, gt=0, description="Resistencia característica en kg/cm²")
-    fecha_moldeo: Optional[str] = Field("", description="Fecha de moldeo (DD/MM/YYYY)")
+    fecha_moldeo: Optional[str] = Field("", description="Fecha de moldeo (YYYY/MM/DD)")
     hora_moldeo: Optional[str] = Field("", description="Hora de moldeo (HH:MM)")
     edad: int = Field(10, ge=1, le=365, description="Edad de la muestra en días")
-    fecha_rotura: Optional[str] = Field("", description="Fecha programada de rotura (DD/MM/YYYY)")
+    fecha_rotura: Optional[str] = Field("", description="Fecha programada de rotura (YYYY/MM/DD)")
     requiere_densidad: bool = Field(False, description="Requiere ensayo de densidad")
 
     @validator('fecha_moldeo', 'fecha_rotura')
     def validate_date_format(cls, v):
-        """Validar formato de fecha DD/MM/YYYY"""
-        if v and v.strip() and not re.match(r'^\d{2}/\d{2}/\d{4}$', v):
-            raise ValueError('La fecha debe estar en formato DD/MM/YYYY')
-        return v
+        """Normaliza fecha a YYYY/MM/DD (acepta formatos legacy)."""
+        if not v or not str(v).strip():
+            return v
+        normalized = normalize_date_ymd(v)
+        if not normalized:
+            raise ValueError('La fecha debe estar en formato YYYY/MM/DD')
+        return normalized
 
 class MuestraConcretoCreate(MuestraConcretoBase):
     """Esquema para crear una muestra de concreto"""
@@ -60,8 +64,8 @@ class RecepcionMuestraBase(BaseModel):
     ubicacion: Optional[str] = Field("", max_length=200, description="Ubicación del proyecto")
     
     # Fechas importantes
-    fecha_recepcion: Optional[str] = Field(None, description="Fecha de recepción (DD/MM/YYYY)")
-    fecha_estimada_culminacion: Optional[str] = Field(None, description="Fecha estimada de culminación (DD/MM/YYYY)")
+    fecha_recepcion: Optional[str] = Field(None, description="Fecha de recepción (YYYY/MM/DD)")
+    fecha_estimada_culminacion: Optional[str] = Field(None, description="Fecha estimada de culminación (YYYY/MM/DD)")
     
     # Configuración de emisión
     emision_fisica: bool = Field(False, description="Emisión física")
@@ -93,10 +97,13 @@ class RecepcionMuestraBase(BaseModel):
 
     @validator('fecha_recepcion', 'fecha_estimada_culminacion')
     def validate_date_format(cls, v):
-        """Validar formato de fecha DD/MM/YYYY"""
-        if v and v.strip() and not re.match(r'^\d{2}/\d{2}/\d{4}$', v):
-            raise ValueError('La fecha debe estar en formato DD/MM/YYYY')
-        return v
+        """Normaliza fecha a YYYY/MM/DD (acepta formatos legacy)."""
+        if not v or not str(v).strip():
+            return v
+        normalized = normalize_date_ymd(v)
+        if not normalized:
+            raise ValueError('La fecha debe estar en formato YYYY/MM/DD')
+        return normalized
 
 class RecepcionMuestraCreate(RecepcionMuestraBase):
     """Esquema para crear una recepción de muestra"""
@@ -111,10 +118,10 @@ class RecepcionMuestraResponse(RecepcionMuestraBase):
     
     @validator('fecha_recepcion', 'fecha_estimada_culminacion', pre=True)
     def convert_datetime_to_string(cls, v):
-        """Convertir datetime a string en formato DD/MM/YYYY"""
-        if isinstance(v, datetime):
-            return v.strftime('%d/%m/%Y')
-        return v
+        """Convertir datetime/string a formato YYYY/MM/DD"""
+        if v is None:
+            return v
+        return normalize_date_ymd(v) or v
     
     class Config:
         from_attributes = True
@@ -133,9 +140,7 @@ class RecepcionListItem(BaseModel):
 
     @validator('fecha_recepcion', pre=True)
     def convert_datetime_to_string(cls, v):
-        if isinstance(v, datetime):
-            return v.strftime('%d/%m/%Y')
-        return v
+        return normalize_date_ymd(v) if v is not None else v
 
     class Config:
         from_attributes = True
@@ -165,9 +170,12 @@ class MuestraConcretoUpdate(BaseModel):
 
     @validator('fecha_moldeo', 'fecha_rotura')
     def validate_date_format(cls, v):
-        if v and v.strip() and not re.match(r'^\d{2}/\d{2}/\d{4}$', v):
-            raise ValueError('La fecha debe estar en formato DD/MM/YYYY')
-        return v
+        if not v or not str(v).strip():
+            return v
+        normalized = normalize_date_ymd(v)
+        if not normalized:
+            raise ValueError('La fecha debe estar en formato YYYY/MM/DD')
+        return normalized
 
 class RecepcionMuestraUpdate(BaseModel):
     """Esquema para actualizar una recepción de muestra"""
@@ -196,10 +204,13 @@ class RecepcionMuestraUpdate(BaseModel):
 
     @validator('fecha_recepcion', 'fecha_estimada_culminacion')
     def validate_date_format(cls, v):
-        """Validar formato de fecha DD/MM/YYYY"""
-        if v and not re.match(r'^\d{2}/\d{2}/\d{4}$', v):
-            raise ValueError('La fecha debe estar en formato DD/MM/YYYY')
-        return v
+        """Normaliza fecha a YYYY/MM/DD (acepta formatos legacy)."""
+        if not v or not str(v).strip():
+            return v
+        normalized = normalize_date_ymd(v)
+        if not normalized:
+            raise ValueError('La fecha debe estar en formato YYYY/MM/DD')
+        return normalized
 
 # ===== SCHEMAS PARA PLANTILLAS DE RECEPCIÓN =====
 class RecepcionPlantillaBase(BaseModel):

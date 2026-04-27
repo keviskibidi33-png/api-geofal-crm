@@ -556,7 +556,7 @@ def export_xlsx_direct(template_path: str, data: dict) -> io.BytesIO:
         # Fecha de solicitud (E10:I10 - celda combinada, escribir en E10)
         fecha_solicitud = data.get('fecha_solicitud')
         if fecha_solicitud:
-            fecha_sol_str = fecha_solicitud.strftime('%d/%m/%Y') if isinstance(fecha_solicitud, date) else str(fecha_solicitud)
+            fecha_sol_str = fecha_solicitud.strftime('%Y/%m/%d') if isinstance(fecha_solicitud, date) else str(fecha_solicitud)
             _set_cell_value(sheet_data, 'E10', fecha_sol_str, ns, get_string_idx=get_string_idx)
         
         _set_cell_value(sheet_data, 'L7', data.get('ubicacion', ''), ns, get_string_idx=get_string_idx)
@@ -564,7 +564,7 @@ def export_xlsx_direct(template_path: str, data: dict) -> io.BytesIO:
         _set_cell_value(sheet_data, 'L9', data.get('telefono_comercial', ''), ns, get_string_idx=get_string_idx)
         
         # Fecha de emisión (L10)
-        fecha_str = fecha_emision.strftime('%d/%m/%Y') if isinstance(fecha_emision, date) else str(fecha_emision)
+        fecha_str = fecha_emision.strftime('%Y/%m/%d') if isinstance(fecha_emision, date) else str(fecha_emision)
         _set_cell_value(sheet_data, 'L10', fecha_str, ns, get_string_idx=get_string_idx)
         
         # Items

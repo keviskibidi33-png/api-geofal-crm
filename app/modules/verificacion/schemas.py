@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, field_validator, model_validator
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Any
 from datetime import datetime
 import re
 
@@ -16,7 +16,7 @@ class MuestraVerificadaBase(BaseModel):
     # DIÁMETRO (FORMULA)
     diametro_1_mm: Optional[float] = Field(None, ge=0, description="Diámetro 1 en mm")
     diametro_2_mm: Optional[float] = Field(None, ge=0, description="Diámetro 2 en mm")
-    tolerancia_porcentaje: Optional[float] = Field(None, description="ΔΦ 2%> - Tolerancia calculada en %")
+    tolerancia_porcentaje: Optional[float] = Field(None, ge=0, description="ΔΦ 2%> - Tolerancia calculada en %")
     aceptacion_diametro: Optional[str] = Field(None, max_length=20, description="Aceptación diámetro (Cumple/No cumple)")
     
     # PERPENDICULARIDAD
@@ -125,12 +125,12 @@ class VerificacionMuestrasBase(BaseModel):
     numero_verificacion: str = Field(..., min_length=1, max_length=50, description="Número de verificación")
     codigo_documento: str = Field("F-LEM-P-01.12", max_length=50, description="Código del documento")
     version: str = Field("03", max_length=10, description="Versión del documento")
-    fecha_documento: str = Field(..., description="Fecha del documento (DD/MM/YYYY)")
+    fecha_documento: str = Field(..., description="Fecha del documento (YYYY/MM/DD)")
     pagina: str = Field("1 de 1", max_length=20, description="Página del documento")
     
     # Información del verificador
     verificado_por: Optional[str] = Field(None, max_length=50, description="Código del verificador")
-    fecha_verificacion: Optional[str] = Field(None, description="Fecha de verificación (DD/MM/YYYY)")
+    fecha_verificacion: Optional[str] = Field(None, description="Fecha de verificación (YYYY/MM/DD)")
     
     # Información del cliente
     cliente: Optional[str] = Field(None, max_length=200, description="Nombre del cliente")
@@ -171,7 +171,7 @@ class VerificacionMuestrasResponse(VerificacionMuestrasBase):
 
 class VerificacionMuestrasUpdate(BaseModel):
     """Esquema para actualizar una verificación de muestras"""
-    numero_verificacion: Optional[str] = None
+    numero_verificacion: Optional[str] = Field(None, min_length=1, max_length=50)
     codigo_documento: Optional[str] = None
     version: Optional[str] = None
     fecha_documento: Optional[str] = None
@@ -186,7 +186,7 @@ class VerificacionMuestrasUpdate(BaseModel):
     equipo_balanza: Optional[str] = None
     nota: Optional[str] = None
     estado: Optional[str] = None
-    muestras_verificadas: Optional[List[Dict[str, Any]]] = None
+    muestras_verificadas: Optional[List[MuestraVerificadaBase]] = None
 
     @field_validator('fecha_verificacion', 'fecha_documento')
     @classmethod

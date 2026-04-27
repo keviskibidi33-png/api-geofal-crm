@@ -12,6 +12,7 @@ from .excel import ExcelLogic
 import re
 import unicodedata
 from app.utils.http_client import http_post
+from app.utils.date_format import parse_flexible_date
 
 logger = logging.getLogger(__name__)
 
@@ -124,17 +125,9 @@ class RecepcionService:
                 if field in recepcion_dict and recepcion_dict[field] == "":
                     recepcion_dict[field] = "Sin especificar"
             
-            # Convertir fechas de string (DD/MM/YYYY) a datetime
+            # Convertir fechas de string a datetime (acepta YYYY/MM/DD y legacy)
             def parse_date(date_str: Optional[str]) -> Optional[datetime]:
-                if not date_str or date_str.strip() == "":
-                    return None
-                try:
-                    return datetime.strptime(date_str.strip(), '%d/%m/%Y')
-                except ValueError:
-                    try:
-                        return datetime.fromisoformat(date_str.strip())
-                    except ValueError:
-                        return None
+                return parse_flexible_date(date_str)
             
             if 'fecha_recepcion' in recepcion_dict and recepcion_dict['fecha_recepcion']:
                 recepcion_dict['fecha_recepcion'] = parse_date(recepcion_dict['fecha_recepcion'])

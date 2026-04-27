@@ -102,7 +102,7 @@ class HumedadRequest(BaseModel):
     # ── Encabezado (row 11) ─────────────────────────────────────────────
     muestra: str = Field(..., description="Identificación de la muestra")
     numero_ot: str = Field(..., description="Número de Orden de Trabajo")
-    fecha_ensayo: str = Field(..., description="Fecha del ensayo (DD/MM/YYYY)")
+    fecha_ensayo: str = Field(..., description="Fecha del ensayo (YYYY/MM/DD)")
     realizado_por: str = Field(..., description="Nombre/código de quien realizó el ensayo")
 
     # ── Condiciones del ensayo (rows 18-21, col J) ─────────────────────
@@ -183,9 +183,9 @@ class HumedadRequest(BaseModel):
 
     # ── Footer — Revisado / Aprobado (shapes con relleno) ──────────────
     revisado_por: Optional[str] = Field(None, description="Nombre de quien revisó")
-    revisado_fecha: Optional[str] = Field(None, description="Fecha revisión (DD/MM/YYYY)")
+    revisado_fecha: Optional[str] = Field(None, description="Fecha revisión (YYYY/MM/DD)")
     aprobado_por: Optional[str] = Field(None, description="Nombre de quien aprobó")
-    aprobado_fecha: Optional[str] = Field(None, description="Fecha aprobación (DD/MM/YYYY)")
+    aprobado_fecha: Optional[str] = Field(None, description="Fecha aprobación (YYYY/MM/DD)")
 
     @field_validator("muestra", mode="before")
     @classmethod

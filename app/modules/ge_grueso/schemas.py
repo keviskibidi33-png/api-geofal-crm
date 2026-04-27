@@ -16,7 +16,7 @@ def _year_short() -> str:
 
 
 def _today_short_date() -> str:
-    return datetime.now().strftime("%d/%m/%y")
+    return datetime.now().strftime("%Y/%m/%d")
 
 
 def _pad2(value: str) -> str:
@@ -146,7 +146,7 @@ class GeGruesoRequest(BaseModel):
     # Encabezado
     muestra: str = Field(..., description="Codigo de muestra")
     numero_ot: str = Field(..., description="Numero OT")
-    fecha_ensayo: str = Field(..., description="Fecha de ensayo DD/MM/AA")
+    fecha_ensayo: str = Field(..., description="Fecha de ensayo YYYY/MM/DD")
     realizado_por: str = Field(..., description="Realizado por")
 
     # Descripción de muestra

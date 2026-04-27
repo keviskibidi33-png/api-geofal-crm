@@ -98,7 +98,13 @@ def _find_or_create_cell(row: etree._Element, cell_ref: str) -> etree._Element:
     return cell
 
 
-def _set_cell(sheet_data: etree._Element, ref: str, value: Any, is_number: bool = False) -> None:
+def _set_cell(
+    sheet_data: etree._Element,
+    ref: str,
+    value: Any,
+    is_number: bool = False,
+    force_black_bold: bool = False,
+) -> None:
     if value is None:
         return
 
@@ -118,8 +124,21 @@ def _set_cell(sheet_data: etree._Element, ref: str, value: Any, is_number: bool 
     text = str(value)
     cell.set("t", "inlineStr")
     is_el = etree.SubElement(cell, f"{{{NS_SHEET}}}is")
-    t_el = etree.SubElement(is_el, f"{{{NS_SHEET}}}t")
-    t_el.text = text
+    if force_black_bold:
+        r_el = etree.SubElement(is_el, f"{{{NS_SHEET}}}r")
+        rpr = etree.SubElement(r_el, f"{{{NS_SHEET}}}rPr")
+        etree.SubElement(rpr, f"{{{NS_SHEET}}}b")
+        color = etree.SubElement(rpr, f"{{{NS_SHEET}}}color")
+        color.set("rgb", "FF000000")
+        sz = etree.SubElement(rpr, f"{{{NS_SHEET}}}sz")
+        sz.set("val", "11")
+        rf = etree.SubElement(rpr, f"{{{NS_SHEET}}}rFont")
+        rf.set("val", "Calibri")
+        t_el = etree.SubElement(r_el, f"{{{NS_SHEET}}}t")
+        t_el.text = text
+    else:
+        t_el = etree.SubElement(is_el, f"{{{NS_SHEET}}}t")
+        t_el.text = text
 
 
 def _normalize_xlsx_path(base_dir: str, target: str) -> str:
@@ -195,7 +214,7 @@ def _fill_sheet(sheet_xml: bytes, data: PlanasRequest) -> bytes:
         r = 26 + idx
         _set_cell(sheet_data, f"D{r}", row.masa_retenido_original_g, is_number=True)
         _set_cell(sheet_data, f"F{r}", row.porcentaje_retenido, is_number=True)
-        _set_cell(sheet_data, f"H{r}", "X" if row.criterio_acepta else "")
+        _set_cell(sheet_data, f"H{r}", "X" if row.criterio_acepta else "", force_black_bold=True)
         _set_cell(sheet_data, f"I{r}", row.numero_particulas_aprox_100, is_number=True)
         _set_cell(sheet_data, f"K{r}", row.masa_retenido_g, is_number=True)
 
@@ -223,12 +242,12 @@ def _fill_sheet(sheet_xml: bytes, data: PlanasRequest) -> bytes:
         _set_cell(sheet_data, f"Q{r}", row.grupo4_masa_g, is_number=True)
 
     # Equipos.
-    _set_cell(sheet_data, "G47", data.dispositivo_calibre_codigo)
-    _set_cell(sheet_data, "M47", data.balanza_01g_codigo)
-    _set_cell(sheet_data, "G48", data.horno_codigo)
+    _set_cell(sheet_data, "G47", data.dispositivo_calibre_codigo, force_black_bold=True)
+    _set_cell(sheet_data, "M47", data.balanza_01g_codigo, force_black_bold=True)
+    _set_cell(sheet_data, "G48", data.horno_codigo, force_black_bold=True)
 
     # Nota.
-    _set_cell(sheet_data, "D49", data.nota or "")
+    _set_cell(sheet_data, "D49", data.nota or "", force_black_bold=True)
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 

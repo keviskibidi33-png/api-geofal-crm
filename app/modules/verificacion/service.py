@@ -3,9 +3,9 @@ Servicio para verificación de muestras cilíndricas de concreto
 Implementa la lógica de fórmulas y patrones según los requerimientos
 """
 
-from typing import Dict, Any, Optional, List
+from typing import Any, Optional, List
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, func
 from .models import VerificacionMuestras, MuestraVerificada
 from .schemas import (
     VerificacionMuestrasCreate, 
@@ -34,6 +34,16 @@ VERIF_FOLDER.mkdir(exist_ok=True)
 
 class VerificacionService:
     """Servicio para manejo de verificación de muestras cilíndricas"""
+
+    _NONNEGATIVE_SAMPLE_FIELDS = (
+        "diametro_1_mm",
+        "diametro_2_mm",
+        "tolerancia_porcentaje",
+        "longitud_1_mm",
+        "longitud_2_mm",
+        "longitud_3_mm",
+        "masa_muestra_aire_g",
+    )
     
     def __init__(self, db: Session):
         self.db = db
@@ -308,6 +318,7 @@ class VerificacionService:
     def listar_verificaciones(self, skip: int = 0, limit: int = 100) -> List[VerificacionMuestras]:
         return (
             self.db.query(VerificacionMuestras)
+            .filter(func.length(func.trim(VerificacionMuestras.numero_verificacion)) > 0)
             .order_by(desc(VerificacionMuestras.fecha_creacion), desc(VerificacionMuestras.id))
             .offset(skip)
             .limit(limit)
@@ -363,23 +374,33 @@ class VerificacionService:
             logger.error(f"Error eliminando verificación {verificacion_id}: {str(e)}")
             raise e
 
-    def _sanitize_muestra_dict(self, muestra_dict: dict) -> Optional[dict]:
+    def _sanitize_muestra_dict(self, muestra_dict: Any) -> Optional[dict]:
         """Normaliza vacíos/dashes a None en campos numéricos y descarta filas completamente vacías."""
         if not muestra_dict:
             return None
 
-        numeric_fields = [
-            'diametro_1_mm', 'diametro_2_mm', 'tolerancia_porcentaje',
-            'longitud_1_mm', 'longitud_2_mm', 'longitud_3_mm',
-            'masa_muestra_aire_g'
-        ]
+        numeric_fields = list(self._NONNEGATIVE_SAMPLE_FIELDS)
 
-        cleaned = dict(muestra_dict)
+        if hasattr(muestra_dict, "model_dump"):
+            cleaned = muestra_dict.model_dump()
+        else:
+            cleaned = dict(muestra_dict)
 
         for field in numeric_fields:
             val = cleaned.get(field)
             if val in ["", "-", None]:
                 cleaned[field] = None
+                continue
+
+            try:
+                numeric_value = float(val)
+            except (TypeError, ValueError):
+                continue
+
+            if numeric_value < 0:
+                raise ValueError(f"El campo {field} no puede ser negativo")
+
+            cleaned[field] = numeric_value
         # codigo_lem puede venir vacío; mantener string vacía permitida
         cleaned['codigo_lem'] = cleaned.get('codigo_lem') or cleaned.get('codigo_cliente') or ""
 
@@ -399,6 +420,8 @@ class VerificacionService:
             
             # Actualizar campos de la cabecera
             update_data = data.model_dump(exclude={"muestras_verificadas"}, exclude_unset=True)
+            if "numero_verificacion" in update_data and isinstance(update_data["numero_verificacion"], str):
+                update_data["numero_verificacion"] = update_data["numero_verificacion"].strip()
             for key, value in update_data.items():
                 setattr(db_verificacion, key, value)
             

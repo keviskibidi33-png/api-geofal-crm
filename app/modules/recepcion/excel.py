@@ -7,6 +7,7 @@ from typing import List, Dict, Any, Optional
 from lxml import etree
 import openpyxl  # Added for parsing
 from .models import RecepcionMuestra, MuestraConcreto
+from app.utils.date_format import normalize_date_ymd
 
 NAMESPACES = {
     'main': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main',
@@ -283,8 +284,8 @@ class ExcelLogic:
         # 3. Filling Data
         def format_dt(dt):
             if not dt: return "-"
-            if isinstance(dt, (datetime, date)): return dt.strftime("%d/%m/%Y")
-            return str(dt)
+            normalized = normalize_date_ymd(dt)
+            return normalized or str(dt)
 
         # Header Section
         # Anchors: RECEPCIÓN N°, COTIZACIÓN N°, FECHA DE RECEPCIÓN, OT:, CLIENTE:, PROYECTO:, etc.
@@ -479,7 +480,8 @@ class ExcelLogic:
 
         def safe_str(val):
             if val is None: return ""
-            if isinstance(val, (datetime, date)): return val.strftime("%d/%m/%Y")
+            if isinstance(val, (datetime, date)):
+                return normalize_date_ymd(val) or ""
             # Handle numeric floats that are actually integers (e.g. 5120.0 → "5120")
             if isinstance(val, float) and val == int(val):
                 return str(int(val))
@@ -605,12 +607,10 @@ class ExcelLogic:
         if nr and nr.replace(' ', '').isdigit():
             fr = data.get('fecha_recepcion', '')
             if fr:
-                # Try to extract year from fecha_recepcion (formats: DD/MM/YYYY or datetime)
                 year_suffix = ''
-                if '/' in fr:
-                    parts_date = fr.split('/')
-                    if len(parts_date) == 3 and len(parts_date[2]) >= 2:
-                        year_suffix = parts_date[2][-2:]
+                normalized = normalize_date_ymd(fr)
+                if normalized and len(normalized) >= 4:
+                    year_suffix = normalized[:4][-2:]
                 elif len(fr) >= 4 and fr[-4:].isdigit():
                     year_suffix = fr[-2:]
                 if year_suffix:

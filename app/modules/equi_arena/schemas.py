@@ -152,7 +152,7 @@ class EquiArenaRequest(BaseModel):
     # Encabezado
     muestra: str = Field(..., description="Codigo de muestra")
     numero_ot: str = Field(..., description="Numero OT")
-    fecha_ensayo: str = Field(..., description="Fecha de ensayo DD/MM/AA")
+    fecha_ensayo: str = Field(..., description="Fecha de ensayo YYYY/MM/DD")
     realizado_por: str = Field(..., description="Realizado por")
 
     # Condiciones
