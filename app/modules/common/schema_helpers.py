@@ -4,7 +4,9 @@ import re
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.utils.date_format import normalize_date_ymd
 
 
 def year_short() -> str:
@@ -19,42 +21,8 @@ def normalize_flexible_date(raw: str) -> str:
     value = (raw or "").strip()
     if not value:
         return value
-
-    digits = re.sub(r"\D", "", value)
-    yy = year_short()
-
-    def build(day: str, month: str, year: str = yy) -> str:
-        return f"{pad2(day)}/{pad2(month)}/{pad2(year)}"
-
-    if "/" in value:
-        parts = [part.strip() for part in value.split("/")]
-        if len(parts) >= 2 and parts[0] and parts[1]:
-            day, month = parts[0], parts[1]
-            raw_year = parts[2] if len(parts) >= 3 else ""
-            year_digits = re.sub(r"\D", "", raw_year)
-            if len(year_digits) == 4:
-                year_digits = year_digits[-2:]
-            elif len(year_digits) == 1:
-                year_digits = f"0{year_digits}"
-            if not year_digits:
-                year_digits = yy
-            return build(day, month, year_digits)
-        return value
-
-    if len(digits) == 2:
-        return build(digits[0], digits[1])
-    if len(digits) == 3:
-        return build(digits[0], digits[1:3])
-    if len(digits) == 4:
-        return build(digits[0:2], digits[2:4])
-    if len(digits) == 5:
-        return build(digits[0], digits[1:3], digits[3:5])
-    if len(digits) == 6:
-        return build(digits[0:2], digits[2:4], digits[4:6])
-    if len(digits) >= 8:
-        return build(digits[0:2], digits[2:4], digits[6:8])
-
-    return value
+    normalized = normalize_date_ymd(value)
+    return normalized or value
 
 
 def normalize_muestra(raw: str) -> str:
@@ -133,16 +101,16 @@ class LabRequestBase(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
-    muestra: str
-    numero_ot: str
-    fecha_ensayo: str
-    realizado_por: str | None = None
-    cliente: str | None = None
-    observaciones: str | None = None
-    revisado_por: str | None = None
-    revisado_fecha: str | None = None
-    aprobado_por: str | None = None
-    aprobado_fecha: str | None = None
+    muestra: str = Field(..., description="Código de muestra")
+    numero_ot: str = Field(..., description="Número OT")
+    fecha_ensayo: str = Field(..., description="Fecha de ensayo YYYY/MM/DD")
+    realizado_por: str | None = Field(None, description="Realizado por")
+    cliente: str | None = Field(None, description="Cliente")
+    observaciones: str | None = Field(None, description="Observaciones")
+    revisado_por: str | None = Field(None, description="Revisado por")
+    revisado_fecha: str | None = Field(None, description="Fecha revisión YYYY/MM/DD")
+    aprobado_por: str | None = Field(None, description="Aprobado por")
+    aprobado_fecha: str | None = Field(None, description="Fecha aprobación YYYY/MM/DD")
 
     @field_validator("muestra", mode="before")
     @classmethod
@@ -179,4 +147,3 @@ class LabRequestBase(BaseModel):
     @classmethod
     def normalize_text_fields(cls, value: Any):
         return normalize_text(value)
-

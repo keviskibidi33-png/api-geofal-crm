@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+from app.utils.date_format import normalize_date_ymd
 
 SUELO_SIEVE_COUNT = 15
 
@@ -25,42 +26,7 @@ def _normalize_flexible_date(raw: str) -> str:
     value = raw.strip()
     if not value:
         return value
-
-    digits = re.sub(r"\D", "", value)
-    yy = _year_short()
-
-    def _build(day: str, month: str, year: str = yy) -> str:
-        return f"{_pad2(day)}/{_pad2(month)}/{_pad2(year)}"
-
-    if "/" in value:
-        parts = [p.strip() for p in value.split("/")]
-        if len(parts) >= 2 and parts[0] and parts[1]:
-            day, month = parts[0], parts[1]
-            raw_year = parts[2] if len(parts) >= 3 else ""
-            year_digits = re.sub(r"\D", "", raw_year)
-            if len(year_digits) == 4:
-                year_digits = year_digits[-2:]
-            elif len(year_digits) == 1:
-                year_digits = f"0{year_digits}"
-            if not year_digits:
-                year_digits = yy
-            return _build(day, month, year_digits)
-        return value
-
-    if len(digits) == 2:
-        return _build(digits[0], digits[1])
-    if len(digits) == 3:
-        return _build(digits[0], digits[1:3])
-    if len(digits) == 4:
-        return _build(digits[0:2], digits[2:4])
-    if len(digits) == 5:
-        return _build(digits[0], digits[1:3], digits[3:5])
-    if len(digits) == 6:
-        return _build(digits[0:2], digits[2:4], digits[4:6])
-    if len(digits) >= 8:
-        return _build(digits[0:2], digits[2:4], digits[6:8])
-
-    return value
+    return normalize_date_ymd(value) or value
 
 
 def _normalize_muestra(raw: str) -> str:

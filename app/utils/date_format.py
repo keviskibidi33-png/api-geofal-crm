@@ -8,6 +8,8 @@ from typing import Optional
 def parse_flexible_date(value: str | datetime | date | None) -> Optional[datetime]:
     """
     Parse flexible date inputs and return datetime.
+    Canonical output across the API should be YYYY/MM/DD; legacy day-first
+    inputs are still accepted for backward compatibility during migration.
     Accepted:
     - YYYY/MM/DD, YYYY-MM-DD, YYYY.MM.DD
     - DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY
