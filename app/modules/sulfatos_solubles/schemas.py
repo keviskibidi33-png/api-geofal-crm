@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, Field, ConfigDict, field_validator
+from app.utils.date_format import normalize_date_ymd
 
 
 def _year_short() -> str:
