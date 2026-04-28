@@ -13,27 +13,34 @@ from app.modules.cotizacion.schemas import QuoteExportRequest
 
 
 class TestQuoteSchemaDateParsing(unittest.TestCase):
-    def test_accepts_iso_and_legacy_quote_dates(self):
-        cases = [
-            ("2026-04-28", date(2026, 4, 28)),
-            ("2026/04/28", date(2026, 4, 28)),
-            ("28/04/2026", date(2026, 4, 28)),
-            ("28/04/26", date(2026, 4, 28)),
-        ]
+    def test_accepts_only_strict_dd_mm_yyyy_quote_dates(self):
+        raw = "28/04/2026"
+        payload = QuoteExportRequest.model_validate(
+            {
+                "fecha_emision": raw,
+                "fecha_solicitud": raw,
+                "include_igv": True,
+                "igv_rate": 0.18,
+                "items": [],
+            }
+        )
+        self.assertEqual(payload.fecha_emision, date(2026, 4, 28))
+        self.assertEqual(payload.fecha_solicitud, date(2026, 4, 28))
 
-        for raw, expected in cases:
+    def test_rejects_non_strict_quote_date_formats(self):
+        invalid_cases = ["2026-04-28", "2026/04/28", "28/04/26", "28-04-2026"]
+        for raw in invalid_cases:
             with self.subTest(raw=raw):
-                payload = QuoteExportRequest.model_validate(
-                    {
-                        "fecha_emision": raw,
-                        "fecha_solicitud": raw,
-                        "include_igv": True,
-                        "igv_rate": 0.18,
-                        "items": [],
-                    }
-                )
-                self.assertEqual(payload.fecha_emision, expected)
-                self.assertEqual(payload.fecha_solicitud, expected)
+                with self.assertRaises(Exception):
+                    QuoteExportRequest.model_validate(
+                        {
+                            "fecha_emision": raw,
+                            "fecha_solicitud": raw,
+                            "include_igv": True,
+                            "igv_rate": 0.18,
+                            "items": [],
+                        }
+                    )
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field, field_validator
 from datetime import date, datetime
 from typing import List, Optional
-from app.utils.date_format import parse_flexible_date
+import re
 
 class QuoteItem(BaseModel):
     codigo: str
@@ -41,10 +41,20 @@ class QuoteExportRequest(BaseModel):
     def normalize_quote_dates(cls, value):
         if value is None or value == "":
             return None
-        parsed = parse_flexible_date(value)
-        if parsed is None:
-            raise ValueError("Fecha inválida. Use YYYY-MM-DD, YYYY/MM/DD o un formato legacy compatible.")
-        return parsed.date()
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, date):
+            return value
+
+        raw = str(value).strip()
+        if not re.fullmatch(r"\d{2}/\d{2}/\d{4}", raw):
+            raise ValueError("Fecha inválida. Use el formato DD/MM/YYYY, por ejemplo 27/04/2026.")
+
+        day, month, year = map(int, raw.split("/"))
+        try:
+            return date(year, month, day)
+        except ValueError as exc:
+            raise ValueError("Fecha inválida. Use el formato DD/MM/YYYY, por ejemplo 27/04/2026.") from exc
 
 class NextNumberResponse(BaseModel):
     year: int
