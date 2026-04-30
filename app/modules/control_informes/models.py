@@ -80,3 +80,18 @@ class ControlInformeDetalle(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
 
     informe = relationship("ControlInforme", back_populates="detalles")
+
+
+class ControlInformeTurno(Base):
+    __tablename__ = "control_informes_turnos"
+    __table_args__ = (
+        UniqueConstraint("user_id", name="uq_control_informes_turnos_user_id"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String(80), nullable=False, index=True)
+    user_name = Column(String(140), nullable=True)
+    estado = Column(String(20), nullable=False, default="waiting", index=True)
+    joined_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)
+    activated_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True, index=True)

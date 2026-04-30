@@ -77,3 +77,28 @@ class ControlInformesResumenResponse(BaseModel):
     anio: int
     mes: int
     items: list[ControlInformesResumenItem]
+
+
+class ControlInformesTurnoParticipanteResponse(BaseModel):
+    user_id: str
+    user_name: str | None = None
+    estado: str
+    joined_at: datetime
+    activated_at: datetime | None = None
+    expires_at: datetime | None = None
+
+
+class ControlInformesTurnoResponse(BaseModel):
+    user_id: str
+    user_name: str | None = None
+    estado: str
+    tiene_turno: bool
+    turno_activo_user_id: str | None = None
+    turno_activo_user_name: str | None = None
+    turno_activo_desde: datetime | None = None
+    turno_expira_en: datetime | None = None
+    segundos_restantes: int = 0
+    en_cola: int = 0
+    personas_esperando: int = 0
+    participantes: list[ControlInformesTurnoParticipanteResponse] = []
+    mensaje: str | None = None
