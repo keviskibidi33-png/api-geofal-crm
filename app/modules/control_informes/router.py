@@ -26,15 +26,16 @@ logger = logging.getLogger(__name__)
 def _current_user(request: Request) -> tuple[str | None, str | None]:
     payload = getattr(request.state, "user", {}) or {}
     user_id = str(payload.get("sub") or payload.get("user_id") or "").strip() or None
-    user_name = str(payload.get("name") or payload.get("email") or "").strip() or None
+    
+    header_name = str(request.headers.get("x-dev-user-name") or request.headers.get("x-user-name") or "").strip()
+    user_name = header_name or str(payload.get("name") or payload.get("email") or "").strip() or None
 
     if not user_id:
         header_id = str(request.headers.get("x-dev-user-id") or request.headers.get("x-user-id") or "").strip()
         if header_id:
             user_id = header_id
     if not user_name:
-        header_name = str(request.headers.get("x-dev-user-name") or request.headers.get("x-user-name") or "").strip()
-        user_name = header_name or user_id
+        user_name = user_id
 
     return user_id, user_name
 
