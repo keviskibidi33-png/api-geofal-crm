@@ -56,25 +56,14 @@ def _compute_metrics(payload: HumedadCompleteDemoRequest) -> tuple[float | None,
 
 def _is_payload_completo(payload: HumedadCompleteDemoRequest, humedad: float | None) -> bool:
     required = [
-        payload.cliente,
-        payload.direccion,
-        payload.proyecto,
-        payload.ubicacion,
-        payload.recepcion_n,
-        payload.f_emision,
         payload.ot_n,
         payload.codigo_muestra,
-        payload.fecha_recepcion,
         payload.fecha_ejecucion,
-        payload.cantera_sondaje,
-        payload.n_muestra,
         payload.tipo_muestra,
         payload.realizado_por,
         payload.recipiente_numero,
     ]
     if any(not (value or "").strip() for value in required):
-        return False
-    if payload.metodo_prueba not in {"A", "B"}:
         return False
     return all(
         value is not None
