@@ -313,6 +313,7 @@ def _get_cors_origins() -> list[str]:
         "https://laboratorio.geofal.com.pe", # Added just in case
         "https://humedad.geofal.com.pe",
         "https://humedad-complete-demo.geofal.com.pe",
+        "https://humedad01.geofal.com.pe",
         "https://cbr.geofal.com.pe",
         "https://proctor.geofal.com.pe",
         "https://llp.geofal.com.pe",
