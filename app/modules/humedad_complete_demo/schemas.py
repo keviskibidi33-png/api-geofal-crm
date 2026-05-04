@@ -65,6 +65,7 @@ class HumedadCompleteDemoRequest(BaseModel):
 
     condicion_muestra: Optional[str] = None
     tamano_maximo_particula: Optional[str] = None
+    tamano_maximo_muestra_visual_in: Optional[str] = None
     forma_particula: Optional[str] = None
     metodo_prueba: Literal["-", "A", "B"] = "-"
     metodo_a: bool = False
@@ -191,6 +192,8 @@ class HumedadCompleteDemoRequest(BaseModel):
             self.numero_ot = self.ot_n
         if self.fecha_ejecucion and not self.fecha_ensayo:
             self.fecha_ensayo = self.fecha_ejecucion
+        if self.tamano_maximo_particula in (None, "") and self.tamano_maximo_muestra_visual_in:
+            self.tamano_maximo_particula = self.tamano_maximo_muestra_visual_in
 
         metodo = (self.metodo_prueba or "-").strip().upper()
         if metodo not in {"A", "B"}:
