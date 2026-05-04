@@ -63,6 +63,7 @@ Thumbs.db
 !app/templates/Template_PesoUni.xlsx
 !app/templates/Template_Tamiz.xlsx
 !app/templates/Template_ContHumedad.xlsx
+!app/templates/Template_Humedad_Complete.xlsx
 !app/templates/Template_Planas.xlsx
 !app/templates/Template,GE_FINO.xlsx
 !app/templates/Template_CD.xlsx
