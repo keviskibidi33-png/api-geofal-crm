@@ -1,5 +1,5 @@
 -- =========================================================
--- CONFIGURACIÓN DE STORAGE: VERIFICACION, COMPRESIONES, HUMEDAD, CBR, PROCTOR, LLP, GRAN SUELO, GRAN AGREGADO, GE FINO, GE GRUESO
+-- CONFIGURACIÓN DE STORAGE: VERIFICACION, COMPRESIONES, HUMEDAD, HUMEDAD COMPLETE DEMO, CBR, PROCTOR, LLP, GRAN SUELO, GRAN AGREGADO, GE FINO, GE GRUESO
 -- =========================================================
 
 -- 1. Asegurar que los buckets existen y son públicos
@@ -9,6 +9,7 @@ VALUES
   ('verificacion', 'verificacion', true),
   ('compresiones', 'compresiones', true),
   ('humedad', 'humedad', true),
+  ('humedad-complete-demo', 'humedad-complete-demo', true),
   ('cbr', 'cbr', true),
   ('proctor', 'proctor', true),
   ('llp', 'llp', true),
@@ -36,6 +37,7 @@ END $$;
 DROP POLICY IF EXISTS "Public Access Verificacion" ON storage.objects;
 DROP POLICY IF EXISTS "Public Access Compresiones" ON storage.objects;
 DROP POLICY IF EXISTS "Public Access Humedad" ON storage.objects;
+DROP POLICY IF EXISTS "Public Access Humedad Complete Demo" ON storage.objects;
 DROP POLICY IF EXISTS "Public Access CBR" ON storage.objects;
 DROP POLICY IF EXISTS "Public Access Proctor" ON storage.objects;
 DROP POLICY IF EXISTS "Public Access LLP" ON storage.objects;
@@ -64,6 +66,12 @@ ON storage.objects FOR ALL
 TO public
 USING (bucket_id = 'humedad')
 WITH CHECK (bucket_id = 'humedad');
+
+CREATE POLICY "Public Access Humedad Complete Demo"
+ON storage.objects FOR ALL
+TO public
+USING (bucket_id = 'humedad-complete-demo')
+WITH CHECK (bucket_id = 'humedad-complete-demo');
 
 CREATE POLICY "Public Access CBR"
 ON storage.objects FOR ALL
