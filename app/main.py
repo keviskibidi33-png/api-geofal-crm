@@ -1195,6 +1195,35 @@ _PERMISSION_KEY_ALIASES: dict[str, str] = {
     "verificacion": "verificacion_muestras",
 }
 
+_CONTROL_PERMISSION_MODULE_KEYS: tuple[str, ...] = (
+    "ingenieria_archivos",
+    "laboratorio",
+    "oficina_tecnica",
+    "comercial",
+    "administracion",
+)
+_RESTRICTED_TECHNICAL_ROLE_IDS: set[str] = {"tecnico", "tecnico_suelos"}
+
+
+def _is_restricted_technical_role(role_id: str | None) -> bool:
+    normalized = (role_id or "").strip().lower()
+    return normalized in _RESTRICTED_TECHNICAL_ROLE_IDS
+
+
+def _strip_control_permissions(permission_map: dict[str, dict[str, bool]] | None) -> dict[str, dict[str, bool]]:
+    sanitized = dict(permission_map or {})
+    for module_key in _CONTROL_PERMISSION_MODULE_KEYS:
+        sanitized[module_key] = _permission(False, False, False)
+    if "correlativos" in sanitized:
+        sanitized["correlativos"] = dict(sanitized["ingenieria_archivos"])
+    return sanitized
+
+
+def _sanitize_permissions_for_role(role_id: str | None, permission_map: dict[str, dict[str, bool]] | None) -> dict[str, dict[str, bool]]:
+    if _is_restricted_technical_role(role_id):
+        return _strip_control_permissions(permission_map)
+    return dict(permission_map or {})
+
 
 def _extra_special_lab_permissions(role_id: str) -> dict[str, dict[str, bool]]:
     normalized = (role_id or "").strip().lower()
@@ -1230,6 +1259,8 @@ def _apply_role_permission_extensions(role_rows: list[dict[str, Any]]) -> list[d
             permissions["ingenieria_archivos"] = permissions["correlativos"]
         if "correlativos" not in permissions and "ingenieria_archivos" in permissions:
             permissions["correlativos"] = permissions["ingenieria_archivos"]
+
+        permissions = _sanitize_permissions_for_role(normalized_role, permissions)
 
         # Business rule: Administración must have access to Correlativo ING
         if normalized_role in {"administracion", "administrativo"}:
@@ -1627,7 +1658,9 @@ async def get_user_permissions_override(user_id: str, request: Request):
                 (user_id,),
             )
             role_row = cur.fetchone()
+            target_role = _normalize_role_name(_get_profile_role(cur, user_id))
             role_permissions = _normalize_permission_map((role_row or {}).get("permissions") if isinstance(role_row, dict) else None)
+            role_permissions = _sanitize_permissions_for_role(target_role, role_permissions)
             if not row:
                 effective_permissions = _merge_permission_maps(role_permissions, {})
                 return {
@@ -1641,6 +1674,7 @@ async def get_user_permissions_override(user_id: str, request: Request):
                     "updated_at": None,
                 }
             override_permissions = _normalize_permission_map(row.get("permissions"))
+            override_permissions = _sanitize_permissions_for_role(target_role, override_permissions)
             effective_permissions = _merge_permission_maps(role_permissions, override_permissions if bool(row.get("enabled")) else {})
             return {
                 "user_id": row.get("user_id"),
@@ -1687,6 +1721,18 @@ async def upsert_user_permissions_override(user_id: str, payload: UserPermission
                 raise HTTPException(status_code=403, detail="Solo administradores pueden editar permisos granulares")
 
             normalized_permissions = _normalize_permission_map(payload.permissions)
+            target_role = _normalize_role_name(_get_profile_role(cur, user_id))
+            if _is_restricted_technical_role(target_role):
+                forbidden_modules = [
+                    module for module in _CONTROL_PERMISSION_MODULE_KEYS
+                    if any((normalized_permissions.get(module) or {}).values())
+                ]
+                if forbidden_modules:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="El rol técnico no puede recibir permisos de módulos de control.",
+                    )
+                normalized_permissions = _strip_control_permissions(normalized_permissions)
             cur.execute(
                 """
                 INSERT INTO user_permission_overrides (user_id, enabled, permissions, updated_by, updated_at)
