@@ -1247,9 +1247,12 @@ def _available_modules_for_role(role_id: str | None) -> list[str]:
     return modules
 
 
-def _strip_control_permissions(permission_map: dict[str, dict[str, bool]] | None) -> dict[str, dict[str, bool]]:
+def _strip_control_permissions(permission_map: dict[str, dict[str, bool]] | None, role_id: str | None = None) -> dict[str, dict[str, bool]]:
     sanitized = dict(permission_map or {})
+    normalized_role = _normalize_role_name(role_id)
     for module_key in _CONTROL_PERMISSION_MODULE_KEYS:
+        if normalized_role == "tecnico_suelos" and module_key == "configuracion":
+            continue
         sanitized[module_key] = _permission(False, False, False)
     for module_key in _RESTRICTED_TECHNICAL_MODULE_KEYS:
         sanitized[module_key] = _permission(False, False, False)
@@ -1259,9 +1262,10 @@ def _strip_control_permissions(permission_map: dict[str, dict[str, bool]] | None
 
 
 def _sanitize_permissions_for_role(role_id: str | None, permission_map: dict[str, dict[str, bool]] | None) -> dict[str, dict[str, bool]]:
-    if _is_restricted_technical_role(role_id):
-        return _strip_control_permissions(permission_map)
-    return dict(permission_map or {})
+    sanitized = _strip_control_permissions(permission_map, role_id) if _is_restricted_technical_role(role_id) else dict(permission_map or {})
+    if _normalize_role_name(role_id) == "tecnico_suelos":
+        sanitized.setdefault("configuracion", _permission(True, False, False))
+    return sanitized
 
 
 def _extra_special_lab_permissions(role_id: str) -> dict[str, dict[str, bool]]:
@@ -2258,17 +2262,33 @@ async def upsert_user_permissions_override(user_id: str, payload: UserPermission
 
             normalized_permissions = _normalize_permission_map(payload.permissions)
             target_role = _normalize_role_name(_get_profile_role(cur, user_id))
+            cur.execute(
+                """
+                SELECT permissions
+                FROM role_definitions
+                WHERE role_id = %s
+                LIMIT 1
+                """,
+                (target_role,),
+            )
+            role_row = cur.fetchone()
             if _is_restricted_technical_role(target_role):
                 forbidden_modules = [
                     module for module in (*_CONTROL_PERMISSION_MODULE_KEYS, *_RESTRICTED_TECHNICAL_MODULE_KEYS)
-                    if any((normalized_permissions.get(module) or {}).values())
+                    if module != "configuracion"
+                    and any((normalized_permissions.get(module) or {}).values())
                 ]
+                if target_role == "tecnico_suelos" and any((normalized_permissions.get("configuracion") or {}).values()):
+                    forbidden_modules = [
+                        module for module in forbidden_modules if module != "configuracion"
+                    ]
                 if forbidden_modules:
                     raise HTTPException(
                         status_code=400,
                         detail="El rol técnico no puede recibir permisos de módulos de control.",
                     )
-                normalized_permissions = _strip_control_permissions(normalized_permissions)
+                if target_role != "tecnico_suelos":
+                    normalized_permissions = _strip_control_permissions(normalized_permissions, target_role)
             cur.execute(
                 """
                 INSERT INTO user_permission_overrides (user_id, enabled, permissions, updated_by, updated_at)
@@ -2284,7 +2304,8 @@ async def upsert_user_permissions_override(user_id: str, payload: UserPermission
                 (user_id, payload.enabled, json.dumps(normalized_permissions), current_user_id),
             )
             result = cur.fetchone()
-            effective_permissions = _merge_permission_maps({}, _normalize_permission_map(result.get("permissions")) if bool(result.get("enabled")) else {})
+            role_permissions = _sanitize_permissions_for_role(target_role, _normalize_permission_map((role_row or {}).get("permissions") if isinstance(role_row, dict) else None))
+            effective_permissions = _merge_permission_maps(role_permissions, _normalize_permission_map(result.get("permissions")) if bool(result.get("enabled")) else {})
             conn.commit()
             return {
                 "user_id": result.get("user_id"),
