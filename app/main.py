@@ -1380,6 +1380,22 @@ def _normalize_permission_map(raw: Any) -> dict[str, dict[str, bool]]:
     return normalized
 
 
+def _compact_permission_override(
+    base_permissions: dict[str, dict[str, bool]] | None,
+    override_permissions: dict[str, dict[str, bool]] | None,
+) -> dict[str, dict[str, bool]]:
+    base = _normalize_permission_map(base_permissions)
+    override = _normalize_permission_map(override_permissions)
+    compacted: dict[str, dict[str, bool]] = {}
+
+    for module_key, permission in override.items():
+        base_permission = base.get(module_key, _permission(False, False, False))
+        if permission != base_permission:
+            compacted[module_key] = permission
+
+    return compacted
+
+
 def _merge_permission_maps(
     base: dict[str, dict[str, bool]] | None,
     override: dict[str, dict[str, bool]] | None,
@@ -2287,7 +2303,7 @@ async def get_user_permissions_override(user_id: str, request: Request):
                     "updated_by": None,
                     "updated_at": None,
                 }
-            override_permissions = _normalize_permission_map(row.get("permissions"))
+            override_permissions = _compact_permission_override(role_permissions, _normalize_permission_map(row.get("permissions")))
             override_permissions = _sanitize_permissions_for_role(target_role, override_permissions)
             effective_permissions = _merge_permission_maps(role_permissions, override_permissions if bool(row.get("enabled")) else {})
             return {
@@ -2346,6 +2362,7 @@ async def upsert_user_permissions_override(user_id: str, payload: UserPermission
                 (target_role,),
             )
             role_row = cur.fetchone()
+            role_permissions = _sanitize_permissions_for_role(target_role, _normalize_permission_map((role_row or {}).get("permissions") if isinstance(role_row, dict) else None))
             if _is_restricted_technical_role(target_role):
                 forbidden_modules = [
                     module for module in (*_CONTROL_PERMISSION_MODULE_KEYS, *_RESTRICTED_TECHNICAL_MODULE_KEYS)
@@ -2363,6 +2380,7 @@ async def upsert_user_permissions_override(user_id: str, payload: UserPermission
                     )
                 if target_role != "tecnico_suelos":
                     normalized_permissions = _strip_control_permissions(normalized_permissions, target_role)
+            normalized_permissions = _compact_permission_override(role_permissions, normalized_permissions) if payload.enabled else {}
             cur.execute(
                 """
                 INSERT INTO user_permission_overrides (user_id, enabled, permissions, updated_by, updated_at)
@@ -2378,7 +2396,6 @@ async def upsert_user_permissions_override(user_id: str, payload: UserPermission
                 (user_id, payload.enabled, json.dumps(normalized_permissions), current_user_id),
             )
             result = cur.fetchone()
-            role_permissions = _sanitize_permissions_for_role(target_role, _normalize_permission_map((role_row or {}).get("permissions") if isinstance(role_row, dict) else None))
             effective_permissions = _merge_permission_maps(role_permissions, _normalize_permission_map(result.get("permissions")) if bool(result.get("enabled")) else {})
             conn.commit()
             return {
