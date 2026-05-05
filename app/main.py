@@ -25,7 +25,7 @@ from openpyxl.utils.cell import get_column_letter, range_boundaries
 from pydantic import BaseModel, Field
 import psycopg2
 import psycopg2.errors # Explicitly import errors module
-from psycopg2.extras import RealDictCursor
+from psycopg2.extras import RealDictCursor, Json
 
 # Importar el nuevo exportador XML
 # from app.xlsx_direct_v2 import export_xlsx_direct
@@ -221,7 +221,9 @@ class DashboardNotification(BaseModel):
     severity: str = "warning"
     title: str
     message: str
+    status: str = "open"
     created_at: datetime | None = None
+    acknowledged_at: datetime | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 app = FastAPI(title="quotes-service")
@@ -1484,6 +1486,256 @@ def _build_permission_conflict_notifications(cur) -> list[dict[str, Any]]:
     return notifications
 
 
+def _ensure_dashboard_notifications_table(cur) -> None:
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dashboard_notifications (
+            notification_key TEXT PRIMARY KEY,
+            type TEXT NOT NULL,
+            severity TEXT NOT NULL DEFAULT 'warning',
+            title TEXT NOT NULL,
+            message TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'open',
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            acknowledged_at TIMESTAMPTZ NULL,
+            acknowledged_by UUID NULL,
+            resolved_at TIMESTAMPTZ NULL,
+            resolved_by UUID NULL,
+            last_detected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT dashboard_notifications_status_check
+                CHECK (status IN ('open', 'acknowledged', 'resolved'))
+        );
+        """
+    )
+    cur.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_dashboard_notifications_status
+        ON dashboard_notifications (status);
+        """
+    )
+    cur.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_dashboard_notifications_type_status
+        ON dashboard_notifications (type, status);
+        """
+    )
+    cur.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_dashboard_notifications_last_detected_at
+        ON dashboard_notifications (last_detected_at DESC);
+        """
+    )
+
+
+def _upsert_dashboard_notification(cur, notification: dict[str, Any]) -> None:
+    metadata = notification.get("metadata") or {}
+    cur.execute(
+        """
+        INSERT INTO dashboard_notifications (
+            notification_key,
+            type,
+            severity,
+            title,
+            message,
+            status,
+            metadata,
+            created_at,
+            updated_at,
+            acknowledged_at,
+            acknowledged_by,
+            resolved_at,
+            resolved_by,
+            last_detected_at
+        )
+        VALUES (
+            %s,
+            %s,
+            %s,
+            %s,
+            %s,
+            'open',
+            %s::jsonb,
+            %s,
+            NOW(),
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            NOW()
+        )
+        ON CONFLICT (notification_key) DO UPDATE SET
+            type = EXCLUDED.type,
+            severity = EXCLUDED.severity,
+            title = EXCLUDED.title,
+            message = EXCLUDED.message,
+            metadata = EXCLUDED.metadata,
+            updated_at = NOW(),
+            last_detected_at = NOW(),
+            status = CASE
+                WHEN dashboard_notifications.status = 'acknowledged' THEN 'acknowledged'
+                ELSE 'open'
+            END,
+            acknowledged_at = CASE
+                WHEN dashboard_notifications.status = 'acknowledged' THEN dashboard_notifications.acknowledged_at
+                ELSE NULL
+            END,
+            acknowledged_by = CASE
+                WHEN dashboard_notifications.status = 'acknowledged' THEN dashboard_notifications.acknowledged_by
+                ELSE NULL
+            END,
+            resolved_at = NULL,
+            resolved_by = NULL
+        """,
+        (
+            str(notification.get("id") or ""),
+            str(notification.get("type") or "permission_conflict"),
+            str(notification.get("severity") or "warning"),
+            str(notification.get("title") or "Notificación"),
+            str(notification.get("message") or ""),
+            Json(metadata),
+            notification.get("created_at") or datetime.utcnow(),
+        ),
+    )
+
+
+def _mark_resolved_dashboard_notifications(cur, current_user_id: str, active_keys: list[str]) -> None:
+    if active_keys:
+        cur.execute(
+            """
+            UPDATE dashboard_notifications
+            SET
+                status = 'resolved',
+                resolved_at = NOW(),
+                resolved_by = %s::uuid,
+                updated_at = NOW()
+            WHERE type = 'permission_conflict'
+              AND status IN ('open', 'acknowledged')
+              AND NOT (notification_key = ANY(%s))
+            """,
+            (current_user_id, active_keys),
+        )
+        return
+
+    cur.execute(
+        """
+        UPDATE dashboard_notifications
+        SET
+            status = 'resolved',
+            resolved_at = NOW(),
+            resolved_by = %s::uuid,
+            updated_at = NOW()
+        WHERE type = 'permission_conflict'
+          AND status IN ('open', 'acknowledged')
+        """,
+        (current_user_id,),
+    )
+
+
+def _fetch_dashboard_notifications(cur) -> list[dict[str, Any]]:
+    cur.execute(
+        """
+        SELECT
+            notification_key AS id,
+            type,
+            severity,
+            title,
+            message,
+            status,
+            created_at,
+            acknowledged_at,
+            metadata
+        FROM dashboard_notifications
+        WHERE type = 'permission_conflict'
+          AND status IN ('open', 'acknowledged')
+        ORDER BY
+            CASE WHEN status = 'open' THEN 0 ELSE 1 END,
+            last_detected_at DESC,
+            created_at DESC,
+            notification_key ASC
+        """
+    )
+    rows = cur.fetchall() or []
+    notifications: list[dict[str, Any]] = []
+    for row in rows:
+        if isinstance(row, dict):
+            notifications.append(dict(row))
+        elif row:
+            notifications.append({
+                "id": row[0],
+                "type": row[1],
+                "severity": row[2],
+                "title": row[3],
+                "message": row[4],
+                "status": row[5],
+                "created_at": row[6],
+                "acknowledged_at": row[7] if len(row) > 7 else None,
+                "metadata": row[8] if len(row) > 8 else {},
+            })
+    return notifications
+
+
+def _sync_dashboard_notifications(cur, current_user_id: str) -> list[dict[str, Any]]:
+    _ensure_dashboard_notifications_table(cur)
+    derived_notifications = _build_permission_conflict_notifications(cur)
+    active_keys: list[str] = []
+
+    for notification in derived_notifications:
+        notification_key = str(notification.get("id") or "").strip()
+        if not notification_key:
+            continue
+        active_keys.append(notification_key)
+        _upsert_dashboard_notification(cur, notification)
+
+    _mark_resolved_dashboard_notifications(cur, current_user_id, active_keys)
+    return _fetch_dashboard_notifications(cur)
+
+
+def _acknowledge_dashboard_notification(cur, notification_key: str, current_user_id: str) -> dict[str, Any] | None:
+    _ensure_dashboard_notifications_table(cur)
+    cur.execute(
+        """
+        UPDATE dashboard_notifications
+        SET
+            status = 'acknowledged',
+            acknowledged_at = COALESCE(acknowledged_at, NOW()),
+            acknowledged_by = %s::uuid,
+            updated_at = NOW()
+        WHERE notification_key = %s
+          AND type = 'permission_conflict'
+          AND status IN ('open', 'acknowledged')
+        RETURNING
+            notification_key AS id,
+            type,
+            severity,
+            title,
+            message,
+            status,
+            created_at,
+            acknowledged_at,
+            metadata
+        """,
+        (current_user_id, notification_key),
+    )
+    row = cur.fetchone()
+    if not row:
+        return None
+    if isinstance(row, dict):
+        return dict(row)
+    return {
+        "id": row[0],
+        "type": row[1],
+        "severity": row[2],
+        "title": row[3],
+        "message": row[4],
+        "status": row[5],
+        "created_at": row[6],
+        "acknowledged_at": row[7] if len(row) > 7 else None,
+        "metadata": row[8] if len(row) > 8 else {},
+    }
+
+
 @app.get("/roles")
 async def get_roles():
     """Get all role definitions using Supabase REST API"""
@@ -1776,18 +2028,49 @@ async def get_notifications(request: Request):
             if current_role not in {"admin", "admin_general"}:
                 return {"data": [], "count": 0}
 
-            notifications = _build_permission_conflict_notifications(cur)
-            notifications.sort(
-                key=lambda item: (
-                    item.get("severity") != "warning",
-                    str(item.get("created_at") or ""),
-                ),
-                reverse=True,
-            )
-            return {"data": notifications, "count": len(notifications)}
+            notifications = _sync_dashboard_notifications(cur, current_user_id)
+            conn.commit()
+            open_count = sum(1 for item in notifications if _normalize_role_name(str(item.get("status") or "")) == "open")
+            return {"data": notifications, "count": open_count}
     except Exception as e:
         logger.warning("Error fetching notifications: %s", e)
         return {"data": [], "count": 0}
+    finally:
+        if 'conn' in locals() and conn:
+            conn.close()
+
+
+@app.patch("/notifications/{notification_key}/acknowledge")
+async def acknowledge_notification(notification_key: str, request: Request):
+    """Mark an admin notification as acknowledged."""
+    if not _has_database_url():
+        raise HTTPException(status_code=400, detail="Database not configured")
+
+    current_user_id = _extract_request_user_id(request)
+    if not current_user_id:
+        raise HTTPException(status_code=401, detail="Usuario no autenticado")
+
+    try:
+        conn = _get_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            current_role = _normalize_role_name(_get_profile_role(cur, current_user_id))
+            if current_role not in {"admin", "admin_general"}:
+                raise HTTPException(status_code=403, detail="Solo administradores pueden gestionar notificaciones")
+
+            row = _acknowledge_dashboard_notification(cur, notification_key, current_user_id)
+            if not row:
+                raise HTTPException(status_code=404, detail="Notificación no encontrada")
+            conn.commit()
+            return row
+    except HTTPException:
+        if 'conn' in locals() and conn:
+            conn.rollback()
+        raise
+    except Exception as e:
+        if 'conn' in locals() and conn:
+            conn.rollback()
+        logger.warning("Error acknowledging notification %s: %s", notification_key, e)
+        raise HTTPException(status_code=500, detail="Error actualizando notificación")
     finally:
         if 'conn' in locals() and conn:
             conn.close()
