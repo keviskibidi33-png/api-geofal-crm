@@ -41,6 +41,16 @@ def _extract_cell_text(cell: etree._Element, ns: str, shared_strings: list[str])
     return v.text if v is not None and v.text else ""
 
 
+def _format_currency_display(value: Any) -> str:
+    if value is None or value == "":
+        return ""
+    try:
+        numeric = float(str(value).replace("S/.", "").replace("S/", "").strip())
+    except (TypeError, ValueError):
+        return str(value)
+    return f"S/. {numeric:,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
+
+
 def _resolve_admin_header_field(normalized_header: str) -> tuple[str, bool] | None:
     """Map normalized ADMIN template headers to API item fields."""
     direct_map: dict[str, tuple[str, bool]] = {
@@ -49,7 +59,9 @@ def _resolve_admin_header_field(normalized_header: str) -> tuple[str, bool] | No
         "FECHA RECEPCION": ("fecha_recepcion", False),
         "CLIENTE": ("cliente_nombre", False),
         "PROYECTO": ("proyecto", False),
+        "DESCRIPCION DEL SERVICIO": ("descripcion_servicio", False),
         "COTIZACION": ("cotizacion_lab", False),
+        "COSTO DEL SERVICIO": ("costo_servicio", False),
         "FACTURACION": ("numero_factura", False),
         "N FACTURA": ("numero_factura", False),
         "NO FACTURA": ("numero_factura", False),
@@ -76,7 +88,7 @@ def _discover_admin_template_mapping(
 ) -> tuple[int, dict[str, tuple[str, bool]]]:
     """
     Discover header row and column mapping from ADMIN template.
-    Falls back to legacy fixed layout A-H when headers cannot be detected.
+    Falls back to the current template layout when headers cannot be detected.
     """
     fallback_start_row = 6
     fallback_map: dict[str, tuple[str, bool]] = {
@@ -84,10 +96,14 @@ def _discover_admin_template_mapping(
         "B": ("recep_numero", False),
         "C": ("fecha_recepcion", False),
         "D": ("cliente_nombre", False),
-        "E": ("numero_factura", False),
-        "F": ("estado_pago", False),
-        "G": ("estado_autorizar", False),
-        "H": ("nota_admin", False),
+        "E": ("proyecto", False),
+        "F": ("descripcion_servicio", False),
+        "G": ("cotizacion_lab", False),
+        "H": ("costo_servicio", False),
+        "I": ("numero_factura", False),
+        "J": ("estado_pago", False),
+        "K": ("estado_autorizar", False),
+        "L": ("nota_admin", False),
     }
 
     best_score = 0
@@ -364,11 +380,12 @@ def export_programacion_comercial_xlsx(template_path: str, items: list[dict]) ->
     FECHA RECEPCIÓN: C
     CLIENTE: D
     COTIZACION: E
-    FECHA SOLICITUD: F
-    FECHA ENTREGA: G
-    EVIDENCIA SOLICITUD - ENVIO - ACEPTACION COTIZ: H
-    DIAS ATRASO ENVIO COTIZ.: I
-    MOTIVO DIAS ATRASO: J
+    COSTO DEL SERVICIO: F
+    FECHA SOLICITUD: G
+    FECHA ENTREGA: H
+    EVIDENCIA SOLICITUD - ENVIO - ACEPTACION COTIZ: I
+    DIAS ATRASO ENVIO COTIZ.: J
+    MOTIVO DIAS ATRASO: K
     
     Data starts at Row 9.
     """
@@ -441,16 +458,18 @@ def export_programacion_comercial_xlsx(template_path: str, items: list[dict]) ->
             _set_cell_value(sheet_data, f'D{row}', item.get('cliente_nombre', ''), ns, get_string_idx=string_idx_getter)
             # E: COTIZACION
             _set_cell_value(sheet_data, f'E{row}', item.get('cotizacion_lab', ''), ns, get_string_idx=string_idx_getter)
-            # F: FECHA SOLICITUD
-            _set_cell_value(sheet_data, f'F{row}', item.get('fecha_solicitud_com', ''), ns, get_string_idx=string_idx_getter)
-            # G: FECHA ENTREGA
-            _set_cell_value(sheet_data, f'G{row}', item.get('fecha_entrega_com', ''), ns, get_string_idx=string_idx_getter)
-            # H: EVIDENCIA
-            _set_cell_value(sheet_data, f'H{row}', item.get('evidencia_solicitud_envio', ''), ns, get_string_idx=string_idx_getter)
-            # I: DIAS ATRASO
-            _set_cell_value(sheet_data, f'I{row}', item.get('dias_atraso_envio_coti', ''), ns, is_number=True)
-            # J: MOTIVO
-            _set_cell_value(sheet_data, f'J{row}', item.get('motivo_dias_atraso_com', ''), ns, get_string_idx=string_idx_getter)
+            # F: COSTO DEL SERVICIO
+            _set_cell_value(sheet_data, f'F{row}', _format_currency_display(item.get('costo_servicio', '')), ns, get_string_idx=string_idx_getter)
+            # G: FECHA SOLICITUD
+            _set_cell_value(sheet_data, f'G{row}', item.get('fecha_solicitud_com', ''), ns, get_string_idx=string_idx_getter)
+            # H: FECHA ENTREGA
+            _set_cell_value(sheet_data, f'H{row}', item.get('fecha_entrega_com', ''), ns, get_string_idx=string_idx_getter)
+            # I: EVIDENCIA
+            _set_cell_value(sheet_data, f'I{row}', item.get('evidencia_solicitud_envio', ''), ns, get_string_idx=string_idx_getter)
+            # J: DIAS ATRASO
+            _set_cell_value(sheet_data, f'J{row}', item.get('dias_atraso_envio_coti', ''), ns, is_number=True)
+            # K: MOTIVO
+            _set_cell_value(sheet_data, f'K{row}', item.get('motivo_dias_atraso_com', ''), ns, get_string_idx=string_idx_getter)
 
     # 3. Serialize
     modified_sheet1 = etree.tostring(root, encoding='utf-8', xml_declaration=True)
@@ -495,7 +514,7 @@ def export_programacion_administracion_xlsx(template_path: str, items: list[dict
     Exporta Programacion ADMINISTRACION XLSX modificando el XML del template directamente.
     Detecta headers del template y llena columnas por nombre para evitar
     errores cuando se inserten o reordenen columnas (p.ej. PROYECTO/FACTURACION).
-    Si no detecta headers, usa el layout legacy A-H (data desde fila 6).
+    Si no detecta headers, usa el layout actual con descripción y costo.
     """
     
     # 1. Load shared strings
@@ -548,10 +567,14 @@ def export_programacion_administracion_xlsx(template_path: str, items: list[dict
         "B": ("recep_numero", False),
         "C": ("fecha_recepcion", False),
         "D": ("cliente_nombre", False),
-        "E": ("numero_factura", False),
-        "F": ("estado_pago", False),
-        "G": ("estado_autorizar", False),
-        "H": ("nota_admin", False),
+        "E": ("proyecto", False),
+        "F": ("descripcion_servicio", False),
+        "G": ("cotizacion_lab", False),
+        "H": ("costo_servicio", False),
+        "I": ("numero_factura", False),
+        "J": ("estado_pago", False),
+        "K": ("estado_autorizar", False),
+        "L": ("nota_admin", False),
     }
     
     if sheet_data is not None:
@@ -580,6 +603,11 @@ def export_programacion_administracion_xlsx(template_path: str, items: list[dict
                     value = item.get("autorizacion_lab") or item.get("estado_autorizar", "")
                 elif field_name == "numero_factura":
                     value = item.get("numero_factura") or item.get("facturacion", "")
+                elif field_name == "costo_servicio":
+                    raw_cost = item.get("costo_servicio")
+                    if raw_cost is None or raw_cost == "":
+                        raw_cost = item.get("precio_servicio", "")
+                    value = _format_currency_display(raw_cost)
                 else:
                     value = item.get(field_name, "")
 
