@@ -2180,6 +2180,30 @@ async def update_role(role_id: str, payload: RoleUpdate):
         canonical_role_id = _normalize_role_name(role_id)
         conn = _get_connection()
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT permissions
+                FROM role_definitions
+                WHERE role_id = %s
+                LIMIT 1
+                """,
+                (canonical_role_id,),
+            )
+            existing_role_row = cur.fetchone()
+            if not existing_role_row:
+                raw_role_id = (role_id or "").strip().lower()
+                if raw_role_id != canonical_role_id:
+                    cur.execute(
+                        """
+                        SELECT permissions
+                        FROM role_definitions
+                        WHERE role_id = %s
+                        LIMIT 1
+                        """,
+                        (raw_role_id,),
+                    )
+                    existing_role_row = cur.fetchone()
+
             # Prepare update map
             update_fields = []
             params = []
@@ -2194,8 +2218,11 @@ async def update_role(role_id: str, payload: RoleUpdate):
                 
             if payload.permissions is not None:
                 update_fields.append("permissions = %s")
+                current_permissions = _normalize_permission_map((existing_role_row or {}).get("permissions") if isinstance(existing_role_row, dict) else None)
+                incoming_permissions = _normalize_permission_map(payload.permissions.model_dump(exclude_unset=True))
+                merged_permissions = _merge_permission_maps(current_permissions, incoming_permissions)
                 # Ensure we serialize to JSON string for Postgres JSONB
-                params.append(json.dumps(payload.permissions.model_dump(exclude_unset=True)))
+                params.append(json.dumps(merged_permissions))
             
             if not update_fields:
                 raise HTTPException(status_code=400, detail="No fields to update")
