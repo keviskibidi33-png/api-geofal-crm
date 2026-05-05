@@ -1195,12 +1195,27 @@ _PERMISSION_KEY_ALIASES: dict[str, str] = {
     "verificacion": "verificacion_muestras",
 }
 
+_ROLE_ID_ALIASES: dict[str, str] = {
+    "vendor": "auxiliar_comercial",
+    "vendedor": "auxiliar_comercial",
+    "sig_el_rol": "auxiliar_comercial",
+    "tecnico_general": "tecnico",
+    "tecnico_no_lab_write": "tecnico",
+    "laboratorio_tipificador_no_lab_write": "laboratorio_lector",
+}
+
 _CONTROL_PERMISSION_MODULE_KEYS: tuple[str, ...] = (
     "ingenieria_archivos",
     "laboratorio",
     "oficina_tecnica",
     "comercial",
     "administracion",
+)
+_RESTRICTED_TECHNICAL_MODULE_KEYS: tuple[str, ...] = (
+    "clientes",
+    "proyectos",
+    "cotizadora",
+    "programacion",
 )
 _RESTRICTED_TECHNICAL_ROLE_IDS: set[str] = {"tecnico", "tecnico_suelos"}
 
@@ -1210,9 +1225,18 @@ def _is_restricted_technical_role(role_id: str | None) -> bool:
     return normalized in _RESTRICTED_TECHNICAL_ROLE_IDS
 
 
+def _available_modules_for_role(role_id: str | None) -> list[str]:
+    modules = list(_PERMISSION_MODULE_KEYS)
+    if _is_restricted_technical_role(role_id):
+        return [module for module in modules if module not in _RESTRICTED_TECHNICAL_MODULE_KEYS]
+    return modules
+
+
 def _strip_control_permissions(permission_map: dict[str, dict[str, bool]] | None) -> dict[str, dict[str, bool]]:
     sanitized = dict(permission_map or {})
     for module_key in _CONTROL_PERMISSION_MODULE_KEYS:
+        sanitized[module_key] = _permission(False, False, False)
+    for module_key in _RESTRICTED_TECHNICAL_MODULE_KEYS:
         sanitized[module_key] = _permission(False, False, False)
     if "correlativos" in sanitized:
         sanitized["correlativos"] = dict(sanitized["ingenieria_archivos"])
@@ -1281,7 +1305,31 @@ def _extract_request_user_id(request: Request) -> str | None:
 
 
 def _normalize_role_name(value: str | None) -> str:
-    return (value or "").strip().lower()
+    normalized = (value or "").strip().lower()
+    return _ROLE_ID_ALIASES.get(normalized, normalized)
+
+
+def _canonicalize_role_definition_rows(role_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    canonical_rows: dict[str, dict[str, Any]] = {}
+    for row in role_rows:
+        role_data = dict(row)
+        raw_role_id = str(role_data.get("role_id") or "").strip().lower()
+        canonical_role_id = _normalize_role_name(raw_role_id)
+        role_data["role_id"] = canonical_role_id
+        role_data["_is_alias"] = canonical_role_id != raw_role_id
+
+        current = canonical_rows.get(canonical_role_id)
+        if current is None:
+            canonical_rows[canonical_role_id] = role_data
+            continue
+
+        if current.get("_is_alias") and not role_data.get("_is_alias"):
+            canonical_rows[canonical_role_id] = role_data
+
+    return [
+        {key: value for key, value in row.items() if key != "_is_alias"}
+        for row in canonical_rows.values()
+    ]
 
 
 def _permission_from_payload(raw: Any) -> dict[str, bool]:
@@ -1403,56 +1451,9 @@ async def get_roles():
                     "is_system": True
                 },
                 {
-                    "role_id": "vendor",
-                    "label": "Vendedor",
-                    "description": "Acceso a modulos de ventas",
-                    "permissions": {
-                        "clientes": {"read": True, "write": True, "delete": False},
-                        "proyectos": {"read": True, "write": True, "delete": False},
-                        "cotizadora": {"read": True, "write": True, "delete": False},
-                        "programacion": {"read": True, "write": False, "delete": False},
-                        "recepcion": {"read": False, "write": False, "delete": False},
-                        "verificacion_muestras": {"read": False, "write": False, "delete": False},
-                        "compresion": {"read": False, "write": False, "delete": False},
-                        "tracing": {"read": False, "write": False, "delete": False},
-                        "humedad": {"read": False, "write": False, "delete": False},
-                        "cont_humedad": {"read": False, "write": False, "delete": False},
-                        "humedad_complete_demo": {"read": False, "write": False, "delete": False},
-                        "planas": {"read": False, "write": False, "delete": False},
-                        "caras": {"read": False, "write": False, "delete": False},
-                        "cbr": {"read": False, "write": False, "delete": False},
-                        "proctor": {"read": False, "write": False, "delete": False},
-                        "llp": {"read": False, "write": False, "delete": False},
-                        "gran_suelo": {"read": False, "write": False, "delete": False},
-                        "gran_agregado": {"read": False, "write": False, "delete": False},
-                        "abra": {"read": False, "write": False, "delete": False},
-                        "abrass": {"read": False, "write": False, "delete": False},
-                        "peso_unitario": {"read": False, "write": False, "delete": False},
-                        "tamiz": {"read": False, "write": False, "delete": False},
-                        "equi_arena": {"read": False, "write": False, "delete": False},
-                        "ge_fino": {"read": False, "write": False, "delete": False},
-                        "ge_grueso": {"read": False, "write": False, "delete": False},
-                        "cd": {"read": False, "write": False, "delete": False},
-                        "ph": {"read": False, "write": False, "delete": False},
-                        "cloro_soluble": {"read": False, "write": False, "delete": False},
-                        "sales_solubles": {"read": False, "write": False, "delete": False},
-                        "sulfatos_solubles": {"read": False, "write": False, "delete": False},
-                        "compresion_no_confinada": {"read": False, "write": False, "delete": False},
-                        "usuarios": {"read": False, "write": False, "delete": False},
-                        "auditoria": {"read": False, "write": False, "delete": False},
-                        "configuracion": {"read": False, "write": False, "delete": False},
-                        "laboratorio": {"read": False, "write": False, "delete": False},
-                        "comercial": {"read": True, "write": True, "delete": False},
-                        "administracion": {"read": False, "write": False, "delete": False},
-                        "permisos": {"read": False, "write": False, "delete": False},
-                        "correlativos": {"read": False, "write": False, "delete": False}
-                    },
-                    "is_system": True
-                },
-                {
                     "role_id": "auxiliar_comercial",
                     "label": "Auxiliar Comercial",
-                    "description": "Soporte comercial (edición de cotizaciones, clientes y proyectos)",
+                    "description": "Soporte comercial (clientes, proyectos y cotizaciones)",
                     "permissions": {
                         "clientes": {"read": True, "write": True, "delete": False},
                         "proyectos": {"read": True, "write": True, "delete": False},
@@ -1497,14 +1498,10 @@ async def get_roles():
                     "is_system": True
                 },
                 {
-                    "role_id": "laboratorio",
-                    "label": "Laboratorio",
-                    "description": "Acceso a programacion y laboratorio",
+                    "role_id": "tecnico",
+                    "label": "Técnico",
+                    "description": "Acceso técnico a ensayos sin clientes, proyectos, programación ni tablas de control",
                     "permissions": {
-                        "clientes": {"read": True, "write": False, "delete": False},
-                        "proyectos": {"read": True, "write": False, "delete": False},
-                        "cotizadora": {"read": False, "write": False, "delete": False},
-                        "programacion": {"read": True, "write": True, "delete": False},
                         "recepcion": {"read": True, "write": True, "delete": False},
                         "verificacion_muestras": {"read": True, "write": True, "delete": False},
                         "compresion": {"read": True, "write": True, "delete": False},
@@ -1519,6 +1516,13 @@ async def get_roles():
                         "llp": {"read": True, "write": True, "delete": False},
                         "gran_suelo": {"read": True, "write": True, "delete": False},
                         "gran_agregado": {"read": True, "write": True, "delete": False},
+                        "cont_mat_organica": {"read": True, "write": True, "delete": False},
+                        "terrones_fino_grueso": {"read": True, "write": True, "delete": False},
+                        "azul_metileno": {"read": True, "write": True, "delete": False},
+                        "part_livianas": {"read": True, "write": True, "delete": False},
+                        "imp_organicas": {"read": True, "write": True, "delete": False},
+                        "sul_magnesio": {"read": True, "write": True, "delete": False},
+                        "angularidad": {"read": True, "write": True, "delete": False},
                         "abra": {"read": True, "write": True, "delete": False},
                         "abrass": {"read": True, "write": True, "delete": False},
                         "peso_unitario": {"read": True, "write": True, "delete": False},
@@ -1532,10 +1536,109 @@ async def get_roles():
                         "sales_solubles": {"read": True, "write": True, "delete": False},
                         "sulfatos_solubles": {"read": True, "write": True, "delete": False},
                         "compresion_no_confinada": {"read": True, "write": True, "delete": False},
+                        "configuracion": {"read": True, "write": False, "delete": False},
                         "usuarios": {"read": False, "write": False, "delete": False},
                         "auditoria": {"read": False, "write": False, "delete": False},
-                        "configuracion": {"read": False, "write": False, "delete": False},
+                        "comercial": {"read": False, "write": False, "delete": False},
+                        "administracion": {"read": False, "write": False, "delete": False},
+                        "permisos": {"read": False, "write": False, "delete": False},
+                        "correlativos": {"read": False, "write": False, "delete": False}
+                    },
+                    "is_system": True
+                },
+                {
+                    "role_id": "laboratorio_tipificador",
+                    "label": "Laboratorio Tipificador",
+                    "description": "Acceso técnico a ensayos con tabla de control lab en edición",
+                    "permissions": {
+                        "recepcion": {"read": True, "write": True, "delete": False},
+                        "verificacion_muestras": {"read": True, "write": True, "delete": False},
+                        "compresion": {"read": True, "write": True, "delete": False},
+                        "tracing": {"read": True, "write": True, "delete": False},
+                        "humedad": {"read": True, "write": True, "delete": False},
+                        "cont_humedad": {"read": True, "write": True, "delete": False},
+                        "humedad_complete_demo": {"read": True, "write": True, "delete": False},
+                        "planas": {"read": True, "write": True, "delete": False},
+                        "caras": {"read": True, "write": True, "delete": False},
+                        "cbr": {"read": True, "write": True, "delete": False},
+                        "proctor": {"read": True, "write": True, "delete": False},
+                        "llp": {"read": True, "write": True, "delete": False},
+                        "gran_suelo": {"read": True, "write": True, "delete": False},
+                        "gran_agregado": {"read": True, "write": True, "delete": False},
+                        "cont_mat_organica": {"read": True, "write": True, "delete": False},
+                        "terrones_fino_grueso": {"read": True, "write": True, "delete": False},
+                        "azul_metileno": {"read": True, "write": True, "delete": False},
+                        "part_livianas": {"read": True, "write": True, "delete": False},
+                        "imp_organicas": {"read": True, "write": True, "delete": False},
+                        "sul_magnesio": {"read": True, "write": True, "delete": False},
+                        "angularidad": {"read": True, "write": True, "delete": False},
+                        "abra": {"read": True, "write": True, "delete": False},
+                        "abrass": {"read": True, "write": True, "delete": False},
+                        "peso_unitario": {"read": True, "write": True, "delete": False},
+                        "tamiz": {"read": True, "write": True, "delete": False},
+                        "equi_arena": {"read": True, "write": True, "delete": False},
+                        "ge_fino": {"read": True, "write": True, "delete": False},
+                        "ge_grueso": {"read": True, "write": True, "delete": False},
+                        "cd": {"read": True, "write": True, "delete": False},
+                        "ph": {"read": True, "write": True, "delete": False},
+                        "cloro_soluble": {"read": True, "write": True, "delete": False},
+                        "sales_solubles": {"read": True, "write": True, "delete": False},
+                        "sulfatos_solubles": {"read": True, "write": True, "delete": False},
+                        "compresion_no_confinada": {"read": True, "write": True, "delete": False},
                         "laboratorio": {"read": True, "write": True, "delete": False},
+                        "configuracion": {"read": True, "write": False, "delete": False},
+                        "usuarios": {"read": False, "write": False, "delete": False},
+                        "auditoria": {"read": False, "write": False, "delete": False},
+                        "comercial": {"read": False, "write": False, "delete": False},
+                        "administracion": {"read": False, "write": False, "delete": False},
+                        "permisos": {"read": False, "write": False, "delete": False},
+                        "correlativos": {"read": False, "write": False, "delete": False}
+                    },
+                    "is_system": True
+                },
+                {
+                    "role_id": "laboratorio_lector",
+                    "label": "Lector Laboratorio",
+                    "description": "Acceso técnico a ensayos con tabla de control lab en solo lectura",
+                    "permissions": {
+                        "recepcion": {"read": True, "write": True, "delete": False},
+                        "verificacion_muestras": {"read": True, "write": True, "delete": False},
+                        "compresion": {"read": True, "write": True, "delete": False},
+                        "tracing": {"read": True, "write": True, "delete": False},
+                        "humedad": {"read": True, "write": True, "delete": False},
+                        "cont_humedad": {"read": True, "write": True, "delete": False},
+                        "humedad_complete_demo": {"read": True, "write": True, "delete": False},
+                        "planas": {"read": True, "write": True, "delete": False},
+                        "caras": {"read": True, "write": True, "delete": False},
+                        "cbr": {"read": True, "write": True, "delete": False},
+                        "proctor": {"read": True, "write": True, "delete": False},
+                        "llp": {"read": True, "write": True, "delete": False},
+                        "gran_suelo": {"read": True, "write": True, "delete": False},
+                        "gran_agregado": {"read": True, "write": True, "delete": False},
+                        "cont_mat_organica": {"read": True, "write": True, "delete": False},
+                        "terrones_fino_grueso": {"read": True, "write": True, "delete": False},
+                        "azul_metileno": {"read": True, "write": True, "delete": False},
+                        "part_livianas": {"read": True, "write": True, "delete": False},
+                        "imp_organicas": {"read": True, "write": True, "delete": False},
+                        "sul_magnesio": {"read": True, "write": True, "delete": False},
+                        "angularidad": {"read": True, "write": True, "delete": False},
+                        "abra": {"read": True, "write": True, "delete": False},
+                        "abrass": {"read": True, "write": True, "delete": False},
+                        "peso_unitario": {"read": True, "write": True, "delete": False},
+                        "tamiz": {"read": True, "write": True, "delete": False},
+                        "equi_arena": {"read": True, "write": True, "delete": False},
+                        "ge_fino": {"read": True, "write": True, "delete": False},
+                        "ge_grueso": {"read": True, "write": True, "delete": False},
+                        "cd": {"read": True, "write": True, "delete": False},
+                        "ph": {"read": True, "write": True, "delete": False},
+                        "cloro_soluble": {"read": True, "write": True, "delete": False},
+                        "sales_solubles": {"read": True, "write": True, "delete": False},
+                        "sulfatos_solubles": {"read": True, "write": True, "delete": False},
+                        "compresion_no_confinada": {"read": True, "write": True, "delete": False},
+                        "laboratorio": {"read": True, "write": False, "delete": False},
+                        "configuracion": {"read": True, "write": False, "delete": False},
+                        "usuarios": {"read": False, "write": False, "delete": False},
+                        "auditoria": {"read": False, "write": False, "delete": False},
                         "comercial": {"read": False, "write": False, "delete": False},
                         "administracion": {"read": False, "write": False, "delete": False},
                         "permisos": {"read": False, "write": False, "delete": False},
@@ -1549,13 +1652,13 @@ async def get_roles():
             logger.error("Supabase error fetching roles: %s - %s", response.status_code, response.text)
             raise HTTPException(status_code=500, detail=f"Error fetching roles: {response.text}")
 
-        return _apply_role_permission_extensions(response.json())
+        return _apply_role_permission_extensions(_canonicalize_role_definition_rows(response.json()))
     except requests.RequestException as e:
         logger.exception("Request error fetching roles")
         # Return default roles on connection error
         return _apply_role_permission_extensions([
             {"role_id": "admin", "label": "Administrador", "description": "Acceso completo", "permissions": {}, "is_system": True},
-            {"role_id": "vendor", "label": "Vendedor", "description": "Acceso ventas", "permissions": {}, "is_system": True}
+            {"role_id": "auxiliar_comercial", "label": "Auxiliar Comercial", "description": "Acceso comercial", "permissions": {}, "is_system": True}
         ])
 
 
@@ -1566,6 +1669,7 @@ async def update_role(role_id: str, payload: RoleUpdate):
         raise HTTPException(status_code=400, detail="Database not configured")
     
     try:
+        canonical_role_id = _normalize_role_name(role_id)
         conn = _get_connection()
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             # Prepare update map
@@ -1589,7 +1693,7 @@ async def update_role(role_id: str, payload: RoleUpdate):
                 raise HTTPException(status_code=400, detail="No fields to update")
             
             update_fields.append("updated_at = NOW()")
-            params.append(role_id)
+            params.append(canonical_role_id)
             
             query = f"""
                 UPDATE role_definitions 
@@ -1602,8 +1706,14 @@ async def update_role(role_id: str, payload: RoleUpdate):
             result = cur.fetchone()
             
             if not result:
-                conn.rollback()
-                raise HTTPException(status_code=404, detail="Role not found")
+                raw_role_id = (role_id or "").strip().lower()
+                if raw_role_id != canonical_role_id:
+                    params[-1] = raw_role_id
+                    cur.execute(query, params)
+                    result = cur.fetchone()
+                if not result:
+                    conn.rollback()
+                    raise HTTPException(status_code=404, detail="Role not found")
                 
             conn.commit()
             return dict(result)
@@ -1647,18 +1757,30 @@ async def get_user_permissions_override(user_id: str, request: Request):
                 (user_id,),
             )
             row = cur.fetchone()
+            target_role = _normalize_role_name(_get_profile_role(cur, user_id))
             cur.execute(
                 """
-                SELECT rd.permissions
-                FROM perfiles p
-                LEFT JOIN role_definitions rd ON rd.role_id = p.role
-                WHERE p.id = %s
+                SELECT permissions
+                FROM role_definitions
+                WHERE role_id = %s
                 LIMIT 1
                 """,
-                (user_id,),
+                (target_role,),
             )
             role_row = cur.fetchone()
-            target_role = _normalize_role_name(_get_profile_role(cur, user_id))
+            if not role_row:
+                raw_role = (_get_profile_role(cur, user_id) or "").strip().lower()
+                if raw_role and raw_role != target_role:
+                    cur.execute(
+                        """
+                        SELECT permissions
+                        FROM role_definitions
+                        WHERE role_id = %s
+                        LIMIT 1
+                        """,
+                        (raw_role,),
+                    )
+                    role_row = cur.fetchone()
             role_permissions = _normalize_permission_map((role_row or {}).get("permissions") if isinstance(role_row, dict) else None)
             role_permissions = _sanitize_permissions_for_role(target_role, role_permissions)
             if not row:
@@ -1669,7 +1791,7 @@ async def get_user_permissions_override(user_id: str, request: Request):
                     "permissions": {},
                     "role_permissions": role_permissions,
                     "effective_permissions": effective_permissions,
-                    "available_modules": list(_PERMISSION_MODULE_KEYS),
+                    "available_modules": _available_modules_for_role(target_role),
                     "updated_by": None,
                     "updated_at": None,
                 }
@@ -1682,7 +1804,7 @@ async def get_user_permissions_override(user_id: str, request: Request):
                 "permissions": override_permissions,
                 "role_permissions": role_permissions,
                 "effective_permissions": effective_permissions,
-                "available_modules": list(_PERMISSION_MODULE_KEYS),
+                "available_modules": _available_modules_for_role(target_role),
                 "updated_by": row.get("updated_by"),
                 "updated_at": row.get("updated_at"),
             }
@@ -1695,7 +1817,7 @@ async def get_user_permissions_override(user_id: str, request: Request):
             "permissions": {},
             "role_permissions": {},
             "effective_permissions": {},
-            "available_modules": list(_PERMISSION_MODULE_KEYS),
+            "available_modules": _available_modules_for_role(None),
             "updated_by": None,
             "updated_at": None,
         }
@@ -1724,7 +1846,7 @@ async def upsert_user_permissions_override(user_id: str, payload: UserPermission
             target_role = _normalize_role_name(_get_profile_role(cur, user_id))
             if _is_restricted_technical_role(target_role):
                 forbidden_modules = [
-                    module for module in _CONTROL_PERMISSION_MODULE_KEYS
+                    module for module in (*_CONTROL_PERMISSION_MODULE_KEYS, *_RESTRICTED_TECHNICAL_MODULE_KEYS)
                     if any((normalized_permissions.get(module) or {}).values())
                 ]
                 if forbidden_modules:
@@ -1755,7 +1877,7 @@ async def upsert_user_permissions_override(user_id: str, payload: UserPermission
                 "enabled": bool(result.get("enabled")),
                 "permissions": _normalize_permission_map(result.get("permissions")),
                 "effective_permissions": effective_permissions,
-                "available_modules": list(_PERMISSION_MODULE_KEYS),
+                "available_modules": _available_modules_for_role(target_role),
                 "updated_by": result.get("updated_by"),
                 "updated_at": result.get("updated_at"),
             }
