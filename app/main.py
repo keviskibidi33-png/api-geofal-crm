@@ -1680,6 +1680,49 @@ def _fetch_dashboard_notifications(cur) -> list[dict[str, Any]]:
     return notifications
 
 
+def _fetch_dashboard_notification_history(cur, limit: int = 12) -> list[dict[str, Any]]:
+    cur.execute(
+        """
+        SELECT
+            notification_key AS id,
+            type,
+            severity,
+            title,
+            message,
+            status,
+            created_at,
+            acknowledged_at,
+            resolved_at,
+            metadata
+        FROM dashboard_notifications
+        WHERE type = 'permission_conflict'
+          AND status = 'resolved'
+        ORDER BY resolved_at DESC NULLS LAST, last_detected_at DESC, created_at DESC
+        LIMIT %s
+        """,
+        (limit,),
+    )
+    rows = cur.fetchall() or []
+    history: list[dict[str, Any]] = []
+    for row in rows:
+        if isinstance(row, dict):
+            history.append(dict(row))
+        elif row:
+            history.append({
+                "id": row[0],
+                "type": row[1],
+                "severity": row[2],
+                "title": row[3],
+                "message": row[4],
+                "status": row[5],
+                "created_at": row[6],
+                "acknowledged_at": row[7] if len(row) > 7 else None,
+                "resolved_at": row[8] if len(row) > 8 else None,
+                "metadata": row[9] if len(row) > 9 else {},
+            })
+    return history
+
+
 def _sync_dashboard_notifications(cur, current_user_id: str) -> list[dict[str, Any]]:
     _ensure_dashboard_notifications_table(cur)
     derived_notifications = _build_permission_conflict_notifications(cur)
@@ -2038,6 +2081,37 @@ async def get_notifications(request: Request):
             return {"data": notifications, "count": open_count}
     except Exception as e:
         logger.warning("Error fetching notifications: %s", e)
+        return {"data": [], "count": 0}
+    finally:
+        if 'conn' in locals() and conn:
+            conn.close()
+
+
+@app.get("/notifications/history")
+async def get_notifications_history(request: Request, limit: int = 12):
+    """Return resolved admin dashboard notifications as ticket history."""
+    if not _has_database_url():
+        return {"data": [], "count": 0}
+
+    current_user_id = _extract_request_user_id(request)
+    if not current_user_id:
+        raise HTTPException(status_code=401, detail="Usuario no autenticado")
+
+    safe_limit = max(1, min(int(limit or 12), 50))
+
+    try:
+        conn = _get_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            current_role = _normalize_role_name(_get_profile_role(cur, current_user_id))
+            if current_role not in {"admin", "admin_general"}:
+                return {"data": [], "count": 0}
+
+            _sync_dashboard_notifications(cur, current_user_id)
+            history = _fetch_dashboard_notification_history(cur, limit=safe_limit)
+            conn.commit()
+            return {"data": history, "count": len(history)}
+    except Exception as e:
+        logger.warning("Error fetching notification history: %s", e)
         return {"data": [], "count": 0}
     finally:
         if 'conn' in locals() and conn:
