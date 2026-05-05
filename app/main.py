@@ -214,6 +214,16 @@ class DashboardSearchItem(BaseModel):
 class DashboardSearchResponse(BaseModel):
     data: list[DashboardSearchItem]
 
+
+class DashboardNotification(BaseModel):
+    id: str
+    type: str
+    severity: str = "warning"
+    title: str
+    message: str
+    created_at: datetime | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
 app = FastAPI(title="quotes-service")
 
 @app.exception_handler(Exception)
@@ -1390,6 +1400,90 @@ def _get_profile_role(cur, user_id: str) -> str | None:
     return row[0] if row else None
 
 
+def _notification_identity_key(user_id: str, role_id: str, module_key: str = "laboratorio") -> str:
+    return f"{user_id}:{role_id}:{module_key}"
+
+
+def _permission_read_write(permission_map: dict[str, dict[str, bool]] | None, module_key: str) -> tuple[bool, bool]:
+    module = (permission_map or {}).get(module_key) or {}
+    return module.get("read") is True, module.get("write") is True
+
+
+def _build_permission_conflict_notifications(cur) -> list[dict[str, Any]]:
+    cur.execute(
+        """
+        SELECT
+            p.id::text AS user_id,
+            p.full_name,
+            p.email,
+            p.role,
+            rd.permissions AS role_permissions,
+            up.enabled AS override_enabled,
+            up.permissions AS override_permissions,
+            COALESCE(up.updated_at, rd.updated_at, NOW()) AS updated_at
+        FROM perfiles p
+        LEFT JOIN role_definitions rd ON rd.role_id = p.role
+        LEFT JOIN user_permission_overrides up ON up.user_id = p.id
+        WHERE p.role IN ('jefe_laboratorio', 'laboratorio_tipificador')
+        ORDER BY p.full_name ASC
+        """
+    )
+    rows = cur.fetchall() or []
+    notifications: list[dict[str, Any]] = []
+
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        role_id = _normalize_role_name(row.get("role"))
+        base_permissions = _normalize_permission_map(row.get("role_permissions"))
+        override_enabled = bool(row.get("override_enabled"))
+        override_permissions = _normalize_permission_map(row.get("override_permissions"))
+        effective_permissions = _merge_permission_maps(base_permissions, override_permissions if override_enabled else {})
+
+        base_read, base_write = _permission_read_write(base_permissions, "laboratorio")
+        effective_read, effective_write = _permission_read_write(effective_permissions, "laboratorio")
+        override_read, override_write = _permission_read_write(override_permissions, "laboratorio")
+
+        if effective_write is True:
+            continue
+
+        reason = "override_granular" if override_enabled and override_write is False and base_write is True else "role_definition"
+        title = "Permiso de laboratorio inconsistente"
+        message = (
+            f"{row.get('full_name') or row.get('email') or row.get('user_id')} quedó sin edición en Laboratorio "
+            f"para el rol {role_id}."
+        )
+        if reason == "override_granular":
+            message += " Un override granular parece haber desactivado la escritura."
+        elif not base_write:
+            message += " La definición base del rol no otorga escritura."
+
+        notifications.append({
+            "id": _notification_identity_key(str(row.get("user_id") or ""), role_id),
+            "type": "permission_conflict",
+            "severity": "warning",
+            "title": title,
+            "message": message,
+            "created_at": row.get("updated_at") or datetime.utcnow(),
+            "metadata": {
+                "user_id": row.get("user_id"),
+                "full_name": row.get("full_name"),
+                "email": row.get("email"),
+                "role": role_id,
+                "module": "laboratorio",
+                "base_read": base_read,
+                "base_write": base_write,
+                "effective_read": effective_read,
+                "effective_write": effective_write,
+                "override_enabled": override_enabled,
+                "override_write": override_write,
+                "reason": reason,
+            },
+        })
+
+    return notifications
+
+
 @app.get("/roles")
 async def get_roles():
     """Get all role definitions using Supabase REST API"""
@@ -1663,6 +1757,40 @@ async def get_roles():
             {"role_id": "admin", "label": "Administrador", "description": "Acceso completo", "permissions": {}, "is_system": True},
             {"role_id": "auxiliar_comercial", "label": "Auxiliar Comercial", "description": "Acceso comercial", "permissions": {}, "is_system": True}
         ])
+
+
+@app.get("/notifications")
+async def get_notifications(request: Request):
+    """Return admin dashboard notifications derived from permission inconsistencies."""
+    if not _has_database_url():
+        return {"data": [], "count": 0}
+
+    current_user_id = _extract_request_user_id(request)
+    if not current_user_id:
+        raise HTTPException(status_code=401, detail="Usuario no autenticado")
+
+    try:
+        conn = _get_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            current_role = _normalize_role_name(_get_profile_role(cur, current_user_id))
+            if current_role not in {"admin", "admin_general"}:
+                return {"data": [], "count": 0}
+
+            notifications = _build_permission_conflict_notifications(cur)
+            notifications.sort(
+                key=lambda item: (
+                    item.get("severity") != "warning",
+                    str(item.get("created_at") or ""),
+                ),
+                reverse=True,
+            )
+            return {"data": notifications, "count": len(notifications)}
+    except Exception as e:
+        logger.warning("Error fetching notifications: %s", e)
+        return {"data": [], "count": 0}
+    finally:
+        if 'conn' in locals() and conn:
+            conn.close()
 
 
 @app.put("/roles/{role_id}")
