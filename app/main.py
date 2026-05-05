@@ -1202,6 +1202,9 @@ _ROLE_ID_ALIASES: dict[str, str] = {
     "tecnico_general": "tecnico",
     "tecnico_no_lab_write": "tecnico",
     "laboratorio_tipificador_no_lab_write": "laboratorio_lector",
+    "oficina_tecnica_humedad": "oficina_tecnica",
+    "oficina_tecnica_humedad_tipificador": "oficina_tecnica",
+    "oficina_tecnica_sup": "oficina_tecnica",
 }
 
 _CONTROL_PERMISSION_MODULE_KEYS: tuple[str, ...] = (
