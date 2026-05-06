@@ -1739,6 +1739,48 @@ def _fetch_dashboard_notification_history(cur, limit: int = 12) -> list[dict[str
     return history
 
 
+def _fetch_quote_notifications(cur, role_id: str, limit: int = 12) -> list[dict[str, Any]]:
+    safe_limit = max(1, min(int(limit or 12), 50))
+    cur.execute(
+        """
+        SELECT
+            notification_key AS id,
+            type,
+            severity,
+            title,
+            message,
+            status,
+            created_at,
+            updated_at,
+            metadata
+        FROM dashboard_notifications
+        WHERE type = 'quote_created'
+          AND COALESCE(metadata->'audience_roles', '[]'::jsonb) ? %s
+        ORDER BY last_detected_at DESC, created_at DESC
+        LIMIT %s
+        """,
+        (role_id, safe_limit),
+    )
+    rows = cur.fetchall() or []
+    notifications: list[dict[str, Any]] = []
+    for row in rows:
+        if isinstance(row, dict):
+            notifications.append(dict(row))
+        elif row:
+            notifications.append({
+                "id": row[0],
+                "type": row[1],
+                "severity": row[2],
+                "title": row[3],
+                "message": row[4],
+                "status": row[5],
+                "created_at": row[6],
+                "updated_at": row[7] if len(row) > 7 else None,
+                "metadata": row[8] if len(row) > 8 else {},
+            })
+    return notifications
+
+
 def _sync_dashboard_notifications(cur, current_user_id: str) -> list[dict[str, Any]]:
     _ensure_dashboard_notifications_table(cur)
     derived_notifications = _build_permission_conflict_notifications(cur)
@@ -2097,6 +2139,43 @@ async def get_notifications(request: Request):
             return {"data": notifications, "count": open_count}
     except Exception as e:
         logger.warning("Error fetching notifications: %s", e)
+        return {"data": [], "count": 0}
+    finally:
+        if 'conn' in locals() and conn:
+            conn.close()
+
+
+@app.get("/notifications/feed")
+async def get_notifications_feed(request: Request, limit: int = 12):
+    """Return the notification feed relevant to the current user's role."""
+    if not _has_database_url():
+        return {"data": [], "count": 0}
+
+    current_user_id = _extract_request_user_id(request)
+    if not current_user_id:
+        raise HTTPException(status_code=401, detail="Usuario no autenticado")
+
+    safe_limit = max(1, min(int(limit or 12), 50))
+
+    try:
+        conn = _get_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            current_role = _normalize_role_name(_get_profile_role(cur, current_user_id))
+
+            if current_role in {"admin", "admin_general"}:
+                notifications = _sync_dashboard_notifications(cur, current_user_id)
+                conn.commit()
+                open_count = sum(1 for item in notifications if _normalize_role_name(str(item.get("status") or "")) == "open")
+                return {"data": notifications, "count": open_count}
+
+            if current_role == "auxiliar_comercial":
+                notifications = _fetch_quote_notifications(cur, current_role, limit=safe_limit)
+                conn.commit()
+                return {"data": notifications, "count": len(notifications)}
+
+            return {"data": [], "count": 0}
+    except Exception as e:
+        logger.warning("Error fetching notification feed: %s", e)
         return {"data": [], "count": 0}
     finally:
         if 'conn' in locals() and conn:

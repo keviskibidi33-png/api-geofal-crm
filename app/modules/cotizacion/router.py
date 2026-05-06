@@ -13,7 +13,7 @@ from .service import (
     _next_quote_sequential, _save_quote_to_folder, register_quote_in_db, 
     _upload_to_supabase_storage, _delete_from_supabase_storage,
     QUOTES_FOLDER, get_condiciones_textos,
-    update_quote_db, _get_safe_filename
+    update_quote_db, _get_safe_filename, _notify_quote_created
 )
 from .excel import _get_template_path, generate_quote_excel
 
@@ -895,6 +895,17 @@ async def import_excel_quote(
             result = cur.fetchone()
             conn.commit()
             quote_id = result[0] if result else None
+            try:
+                _notify_quote_created(
+                    quote_id,
+                    cotizacion_numero,
+                    year,
+                    cliente,
+                    user_name or parsed["personal_comercial"] or "",
+                    user_id,
+                )
+            except Exception as notification_error:
+                print(f"Warning: no se pudo crear notificación de cotización {quote_id}: {notification_error}")
     except Exception as e:
         conn.rollback()
         import traceback

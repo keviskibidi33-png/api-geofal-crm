@@ -5,7 +5,7 @@ import psycopg2
 import re
 from datetime import date, datetime
 from typing import Any, List
-from psycopg2.extras import RealDictCursor
+from psycopg2.extras import RealDictCursor, Json
 from pathlib import Path
 from dotenv import load_dotenv
 from .schemas import QuoteExportRequest
@@ -40,6 +40,133 @@ def _get_connection():
     conn = psycopg2.connect(dsn, connect_timeout=10)
     psycopg2.extras.register_uuid(conn_or_curs=conn)
     return conn
+
+
+def _ensure_dashboard_notifications_table() -> None:
+    try:
+        dsn = _get_database_url()
+        with psycopg2.connect(dsn) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS dashboard_notifications (
+                        notification_key TEXT PRIMARY KEY,
+                        type TEXT NOT NULL,
+                        severity TEXT NOT NULL DEFAULT 'warning',
+                        title TEXT NOT NULL,
+                        message TEXT NOT NULL,
+                        status TEXT NOT NULL DEFAULT 'open',
+                        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        acknowledged_at TIMESTAMPTZ NULL,
+                        acknowledged_by UUID NULL,
+                        resolved_at TIMESTAMPTZ NULL,
+                        resolved_by UUID NULL,
+                        last_detected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        CONSTRAINT dashboard_notifications_status_check
+                            CHECK (status IN ('open', 'acknowledged', 'resolved'))
+                    );
+                    """
+                )
+    except Exception as e:
+        logger.warning("Could not ensure dashboard_notifications table: %s", e)
+
+
+def _notify_quote_created(
+    quote_id: str | None,
+    cotizacion_numero: str,
+    year: int,
+    cliente: str | None,
+    creator_name: str | None,
+    creator_user_id: str | None,
+) -> None:
+    if not _has_database_url() or not quote_id:
+        return
+
+    _ensure_dashboard_notifications_table()
+
+    creator_name = (creator_name or "").strip() or (creator_user_id or "Usuario")
+    client_name = (cliente or "").strip() or "cliente no identificado"
+    quote_code = f"COT-{year}-{cotizacion_numero}"
+    created_at = datetime.utcnow()
+    metadata = {
+        "quote_id": quote_id,
+        "quote_code": quote_code,
+        "numero": cotizacion_numero,
+        "year": year,
+        "cliente": client_name,
+        "created_by": creator_name,
+        "created_by_user_id": creator_user_id,
+        "audience_roles": ["auxiliar_comercial"],
+        "created_at": created_at.isoformat(),
+    }
+
+    try:
+        conn = _get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO dashboard_notifications (
+                        notification_key,
+                        type,
+                        severity,
+                        title,
+                        message,
+                        status,
+                        metadata,
+                        created_at,
+                        updated_at,
+                        acknowledged_at,
+                        acknowledged_by,
+                        resolved_at,
+                        resolved_by,
+                        last_detected_at
+                    )
+                    VALUES (
+                        %s,
+                        'quote_created',
+                        'info',
+                        %s,
+                        %s,
+                        'open',
+                        %s::jsonb,
+                        %s,
+                        NOW(),
+                        NULL,
+                        NULL,
+                        NULL,
+                        NULL,
+                        NOW()
+                    )
+                    ON CONFLICT (notification_key) DO UPDATE SET
+                        type = EXCLUDED.type,
+                        severity = EXCLUDED.severity,
+                        title = EXCLUDED.title,
+                        message = EXCLUDED.message,
+                        metadata = EXCLUDED.metadata,
+                        updated_at = NOW(),
+                        last_detected_at = NOW(),
+                        status = 'open',
+                        acknowledged_at = NULL,
+                        acknowledged_by = NULL,
+                        resolved_at = NULL,
+                        resolved_by = NULL
+                    """,
+                    (
+                        f"quote_created:{quote_id}",
+                        "Nueva cotización",
+                        f"{creator_name} creó una cotización para {client_name}.",
+                        Json(metadata),
+                        created_at,
+                    ),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning("No se pudo crear notificación de cotización: %s", e)
 
 def _ensure_sequence_table() -> None:
     try:
@@ -285,7 +412,19 @@ def register_quote_in_db(cotizacion_numero: str, year: int, cliente: str, filepa
             
             result = cur.fetchone()
             conn.commit()
-            return result[0] if result else None
+            quote_id = result[0] if result else None
+            try:
+                _notify_quote_created(
+                    quote_id,
+                    cotizacion_numero,
+                    year,
+                    cliente,
+                    payload.personal_comercial,
+                    payload.user_id,
+                )
+            except Exception as notification_error:
+                logger.warning("Notification creation skipped for quote %s: %s", quote_id, notification_error)
+            return quote_id
     except Exception as e:
         conn.rollback()
         raise e
