@@ -53,6 +53,7 @@ async def crear_ensayo(
                 actor_name=actor["full_name"],
                 actor_user_id=actor["user_id"] or None,
                 actor_role=actor["role"] or None,
+                actor_avatar_url=actor.get("avatar_url") or None,
                 action="created",
                 extra_metadata={
                     "numero_ot": new_ensayo.numero_ot,
@@ -289,6 +290,7 @@ async def actualizar_ensayo(
             actor_name=actor["full_name"],
             actor_user_id=actor["user_id"] or None,
             actor_role=actor["role"] or None,
+            actor_avatar_url=actor.get("avatar_url") or None,
             action="updated",
             extra_metadata={
                 "numero_ot": ensayo.numero_ot,

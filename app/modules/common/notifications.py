@@ -181,12 +181,14 @@ def get_request_actor_context(request: Request) -> dict[str, str]:
         or "Usuario"
     ).strip()
     email = str(payload.get("email") or payload.get("user_metadata", {}).get("email") or "").strip()
+    avatar_url = str(payload.get("avatar_url") or payload.get("user_metadata", {}).get("avatar_url") or "").strip()
 
     return {
         "user_id": user_id,
         "role": role,
         "full_name": full_name or "Usuario",
         "email": email,
+        "avatar_url": avatar_url,
     }
 
 

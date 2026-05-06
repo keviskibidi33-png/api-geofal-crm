@@ -45,6 +45,7 @@ def crear_verificacion(verificacion: VerificacionMuestrasCreate, request: Reques
             actor_name=actor["full_name"],
             actor_user_id=actor["user_id"] or None,
             actor_role=actor["role"] or None,
+            actor_avatar_url=actor.get("avatar_url") or None,
             action="created",
             extra_metadata={
                 "codigo_documento": new_verificacion.codigo_documento,
@@ -145,6 +146,7 @@ def actualizar_verificacion(verificacion_id: int, verificacion: VerificacionMues
             actor_name=actor["full_name"],
             actor_user_id=actor["user_id"] or None,
             actor_role=actor["role"] or None,
+            actor_avatar_url=actor.get("avatar_url") or None,
             action="updated",
             extra_metadata={
                 "codigo_documento": ver.codigo_documento,
