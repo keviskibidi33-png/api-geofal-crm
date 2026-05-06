@@ -1422,6 +1422,21 @@ def _get_profile_role(cur, user_id: str) -> str | None:
     return row[0] if row else None
 
 
+def _resolve_profile_avatar_url(cur, user_id: str | None) -> str | None:
+    normalized_user_id = str(user_id or "").strip()
+    if not normalized_user_id:
+        return None
+    cur.execute("SELECT avatar_url FROM perfiles WHERE id = %s LIMIT 1", (normalized_user_id,))
+    row = cur.fetchone()
+    if not row:
+        return None
+    if isinstance(row, dict):
+        avatar_url = str(row.get("avatar_url") or "").strip()
+    else:
+        avatar_url = str(row[0] or "").strip()
+    return avatar_url or None
+
+
 def _notification_identity_key(user_id: str, role_id: str, module_key: str = "laboratorio") -> str:
     return f"{user_id}:{role_id}:{module_key}"
 
@@ -1765,8 +1780,15 @@ def _fetch_quote_notifications(cur, role_id: str, limit: int = 12) -> list[dict[
     notifications: list[dict[str, Any]] = []
     for row in rows:
         if isinstance(row, dict):
-            notifications.append(dict(row))
+            notification = dict(row)
+            metadata = dict(notification.get("metadata") or {})
+            metadata.setdefault("created_by_avatar_url", _resolve_profile_avatar_url(cur, metadata.get("created_by_user_id")))
+            notification["metadata"] = metadata
+            notifications.append(notification)
         elif row:
+            metadata = row[8] if len(row) > 8 else {}
+            metadata = dict(metadata or {})
+            metadata.setdefault("created_by_avatar_url", _resolve_profile_avatar_url(cur, metadata.get("created_by_user_id")))
             notifications.append({
                 "id": row[0],
                 "type": row[1],
@@ -1776,7 +1798,7 @@ def _fetch_quote_notifications(cur, role_id: str, limit: int = 12) -> list[dict[
                 "status": row[5],
                 "created_at": row[6],
                 "updated_at": row[7] if len(row) > 7 else None,
-                "metadata": row[8] if len(row) > 8 else {},
+                "metadata": metadata,
             })
     return notifications
 
@@ -1807,6 +1829,7 @@ def _fetch_laboratory_notifications(cur, role_id: str, limit: int = 12) -> list[
     notifications: list[dict[str, Any]] = []
     for row in rows:
         metadata = row.get("metadata") or {}
+        avatar_url = metadata.get("created_by_avatar_url") or _resolve_profile_avatar_url(cur, metadata.get("created_by_user_id"))
         notifications.append(
             {
                 "id": row.get("id"),
@@ -1819,6 +1842,7 @@ def _fetch_laboratory_notifications(cur, role_id: str, limit: int = 12) -> list[
                 "updated_at": row.get("updated_at"),
                 "metadata": {
                     **metadata,
+                    "created_by_avatar_url": avatar_url,
                     "module": metadata.get("module"),
                     "module_label": metadata.get("module_label"),
                     "record_id": metadata.get("record_id"),

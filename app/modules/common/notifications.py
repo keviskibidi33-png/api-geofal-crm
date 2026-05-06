@@ -58,6 +58,33 @@ _DASHBOARD_NOTIFICATION_INDEXES_SQL = (
 )
 
 
+def _resolve_profile_avatar_url(user_id: str | None) -> str | None:
+    normalized_user_id = str(user_id or "").strip()
+    if not normalized_user_id:
+        return None
+
+    try:
+        with engine.begin() as conn:
+            row = conn.execute(
+                text(
+                    """
+                    SELECT avatar_url
+                    FROM perfiles
+                    WHERE id = :user_id
+                    LIMIT 1
+                    """
+                ),
+                {"user_id": normalized_user_id},
+            ).mappings().first()
+            if row:
+                avatar_url = str(row.get("avatar_url") or "").strip()
+                return avatar_url or None
+    except Exception as exc:
+        logger.warning("Could not resolve avatar for %s: %s", normalized_user_id, exc)
+
+    return None
+
+
 def upsert_dashboard_notification(
     *,
     notification_key: str,
@@ -172,7 +199,7 @@ def resolve_actor_identity(db: Session, request: Request) -> dict[str, str]:
         row = db.execute(
             text(
                 """
-                SELECT full_name, email, role
+                SELECT full_name, email, role, avatar_url
                 FROM perfiles
                 WHERE id = :user_id
                 LIMIT 1
@@ -184,6 +211,9 @@ def resolve_actor_identity(db: Session, request: Request) -> dict[str, str]:
             actor["full_name"] = str(row.get("full_name") or actor["full_name"] or "Usuario").strip() or "Usuario"
             actor["email"] = str(row.get("email") or actor["email"] or "").strip()
             actor["role"] = str(row.get("role") or actor["role"] or "").strip().lower()
+            avatar_url = str(row.get("avatar_url") or "").strip()
+            if avatar_url:
+                actor["avatar_url"] = avatar_url
     except Exception as exc:
         logger.warning("Could not resolve actor identity for %s: %s", actor["user_id"], exc)
 
@@ -198,6 +228,7 @@ def notify_laboratory_essay_event(
     actor_name: str,
     actor_user_id: str | None,
     actor_role: str | None,
+    actor_avatar_url: str | None = None,
     action: str,
     extra_metadata: Mapping[str, Any] | None = None,
 ) -> None:
@@ -210,6 +241,7 @@ def notify_laboratory_essay_event(
     record_code_clean = str(record_code or "").strip() or "Sin código"
     notification_type = f"lab_essay_{normalized_action}"
     notification_key = f"{notification_type}:{module_key}:{record_id}"
+    resolved_avatar_url = actor_avatar_url or _resolve_profile_avatar_url(actor_user_id)
 
     metadata: dict[str, Any] = {
         "module": module_key,
@@ -220,6 +252,7 @@ def notify_laboratory_essay_event(
         "created_by": actor_name or "Usuario",
         "created_by_user_id": actor_user_id,
         "created_by_role": actor_role,
+        "created_by_avatar_url": resolved_avatar_url,
         "audience_roles": list(LAB_LABORATORY_AUDIENCE_ROLES),
         "detail_module": module_key,
         "detail_record_id": record_id,

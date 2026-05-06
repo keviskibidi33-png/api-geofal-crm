@@ -90,6 +90,30 @@ def _notify_quote_created(
     client_name = (cliente or "").strip() or "cliente no identificado"
     quote_code = f"COT-{year}-{cotizacion_numero}"
     created_at = datetime.utcnow()
+    creator_avatar_url = None
+    if creator_user_id:
+        try:
+            conn_avatar = _get_connection()
+            try:
+                with conn_avatar.cursor() as cur_avatar:
+                    cur_avatar.execute(
+                        """
+                        SELECT avatar_url
+                        FROM perfiles
+                        WHERE id = %s
+                        LIMIT 1
+                        """,
+                        (creator_user_id,),
+                    )
+                    avatar_row = cur_avatar.fetchone()
+                    if avatar_row:
+                        creator_avatar_url = avatar_row[0] if not isinstance(avatar_row, dict) else avatar_row.get("avatar_url")
+                        creator_avatar_url = str(creator_avatar_url or "").strip() or None
+            finally:
+                conn_avatar.close()
+        except Exception as avatar_error:
+            logger.warning("No se pudo resolver avatar de cotización %s: %s", creator_user_id, avatar_error)
+
     metadata = {
         "quote_id": quote_id,
         "quote_code": quote_code,
@@ -98,6 +122,7 @@ def _notify_quote_created(
         "cliente": client_name,
         "created_by": creator_name,
         "created_by_user_id": creator_user_id,
+        "created_by_avatar_url": creator_avatar_url,
         "audience_roles": ["auxiliar_comercial"],
         "created_at": created_at.isoformat(),
     }
