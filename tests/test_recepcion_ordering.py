@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import unittest
+from datetime import datetime
 from pathlib import Path
 
 from sqlalchemy import create_engine
@@ -153,7 +154,11 @@ class TestRecepcionOrdering(unittest.TestCase):
 
         self.assertIsNotNone(stored)
         self.assertEqual([m.item_numero for m in stored.muestras], [1, 2])
-        self.assertEqual([m.codigo_muestra_lem for m in stored.muestras], ["4129", "4039"])
+        suffix = str(datetime.now().year)[-2:]
+        self.assertEqual(
+            [m.codigo_muestra_lem for m in stored.muestras],
+            [f"4129-CO-{suffix}", f"4039-CO-{suffix}"],
+        )
 
 
 if __name__ == "__main__":
