@@ -4,7 +4,8 @@ import io
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, or_
 from typing import Any, List, Optional
-from datetime import datetime
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 from .models import EnsayoCompresion, ItemCompresion
 from .schemas import EnsayoCompresionCreate, EnsayoCompresionUpdate, CompressionExportRequest, CompressionItem
 from .exceptions import DuplicateEnsayoError, EnsayoNotFoundError
@@ -14,6 +15,7 @@ import unicodedata
 from app.utils.http_client import http_post
 
 logger = logging.getLogger(__name__)
+LIMA_TZ = ZoneInfo("America/Lima")
 
 
 def _get_safe_filename(base_name: str, extension: str = "xlsx") -> str:
@@ -143,16 +145,12 @@ class CompresionService:
         tiene_codigo_util = not cls._is_placeholder_codigo_lem(codigo)
 
         text_fields = [
-            "fecha_ensayo_programado",
-            "fecha_ensayo",
             "hora_ensayo",
             "tipo_fractura",
             "defectos",
             "realizado",
             "revisado",
-            "fecha_revisado",
             "aprobado",
-            "fecha_aprobado",
         ]
 
         tiene_texto = any((str(data.get(field) or "").strip() != "") for field in text_fields)
@@ -182,6 +180,25 @@ class CompresionService:
         if isinstance(value, (int, float)):
             return value != 0
         return True
+
+    @classmethod
+    def _apply_item_date_defaults(cls, item_data: dict) -> dict:
+        normalized = dict(item_data)
+        today = datetime.now(LIMA_TZ).date()
+
+        if not cls._value_has_content(normalized.get("fecha_ensayo_programado")):
+            normalized["fecha_ensayo_programado"] = today
+
+        if cls._value_has_content(normalized.get("fecha_ensayo_programado")) and not cls._value_has_content(normalized.get("fecha_ensayo")):
+            normalized["fecha_ensayo"] = normalized["fecha_ensayo_programado"]
+
+        if cls._value_has_content(normalized.get("revisado")) and not cls._value_has_content(normalized.get("fecha_revisado")):
+            normalized["fecha_revisado"] = today
+
+        if cls._value_has_content(normalized.get("aprobado")) and not cls._value_has_content(normalized.get("fecha_aprobado")):
+            normalized["fecha_aprobado"] = today
+
+        return normalized
 
     @classmethod
     def _item_completitud_score(cls, item_data: dict) -> int:
@@ -341,6 +358,7 @@ class CompresionService:
             
             # Create items
             for item_data in sanitized_items:
+                item_data = self._apply_item_date_defaults(item_data)
                 item = ItemCompresion(
                     ensayo_id=ensayo.id,
                     item=item_data.get("item"),
@@ -456,6 +474,7 @@ class CompresionService:
             
             # Create new items
             for item_data in sanitized_items:
+                item_data = self._apply_item_date_defaults(item_data)
                 item = ItemCompresion(
                     ensayo_id=ensayo_id,
                     item=item_data.get("item"),
