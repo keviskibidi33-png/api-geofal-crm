@@ -359,6 +359,8 @@ async def get_quote_by_id(quote_id: str):
                 data['condiciones_ids'] = []
             elif isinstance(val, list):
                 data['condiciones_ids'] = [str(v) for v in val if v]
+
+            data['condiciones_textos'] = get_condiciones_textos(data['condiciones_ids']) if data['condiciones_ids'] else []
             
             return {"data": data, "success": True}
     finally:
