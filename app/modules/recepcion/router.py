@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, File, Request
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError, DataError
 from typing import List, Optional
@@ -18,6 +18,7 @@ from .exceptions import DuplicateRecepcionError
 from .excel import ExcelLogic
 from app.modules.tracing.service import TracingService
 from app.utils.date_format import parse_flexible_date
+from app.modules.common.notifications import notify_laboratory_essay_event, resolve_actor_identity
 
 # Standardized to /api/recepcion to match frontend expectations
 router = APIRouter(prefix="/api/recepcion", tags=["Laboratorio Recepciones"])
@@ -27,7 +28,8 @@ excel_logic = ExcelLogic()
 @router.post("/", response_model=RecepcionMuestraResponse)
 async def crear_recepcion(
     recepcion_data: RecepcionMuestraCreate,
-    db: Session = Depends(get_db_session)
+    request: Request,
+    db: Session = Depends(get_db_session),
 ):
     """Crear nueva recepción de muestra"""
     try:
@@ -37,6 +39,21 @@ async def crear_recepcion(
             TracingService.actualizar_trazabilidad(db, new_recepcion.numero_recepcion)
         except Exception as e:
             print(f"Error actualizando trazabilidad: {e}")
+        if request is not None:
+            actor = resolve_actor_identity(db, request)
+            notify_laboratory_essay_event(
+                module_key="recepcion",
+                record_id=new_recepcion.id,
+                record_code=str(new_recepcion.numero_recepcion or "").strip(),
+                actor_name=actor["full_name"],
+                actor_user_id=actor["user_id"] or None,
+                actor_role=actor["role"] or None,
+                action="created",
+                extra_metadata={
+                    "numero_ot": new_recepcion.numero_ot,
+                    "detail_route": "recepcion",
+                },
+            )
         return new_recepcion
     except DuplicateRecepcionError as e:
         raise HTTPException(status_code=409, detail=str(e))
@@ -169,7 +186,8 @@ async def obtener_recepcion(
 async def actualizar_recepcion(
     recepcion_id: int,
     recepcion_update: RecepcionMuestraUpdate,
-    db: Session = Depends(get_db_session)
+    request: Request,
+    db: Session = Depends(get_db_session),
 ):
     """Actualizar recepción existente"""
     # 1. Verificar existencia
@@ -226,6 +244,22 @@ async def actualizar_recepcion(
         TracingService.actualizar_trazabilidad(db, updated_recepcion.numero_recepcion)
     except Exception:
         pass # No bloquear respuesta por error en traza
+
+    if request is not None:
+        actor = resolve_actor_identity(db, request)
+        notify_laboratory_essay_event(
+            module_key="recepcion",
+            record_id=updated_recepcion.id,
+            record_code=str(updated_recepcion.numero_recepcion or "").strip(),
+            actor_name=actor["full_name"],
+            actor_user_id=actor["user_id"] or None,
+            actor_role=actor["role"] or None,
+            action="updated",
+            extra_metadata={
+                "numero_ot": updated_recepcion.numero_ot,
+                "detail_route": "recepcion",
+            },
+        )
 
     return updated_recepcion
 

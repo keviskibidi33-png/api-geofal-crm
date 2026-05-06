@@ -1781,6 +1781,61 @@ def _fetch_quote_notifications(cur, role_id: str, limit: int = 12) -> list[dict[
     return notifications
 
 
+def _fetch_laboratory_notifications(cur, role_id: str, limit: int = 12) -> list[dict[str, Any]]:
+    safe_limit = max(1, min(int(limit or 12), 50))
+    cur.execute(
+        """
+        SELECT
+            notification_key AS id,
+            type,
+            severity,
+            title,
+            message,
+            status,
+            created_at,
+            updated_at,
+            metadata
+        FROM dashboard_notifications
+        WHERE type IN ('lab_essay_created', 'lab_essay_updated')
+          AND COALESCE(metadata->'audience_roles', '[]'::jsonb) ? %s
+        ORDER BY last_detected_at DESC, created_at DESC
+        LIMIT %s
+        """,
+        (role_id, safe_limit),
+    )
+    rows = cur.fetchall() or []
+    notifications: list[dict[str, Any]] = []
+    for row in rows:
+        metadata = row.get("metadata") or {}
+        notifications.append(
+            {
+                "id": row.get("id"),
+                "type": row.get("type") or "lab_essay_created",
+                "severity": row.get("severity") or "info",
+                "title": row.get("title") or "Ensayo de laboratorio",
+                "message": row.get("message") or "",
+                "status": row.get("status") or "open",
+                "created_at": row.get("created_at"),
+                "updated_at": row.get("updated_at"),
+                "metadata": {
+                    **metadata,
+                    "module": metadata.get("module"),
+                    "module_label": metadata.get("module_label"),
+                    "record_id": metadata.get("record_id"),
+                    "record_code": metadata.get("record_code"),
+                    "action": metadata.get("action"),
+                    "created_by": metadata.get("created_by"),
+                    "created_by_user_id": metadata.get("created_by_user_id"),
+                    "created_by_role": metadata.get("created_by_role"),
+                    "audience_roles": metadata.get("audience_roles") or [],
+                    "detail_module": metadata.get("detail_module"),
+                    "detail_record_id": metadata.get("detail_record_id"),
+                },
+            }
+        )
+    return notifications
+
+
 def _sync_dashboard_notifications(cur, current_user_id: str) -> list[dict[str, Any]]:
     _ensure_dashboard_notifications_table(cur)
     derived_notifications = _build_permission_conflict_notifications(cur)
@@ -2170,6 +2225,11 @@ async def get_notifications_feed(request: Request, limit: int = 12):
 
             if current_role == "auxiliar_comercial":
                 notifications = _fetch_quote_notifications(cur, current_role, limit=safe_limit)
+                conn.commit()
+                return {"data": notifications, "count": len(notifications)}
+
+            if current_role in {"jefe_laboratorio", "laboratorio_tipificador"}:
+                notifications = _fetch_laboratory_notifications(cur, current_role, limit=safe_limit)
                 conn.commit()
                 return {"data": notifications, "count": len(notifications)}
 

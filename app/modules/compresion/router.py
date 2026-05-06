@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List
@@ -13,6 +13,7 @@ from .schemas import (
 from .service import CompresionService
 from .exceptions import DuplicateEnsayoError
 from .excel import generate_compression_excel
+from app.modules.common.notifications import notify_laboratory_essay_event, resolve_actor_identity
 
 router = APIRouter(prefix="/api/compresion", tags=["Compresion"])
 compresion_service = CompresionService()
@@ -32,7 +33,8 @@ def _resolve_compresion_sample_code(items) -> str | None:
 @router.post("/", response_model=EnsayoCompresionResponse)
 async def crear_ensayo(
     ensayo_data: EnsayoCompresionCreate,
-    db: Session = Depends(get_db_session)
+    request: Request,
+    db: Session = Depends(get_db_session),
 ):
     """Crear nuevo ensayo de compresión"""
     try:
@@ -42,6 +44,21 @@ async def crear_ensayo(
             TracingService.actualizar_trazabilidad(db, new_ensayo.numero_recepcion)
         except Exception as e:
             print(f"Error sync trazabilidad: {e}")
+        if request is not None:
+            actor = resolve_actor_identity(db, request)
+            notify_laboratory_essay_event(
+                module_key="compresion",
+                record_id=new_ensayo.id,
+                record_code=str(new_ensayo.numero_recepcion or "").strip(),
+                actor_name=actor["full_name"],
+                actor_user_id=actor["user_id"] or None,
+                actor_role=actor["role"] or None,
+                action="created",
+                extra_metadata={
+                    "numero_ot": new_ensayo.numero_ot,
+                    "detail_route": "compresion",
+                },
+            )
         return new_ensayo
     except DuplicateEnsayoError as e:
         raise HTTPException(status_code=409, detail=str(e))
@@ -244,7 +261,8 @@ async def obtener_ensayo(
 async def actualizar_ensayo(
     ensayo_id: int,
     ensayo_data: EnsayoCompresionUpdate,
-    db: Session = Depends(get_db_session)
+    request: Request,
+    db: Session = Depends(get_db_session),
 ):
     """Actualizar ensayo de compresión"""
     try:
@@ -261,6 +279,22 @@ async def actualizar_ensayo(
         TracingService.actualizar_trazabilidad(db, ensayo.numero_recepcion)
     except Exception as e:
         print(f"Error sync trazabilidad on update: {e}")
+
+    if request is not None:
+        actor = resolve_actor_identity(db, request)
+        notify_laboratory_essay_event(
+            module_key="compresion",
+            record_id=ensayo.id,
+            record_code=str(ensayo.numero_recepcion or "").strip(),
+            actor_name=actor["full_name"],
+            actor_user_id=actor["user_id"] or None,
+            actor_role=actor["role"] or None,
+            action="updated",
+            extra_metadata={
+                "numero_ot": ensayo.numero_ot,
+                "detail_route": "compresion",
+            },
+        )
 
     return ensayo
 

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response, Request
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.database import get_db_session
@@ -13,6 +13,7 @@ from .schemas import (
 )
 from .service import VerificacionService
 from .excel import ExcelLogic
+from app.modules.common.notifications import notify_laboratory_essay_event, resolve_actor_identity
 
 router = APIRouter(prefix="/api/verificacion", tags=["Laboratorio Verificación"])
 
@@ -27,7 +28,7 @@ def calcular_patron(request: CalculoPatronRequest, db: Session = Depends(get_db_
     return service.calcular_patron_accion(request)
 
 @router.post("/", response_model=VerificacionMuestrasResponse)
-def crear_verificacion(verificacion: VerificacionMuestrasCreate, db: Session = Depends(get_db_session)):
+def crear_verificacion(verificacion: VerificacionMuestrasCreate, request: Request, db: Session = Depends(get_db_session)):
     service = VerificacionService(db)
     new_verificacion = service.crear_verificacion(verificacion)
     try:
@@ -35,6 +36,21 @@ def crear_verificacion(verificacion: VerificacionMuestrasCreate, db: Session = D
         TracingService.actualizar_trazabilidad(db, new_verificacion.numero_verificacion)
     except Exception as e:
         print(f"Error sync trazabilidad: {e}")
+    if request is not None:
+        actor = resolve_actor_identity(db, request)
+        notify_laboratory_essay_event(
+            module_key="verificacion_muestras",
+            record_id=new_verificacion.id,
+            record_code=str(new_verificacion.numero_verificacion or "").strip(),
+            actor_name=actor["full_name"],
+            actor_user_id=actor["user_id"] or None,
+            actor_role=actor["role"] or None,
+            action="created",
+            extra_metadata={
+                "codigo_documento": new_verificacion.codigo_documento,
+                "detail_route": "verificacion_muestras",
+            },
+        )
     return new_verificacion
 
 @router.get("/", response_model=List[VerificacionMuestrasResponse])
@@ -115,11 +131,26 @@ def eliminar_verificacion(verificacion_id: int, db: Session = Depends(get_db_ses
     return {"message": "Verificación eliminada correctamente"}
 
 @router.put("/{verificacion_id}", response_model=VerificacionMuestrasResponse)
-def actualizar_verificacion(verificacion_id: int, verificacion: VerificacionMuestrasUpdate, db: Session = Depends(get_db_session)):
+def actualizar_verificacion(verificacion_id: int, verificacion: VerificacionMuestrasUpdate, request: Request, db: Session = Depends(get_db_session)):
     service = VerificacionService(db)
     ver = service.actualizar_verificacion(verificacion_id, verificacion)
     if not ver:
         raise HTTPException(status_code=404, detail="Verificación no encontrada")
+    if request is not None:
+        actor = resolve_actor_identity(db, request)
+        notify_laboratory_essay_event(
+            module_key="verificacion_muestras",
+            record_id=ver.id,
+            record_code=str(ver.numero_verificacion or "").strip(),
+            actor_name=actor["full_name"],
+            actor_user_id=actor["user_id"] or None,
+            actor_role=actor["role"] or None,
+            action="updated",
+            extra_metadata={
+                "codigo_documento": ver.codigo_documento,
+                "detail_route": "verificacion_muestras",
+            },
+        )
     return ver
 
 @router.get("/{verificacion_id}/exportar")
