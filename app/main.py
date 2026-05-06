@@ -1896,6 +1896,70 @@ def _acknowledge_dashboard_notification(cur, notification_key: str, current_user
     }
 
 
+def _get_dashboard_notification_by_key(cur, notification_key: str) -> dict[str, Any] | None:
+    _ensure_dashboard_notifications_table(cur)
+    cur.execute(
+        """
+        SELECT
+            notification_key AS id,
+            type,
+            severity,
+            title,
+            message,
+            status,
+            created_at,
+            acknowledged_at,
+            metadata
+        FROM dashboard_notifications
+        WHERE notification_key = %s
+          AND status IN ('open', 'acknowledged')
+        LIMIT 1
+        """,
+        (notification_key,),
+    )
+    row = cur.fetchone()
+    if not row:
+        return None
+    if isinstance(row, dict):
+        return dict(row)
+    return {
+        "id": row[0],
+        "type": row[1],
+        "severity": row[2],
+        "title": row[3],
+        "message": row[4],
+        "status": row[5],
+        "created_at": row[6],
+        "acknowledged_at": row[7] if len(row) > 7 else None,
+        "metadata": row[8] if len(row) > 8 else {},
+    }
+
+
+def _notification_audience_roles(notification: dict[str, Any]) -> set[str]:
+    metadata = notification.get("metadata") or {}
+    audience_roles = metadata.get("audience_roles") or []
+    return {str(role or "").strip().lower() for role in audience_roles if str(role or "").strip()}
+
+
+def _can_acknowledge_notification(role: str, notification: dict[str, Any]) -> bool:
+    normalized_role = _normalize_role_name(role)
+    notification_type = str(notification.get("type") or "")
+    audience_roles = _notification_audience_roles(notification)
+
+    if normalized_role in {"admin", "admin_general"}:
+        return notification_type == "permission_conflict"
+
+    if normalized_role == "auxiliar_comercial":
+        return notification_type == "quote_created" and "auxiliar_comercial" in audience_roles
+
+    if normalized_role in {"jefe_laboratorio", "laboratorio_tipificador"}:
+        return notification_type in {"lab_essay_created", "lab_essay_updated"} and bool(
+            audience_roles.intersection({"jefe_laboratorio", "laboratorio_tipificador"})
+        )
+
+    return False
+
+
 @app.get("/roles")
 async def get_roles():
     """Get all role definitions using Supabase REST API"""
@@ -2275,7 +2339,7 @@ async def get_notifications_history(request: Request, limit: int = 12):
 
 @app.patch("/notifications/{notification_key}/acknowledge")
 async def acknowledge_notification(notification_key: str, request: Request):
-    """Mark an admin notification as acknowledged."""
+    """Mark a dashboard notification as acknowledged for the current role."""
     if not _has_database_url():
         raise HTTPException(status_code=400, detail="Database not configured")
 
@@ -2287,9 +2351,11 @@ async def acknowledge_notification(notification_key: str, request: Request):
         conn = _get_connection()
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             current_role = _normalize_role_name(_get_profile_role(cur, current_user_id))
-            if current_role not in {"admin", "admin_general"}:
-                raise HTTPException(status_code=403, detail="Solo administradores pueden gestionar notificaciones")
-
+            notification = _get_dashboard_notification_by_key(cur, notification_key)
+            if not notification:
+                raise HTTPException(status_code=404, detail="Notificación no encontrada")
+            if not _can_acknowledge_notification(current_role, notification):
+                raise HTTPException(status_code=403, detail="No tienes permisos para gestionar esta notificación")
             row = _acknowledge_dashboard_notification(cur, notification_key, current_user_id)
             if not row:
                 raise HTTPException(status_code=404, detail="Notificación no encontrada")
