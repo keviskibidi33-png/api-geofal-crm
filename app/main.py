@@ -1740,7 +1740,7 @@ def _fetch_dashboard_notification_history(cur, limit: int = 12) -> list[dict[str
 
 
 def _fetch_quote_notifications(cur, role_id: str, limit: int = 12) -> list[dict[str, Any]]:
-    safe_limit = max(1, min(int(limit or 12), 50))
+    safe_limit = max(1, min(int(limit or 12), 100))
     cur.execute(
         """
         SELECT
@@ -1782,7 +1782,7 @@ def _fetch_quote_notifications(cur, role_id: str, limit: int = 12) -> list[dict[
 
 
 def _fetch_laboratory_notifications(cur, role_id: str, limit: int = 12) -> list[dict[str, Any]]:
-    safe_limit = max(1, min(int(limit or 12), 50))
+    safe_limit = max(1, min(int(limit or 12), 100))
     cur.execute(
         """
         SELECT
@@ -2274,7 +2274,7 @@ async def get_notifications_feed(request: Request, limit: int = 12):
     if not current_user_id:
         raise HTTPException(status_code=401, detail="Usuario no autenticado")
 
-    safe_limit = max(1, min(int(limit or 12), 50))
+    safe_limit = max(1, min(int(limit or 12), 100))
 
     try:
         conn = _get_connection()
