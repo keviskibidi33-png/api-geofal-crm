@@ -1863,7 +1863,6 @@ def _acknowledge_dashboard_notification(cur, notification_key: str, current_user
             acknowledged_by = %s::uuid,
             updated_at = NOW()
         WHERE notification_key = %s
-          AND type = 'permission_conflict'
           AND status IN ('open', 'acknowledged')
         RETURNING
             notification_key AS id,
