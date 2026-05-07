@@ -8,6 +8,8 @@ import io
 import logging
 import zipfile
 import copy
+import re
+import unicodedata
 from datetime import datetime
 from typing import List, Optional
 from lxml import etree
@@ -151,6 +153,40 @@ class ExcelLogic:
             string = chr(65 + remainder) + string
         return string
 
+    def _normalize_label(self, value: str | None) -> str:
+        if not value:
+            return ""
+        normalized = unicodedata.normalize("NFKD", str(value))
+        normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+        normalized = normalized.lower()
+        normalized = re.sub(r"[^a-z0-9]+", " ", normalized)
+        return re.sub(r"\s+", " ", normalized).strip()
+
+    def _format_verification_date(self, value: object) -> str:
+        if value is None:
+            return ""
+
+        if isinstance(value, datetime):
+            return value.strftime("%Y-%m-%d")
+
+        if hasattr(value, "strftime"):
+            try:
+                return value.strftime("%Y-%m-%d")
+            except Exception:
+                pass
+
+        text = str(value).strip()
+        if not text:
+            return ""
+
+        for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%d/%m/%Y", "%d-%m-%Y"):
+            try:
+                return datetime.strptime(text, fmt).strftime("%Y-%m-%d")
+            except ValueError:
+                continue
+
+        return text
+
     # --- Main Logic ---
 
     def generar_excel_verificacion(self, verificacion: VerificacionMuestras) -> bytes:
@@ -233,11 +269,12 @@ class ExcelLogic:
                 c_node.set('s', force_style)
 
         # 3. Fill Header (using anchor-like search for robustness)
-        header_vals = {
-            "VERIFICADO POR:": verificacion.verificado_por,
-            "FECHA VERIFIC.:": verificacion.fecha_verificacion,
-            "CLIENTE:": verificacion.cliente
-        }
+        header_vals = (
+            ("VERIFICADO POR", verificacion.verificado_por, 3),
+            ("FECHA DE VERIFICACION", self._format_verification_date(verificacion.fecha_verificacion), 1),
+            ("CLIENTE", verificacion.cliente, 1),
+        )
+        matched_headers: set[str] = set()
         for r_el in sheet_data.findall(f'{{{ns}}}row'):
             rn = int(r_el.get('r'))
             if rn > 8: break # Header is in top 8 rows
@@ -245,16 +282,16 @@ class ExcelLogic:
                 v_el = c_el.find(f'{{{ns}}}v')
                 if v_el is not None and c_el.get('t') == 's':
                     try:
-                        t = shared_strings[int(v_el.text)].upper().strip()
-                        for k, v in header_vals.items():
-                            if k in t:
+                        t = self._normalize_label(shared_strings[int(v_el.text)])
+                        for k, v, offset in header_vals:
+                            normalized_key = self._normalize_label(k)
+                            if normalized_key in t and normalized_key not in matched_headers:
                                 col_name, _ = self._parse_cell_ref(c_el.get('r'))
-                                # offset typically 1 or 3 columns
-                                offset = 3 if "VERIFICADO" in k else 1
                                 target_col = self._col_num_to_letter(ord(col_name[-1]) - 64 + offset)
                                 # CRITICAL: User reported missing borders on Row 8. Force Style 28.
                                 f_style = '28' if rn == 8 else None
                                 write(target_col, rn, v, force_style=f_style)
+                                matched_headers.add(normalized_key)
                     except: pass
 
         # 4. Samples Table
