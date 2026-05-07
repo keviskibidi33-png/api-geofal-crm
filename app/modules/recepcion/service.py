@@ -3,7 +3,7 @@ import io
 import logging
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func, or_
-from typing import List, Optional
+from typing import Any, List, Optional
 from datetime import datetime
 from .models import RecepcionMuestra, MuestraConcreto, RecepcionPlantilla
 from .schemas import RecepcionMuestraCreate, RecepcionMuestraResponse
@@ -40,6 +40,45 @@ def _get_safe_filename(base_name: str, extension: str = "xlsx") -> str:
 class RecepcionService:
     def __init__(self):
         self.excel_logic = ExcelLogic()
+
+    @staticmethod
+    def _sanitize_muestra_dict(muestra_data: Any) -> Optional[dict]:
+        """
+        Normaliza una muestra antes de persistirla y descarta filas fantasma.
+
+        Regla de protección:
+        - si una fila no tiene ni identificacion_muestra ni fecha_moldeo, no debe guardarse;
+        - item_numero se reasigna después, así que se elimina aquí para evitar arrastre de índices viejos.
+        """
+        if not muestra_data:
+            return None
+
+        if hasattr(muestra_data, "model_dump"):
+            raw = muestra_data.model_dump(exclude_unset=True)
+        elif hasattr(muestra_data, "dict"):
+            raw = muestra_data.dict(exclude_unset=True)
+        else:
+            raw = dict(muestra_data)
+
+        identificacion = str(raw.get("identificacion_muestra") or "").strip()
+        fecha_moldeo = str(raw.get("fecha_moldeo") or "").strip()
+
+        # Regla mínima anti-fantasmas: sin identificación y sin fecha de moldeo, la fila no existe.
+        if not identificacion and not fecha_moldeo:
+            return None
+
+        cleaned = dict(raw)
+        cleaned.pop("item_numero", None)
+        cleaned["codigo_muestra_lem"] = str(cleaned.get("codigo_muestra_lem") or "").strip()
+        cleaned["identificacion_muestra"] = identificacion
+        cleaned["estructura"] = str(cleaned.get("estructura") or "").strip()
+        cleaned["fc_kg_cm2"] = cleaned.get("fc_kg_cm2") if cleaned.get("fc_kg_cm2") not in [None, ""] else 280
+        cleaned["fecha_moldeo"] = fecha_moldeo
+        cleaned["hora_moldeo"] = str(cleaned.get("hora_moldeo") or "").strip()
+        cleaned["edad"] = cleaned.get("edad") if cleaned.get("edad") not in [None, ""] else 10
+        cleaned["fecha_rotura"] = str(cleaned.get("fecha_rotura") or "").strip()
+        cleaned["requiere_densidad"] = cleaned.get("requiere_densidad") in [True, "true", "True", "SI", "si"]
+        return cleaned
 
     @staticmethod
     def _apply_recepcion_search_filters(query, search: Optional[str]):
@@ -110,6 +149,15 @@ class RecepcionService:
             # Validar que haya al menos una muestra
             if not recepcion_data.muestras:
                 raise ValueError("Debe incluir al menos una muestra de concreto")
+
+            sanitized_muestras = []
+            for muestra_data in recepcion_data.muestras:
+                sanitized = self._sanitize_muestra_dict(muestra_data)
+                if sanitized:
+                    sanitized_muestras.append(sanitized)
+
+            if not sanitized_muestras:
+                raise ValueError("Debe incluir al menos una muestra válida")
             
             # Crear recepción
             recepcion_dict = recepcion_data.dict(exclude={'muestras'})
@@ -140,8 +188,7 @@ class RecepcionService:
             db.flush()
             
             # Crear muestras
-            for i, muestra_data in enumerate(recepcion_data.muestras, 1):
-                muestra_dict = muestra_data.dict()
+            for i, muestra_dict in enumerate(sanitized_muestras, 1):
                 muestra_dict['item_numero'] = i
                 
                 # Asegurar que campos requeridos no estén vacíos
@@ -289,6 +336,15 @@ class RecepcionService:
         
         # Actualizar muestras si se proporcionaron
         if muestras_data is not None:
+            sanitized_muestras = []
+            for muestra_data in muestras_data:
+                sanitized = self._sanitize_muestra_dict(muestra_data)
+                if sanitized:
+                    sanitized_muestras.append(sanitized)
+
+            if not sanitized_muestras:
+                raise ValueError("Debe incluir al menos una muestra válida")
+
             # 1. Eliminar muestras existentes (Cascade delete handled by ORM usually, but explicit is safer here if not using cascade)
             # Check model: cascade="all, delete-orphan" is present in RecepcionMuestra.muestras
             # Cleaning the list via relationship is the ORM way:
@@ -296,7 +352,7 @@ class RecepcionService:
             db.flush() 
             
             # 2. Crear nuevas muestras
-            for i, m_dict in enumerate(muestras_data):
+            for i, m_dict in enumerate(sanitized_muestras):
                 m_dict['item_numero'] = i + 1
 
                 # Ensure defaults
