@@ -98,21 +98,26 @@ def _normalize_time_hmin(value: object | None) -> str | None:
     text = text.replace(".", ":").replace(";", ":")
     compact = re.sub(r"\s+", "", text)
 
-    if re.match(r"^\d{1,2}:\d{2}(:\d{2})?$", compact):
+    if re.match(r"^\d{1,2}:\d{1,2}(:\d{1,2})?$", compact):
         parts = compact.split(":")
         hours = parts[0].zfill(2)
         minutes = parts[1].zfill(2)
-        return f"{hours}:{minutes}"
+        seconds = parts[2].zfill(2) if len(parts) >= 3 and parts[2] else "00"
+        return f"{hours}:{minutes}:{seconds}"
 
     digits = re.sub(r"\D", "", compact)
     if len(digits) == 3:
-        return f"0{digits[0]}:{digits[1:3]}"
+        return f"0{digits[0]}:{digits[1:3]}:00"
     if len(digits) == 4:
-        return f"{digits[:2]}:{digits[2:4]}"
+        return f"{digits[:2]}:{digits[2:4]}:00"
+    if len(digits) == 5:
+        return f"0{digits[0]}:{digits[1:3]}:{digits[3:5]}"
+    if len(digits) == 6:
+        return f"{digits[:2]}:{digits[2:4]}:{digits[4:6]}"
     if len(digits) == 1:
-        return f"0{digits}:00"
+        return f"0{digits}:00:00"
     if len(digits) == 2:
-        return f"{digits.zfill(2)}:00"
+        return f"{digits.zfill(2)}:00:00"
 
     return text
 
