@@ -139,8 +139,16 @@ def test_llp_template_replaced_and_generation_keeps_links():
 
     with zipfile.ZipFile(io.BytesIO(generate_llp_excel(_build_llp_payload())), "r") as archive:
         names = set(archive.namelist())
-        assert "xl/calcChain.xml" in names
+        assert "xl/calcChain.xml" not in names
         assert "xl/workbook.xml" in names
+
+        rels_root = etree.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
+        rel_targets = [rel.get("Target", "") for rel in rels_root]
+        assert all(not target.endswith("calcChain.xml") for target in rel_targets)
+
+        content_types_root = etree.fromstring(archive.read("[Content_Types].xml"))
+        overrides = [override.get("PartName", "") for override in content_types_root]
+        assert "/xl/calcChain.xml" not in overrides
 
         sheet1 = etree.fromstring(archive.read("xl/worksheets/sheet1.xml"))
         ns = {"m": NS_MAIN}

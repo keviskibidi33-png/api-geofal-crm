@@ -364,6 +364,25 @@ def _set_eliminacion_particulas_marker(sheet_data: etree._Element, metodo: str) 
     _set_cell(sheet_data, ref, "X")
 
 
+def _remove_calc_chain_relationships(rels_xml: bytes) -> bytes:
+    root = etree.fromstring(rels_xml)
+    for rel in list(root):
+        rel_type = rel.get("Type", "")
+        target = rel.get("Target", "")
+        if rel_type.endswith("/calcChain") or target.endswith("calcChain.xml"):
+            root.remove(rel)
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
+def _remove_calc_chain_content_type(content_types_xml: bytes) -> bytes:
+    root = etree.fromstring(content_types_xml)
+    for override in list(root):
+        part_name = override.get("PartName", "")
+        if part_name == "/xl/calcChain.xml":
+            root.remove(override)
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
 def generate_llp_excel(data: LLPRequest) -> bytes:
     """Generates the LLP Excel file from template."""
     logger.info("Generating LLP Excel - ASTM D4318-17e1")
@@ -380,8 +399,15 @@ def generate_llp_excel(data: LLPRequest) -> bytes:
         sheet_xml = _fill_sheet(sheet_original, data)
 
         for item in zin.infolist():
+            if item.filename == "xl/calcChain.xml":
+                continue
+
             if item.filename == "xl/worksheets/sheet1.xml":
                 raw = sheet_xml
+            elif item.filename == "xl/_rels/workbook.xml.rels":
+                raw = _remove_calc_chain_relationships(zin.read(item.filename))
+            elif item.filename == "[Content_Types].xml":
+                raw = _remove_calc_chain_content_type(zin.read(item.filename))
             else:
                 raw = zin.read(item.filename)
 
