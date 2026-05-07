@@ -120,7 +120,7 @@ def _set_cell(sheet_data: etree._Element, ref: str, value: Any, is_number: bool 
     t_el.text = text
 
 
-def _set_trial_row(sheet_data: etree._Element, row_num: int, values: list[float | None], is_number: bool = True) -> None:
+def _set_trial_row(sheet_data: etree._Element, row_num: int, values: list[Any | None], is_number: bool = True) -> None:
     for idx, col in enumerate(TRIAL_COLS):
         _set_cell(sheet_data, f"{col}{row_num}", values[idx], is_number=is_number)
 
@@ -170,8 +170,12 @@ def _fill_sheet(sheet_xml: bytes, data: EquiArenaRequest) -> bytes:
     _set_cell(sd, "D20", data.masa_4_medidas_g, is_number=True)
 
     # Pruebas
+    _set_trial_row(sd, 26, data.cronometro_entrada_saturacion_hmin, is_number=False)
+    _set_trial_row(sd, 27, data.cronometro_salida_saturacion_hmin, is_number=False)
     _set_trial_row(sd, 28, data.tiempo_saturacion_min)
     _set_trial_row(sd, 29, data.tiempo_agitacion_seg)
+    _set_trial_row(sd, 30, data.cronometro_entrada_decantacion_hmin, is_number=False)
+    _set_trial_row(sd, 31, data.cronometro_salida_decantacion_hmin, is_number=False)
     _set_trial_row(sd, 32, data.tiempo_decantacion_min)
     _set_trial_row(sd, 33, data.lectura_arcilla_in)
     _set_trial_row(sd, 34, data.lectura_arena_in)

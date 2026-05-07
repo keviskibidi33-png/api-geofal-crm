@@ -87,6 +87,45 @@ def _normalize_float_list(values: list[float | None], size: int) -> list[float |
     return normalized
 
 
+def _normalize_time_hmin(value: object | None) -> str | None:
+    if value is None:
+        return None
+
+    text = str(value).strip()
+    if not text or text == "-":
+        return None
+
+    text = text.replace(".", ":").replace(";", ":")
+    compact = re.sub(r"\s+", "", text)
+
+    if re.match(r"^\d{1,2}:\d{2}(:\d{2})?$", compact):
+        parts = compact.split(":")
+        hours = parts[0].zfill(2)
+        minutes = parts[1].zfill(2)
+        return f"{hours}:{minutes}"
+
+    digits = re.sub(r"\D", "", compact)
+    if len(digits) == 3:
+        return f"0{digits[0]}:{digits[1:3]}"
+    if len(digits) == 4:
+        return f"{digits[:2]}:{digits[2:4]}"
+    if len(digits) == 1:
+        return f"0{digits}:00"
+    if len(digits) == 2:
+        return f"{digits.zfill(2)}:00"
+
+    return text
+
+
+def _normalize_time_list(values: list[object | None], size: int) -> list[str | None]:
+    normalized: list[str | None] = []
+    for value in values[:size]:
+        normalized.append(_normalize_time_hmin(value))
+    while len(normalized) < size:
+        normalized.append(None)
+    return normalized
+
+
 def _compute_equivalente_por_prueba(
     arcilla: list[float | None],
     arena: list[float | None],
@@ -129,8 +168,12 @@ class EquiArenaRequest(BaseModel):
     masa_4_medidas_g: Optional[float] = None
 
     # Pruebas (columnas H, I, J)
+    cronometro_entrada_saturacion_hmin: list[str | None] = Field(default_factory=list)
+    cronometro_salida_saturacion_hmin: list[str | None] = Field(default_factory=list)
     tiempo_saturacion_min: list[float | None] = Field(default_factory=list)
     tiempo_agitacion_seg: list[float | None] = Field(default_factory=list)
+    cronometro_entrada_decantacion_hmin: list[str | None] = Field(default_factory=list)
+    cronometro_salida_decantacion_hmin: list[str | None] = Field(default_factory=list)
     tiempo_decantacion_min: list[float | None] = Field(default_factory=list)
     lectura_arcilla_in: list[float | None] = Field(default_factory=list)
     lectura_arena_in: list[float | None] = Field(default_factory=list)
@@ -178,8 +221,12 @@ class EquiArenaRequest(BaseModel):
         self.temperatura_solucion_c = _coerce_float(self.temperatura_solucion_c)
         self.masa_4_medidas_g = _coerce_float(self.masa_4_medidas_g)
 
+        self.cronometro_entrada_saturacion_hmin = _normalize_time_list(self.cronometro_entrada_saturacion_hmin, TRIAL_COUNT)
+        self.cronometro_salida_saturacion_hmin = _normalize_time_list(self.cronometro_salida_saturacion_hmin, TRIAL_COUNT)
         self.tiempo_saturacion_min = _normalize_float_list(self.tiempo_saturacion_min, TRIAL_COUNT)
         self.tiempo_agitacion_seg = _normalize_float_list(self.tiempo_agitacion_seg, TRIAL_COUNT)
+        self.cronometro_entrada_decantacion_hmin = _normalize_time_list(self.cronometro_entrada_decantacion_hmin, TRIAL_COUNT)
+        self.cronometro_salida_decantacion_hmin = _normalize_time_list(self.cronometro_salida_decantacion_hmin, TRIAL_COUNT)
         self.tiempo_decantacion_min = _normalize_float_list(self.tiempo_decantacion_min, TRIAL_COUNT)
         self.lectura_arcilla_in = _normalize_float_list(self.lectura_arcilla_in, TRIAL_COUNT)
         self.lectura_arena_in = _normalize_float_list(self.lectura_arena_in, TRIAL_COUNT)

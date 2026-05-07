@@ -27,8 +27,12 @@ def _build_payload(**overrides) -> EquiArenaRequest:
         "preparacion_muestra": "PROCEDIMIENTO A",
         "temperatura_solucion_c": 23,
         "masa_4_medidas_g": 85.5,
+        "cronometro_entrada_saturacion_hmin": ["08:00", "08:10", "08:20"],
+        "cronometro_salida_saturacion_hmin": ["08:10", "08:20", "08:30"],
         "tiempo_saturacion_min": [10, 10, 10],
         "tiempo_agitacion_seg": [45, 45, 45],
+        "cronometro_entrada_decantacion_hmin": ["08:15", "08:25", "08:35"],
+        "cronometro_salida_decantacion_hmin": ["08:35", "08:45", "08:55"],
         "tiempo_decantacion_min": [20, 20, 20],
         "lectura_arcilla_in": [10, 10, 10],
         "lectura_arena_in": [5, 5, 5],
@@ -69,6 +73,19 @@ def test_generate_equi_arena_excel_escribe_resultados():
     assert sheet["B17"].value == "SUELO"
     assert sheet["F17"].value == "MANUAL"
     assert sheet["F21"].value == "PROCEDIMIENTO A"
+
+    assert sheet["H26"].value == "08:00"
+    assert sheet["I26"].value == "08:10"
+    assert sheet["J26"].value == "08:20"
+    assert sheet["H27"].value == "08:10"
+    assert sheet["I27"].value == "08:20"
+    assert sheet["J27"].value == "08:30"
+    assert sheet["H30"].value == "08:15"
+    assert sheet["I30"].value == "08:25"
+    assert sheet["J30"].value == "08:35"
+    assert sheet["H31"].value == "08:35"
+    assert sheet["I31"].value == "08:45"
+    assert sheet["J31"].value == "08:55"
 
     assert sheet["H35"].value == 50
     assert sheet["I35"].value == 50
