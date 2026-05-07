@@ -13,13 +13,16 @@ from app.modules.proctor.excel import TEMPLATE_PATH, generate_proctor_excel
 from app.modules.proctor.schemas import ProctorRequest
 
 
-EXPECTED_SHEETS = [
+EXPECTED_VISIBLE_SHEETS = [
     "formato",
     "Proctor",
     "DATOS",
     "Incertidumbre",
     "Balanza",
     "precision",
+]
+
+EXPECTED_HIDDEN_SHEETS = [
     "Correccion",
     "A.Granul",
     "LL-LP",
@@ -42,8 +45,12 @@ def _build_payload() -> ProctorRequest:
 def test_proctor_template_is_1901_and_has_expected_sheet_stack():
     workbook = load_workbook(TEMPLATE_PATH, data_only=False)
 
-    assert workbook.sheetnames == EXPECTED_SHEETS
+    assert workbook.sheetnames == EXPECTED_VISIBLE_SHEETS + EXPECTED_HIDDEN_SHEETS
     assert workbook["formato"]["A6"].value == "FORMATO N° F-LEM-P-SU-19.01"
+    assert [ws.title for ws in workbook.worksheets if ws.sheet_state == "visible"] == EXPECTED_VISIBLE_SHEETS
+    assert [ws.title for ws in workbook.worksheets if ws.sheet_state == "hidden"] == EXPECTED_HIDDEN_SHEETS
+    assert len([ws for ws in workbook.worksheets if ws.sheet_state == "visible"]) == 6
+    assert len([ws for ws in workbook.worksheets if ws.sheet_state == "hidden"]) == 7
 
     with zipfile.ZipFile(TEMPLATE_PATH, "r") as workbook_zip:
         names = set(workbook_zip.namelist())
@@ -57,7 +64,9 @@ def test_generate_proctor_excel_preserves_formulas_and_sheet_connections():
     generated_bytes = generate_proctor_excel(payload)
     workbook = load_workbook(io.BytesIO(generated_bytes), data_only=False)
 
-    assert workbook.sheetnames == EXPECTED_SHEETS
+    assert workbook.sheetnames == EXPECTED_VISIBLE_SHEETS + EXPECTED_HIDDEN_SHEETS
+    assert [ws.title for ws in workbook.worksheets if ws.sheet_state == "visible"] == EXPECTED_VISIBLE_SHEETS
+    assert [ws.title for ws in workbook.worksheets if ws.sheet_state == "hidden"] == EXPECTED_HIDDEN_SHEETS
 
     formato = workbook["formato"]
     assert formato["B9"].value == payload.muestra
