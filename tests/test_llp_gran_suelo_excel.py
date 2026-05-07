@@ -30,7 +30,12 @@ def _build_llp_payload() -> LLPRequest:
         herramienta_ranurado_limite_liquido="METAL",
         dispositivo_limite_liquido="MANUAL",
         metodo_laminacion_limite_plastico="MANUAL",
+        contenido_humedad_muestra_inicial_pct=35.4,
+        proceso_seleccion_muestra="TRAZA",
         metodo_preparacion_muestra="SECADO AL AIRE",
+        tamano_maximo_visual_in='3/4"',
+        porcentaje_retenido_tamiz_40_pct=5.7,
+        forma_particula="SUBREDONDEADA",
         tipo_muestra="SUELO FINO",
         condicion_muestra="ALTERADO",
         puntos=[
@@ -132,6 +137,19 @@ def test_llp_template_replaced_and_generation_keeps_links():
     assert generated["INFORME NTP"]["E11"].value == "4567-26"
     assert generated["INFORME NTP"]["H11"].value == "2026/05/07"
     assert generated["INFORME NTP"]["J11"].value == "OPERADOR"
+    assert generated["FORMATO"]["C11"].value == "123-SU-26"
+    assert generated["FORMATO"]["E11"].value == "4567-26"
+    assert generated["FORMATO"]["H11"].value == "2026/05/07"
+    assert generated["FORMATO"]["J11"].value == "OPERADOR"
+    assert generated["FORMATO"]["J17"].value == "MULTIPUNTO"
+    assert generated["FORMATO"]["J21"].value == 35.4
+    assert generated["FORMATO"]["J22"].value == "TRAZA"
+    assert generated["FORMATO"]["J23"].value == "SECADO AL AIRE"
+    assert generated["FORMATO"]["J29"].value == "SUELO FINO"
+    assert generated["FORMATO"]["J30"].value == "ALTERADO"
+    assert generated["FORMATO"]["J31"].value == '3/4"'
+    assert generated["FORMATO"]["J32"].value == 5.7
+    assert generated["FORMATO"]["J33"].value == "SUBREDONDEADA"
     assert generated["FORMATO"]["A8"].value == "FORMATO N° F-LEM-P-SU-23.01"
     assert generated["INFORME NTP"]["A8"].value == "=+K13"
     assert generated["DATOS"]["C15"].value == "=+FORMATO!G37"

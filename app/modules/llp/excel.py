@@ -395,15 +395,19 @@ def generate_llp_excel(data: LLPRequest) -> bytes:
 
     output = io.BytesIO()
     with zipfile.ZipFile(io.BytesIO(template_bytes), "r") as zin, zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zout:
-        sheet_original = zin.read("xl/worksheets/sheet1.xml")
-        sheet_xml = _fill_sheet(sheet_original, data)
+        sheet1_original = zin.read("xl/worksheets/sheet1.xml")
+        sheet2_original = zin.read("xl/worksheets/sheet2.xml")
+        sheet1_xml = _fill_sheet(sheet1_original, data)
+        sheet2_xml = _fill_sheet(sheet2_original, data)
 
         for item in zin.infolist():
             if item.filename == "xl/calcChain.xml":
                 continue
 
             if item.filename == "xl/worksheets/sheet1.xml":
-                raw = sheet_xml
+                raw = sheet1_xml
+            elif item.filename == "xl/worksheets/sheet2.xml":
+                raw = sheet2_xml
             elif item.filename == "xl/_rels/workbook.xml.rels":
                 raw = _remove_calc_chain_relationships(zin.read(item.filename))
             elif item.filename == "[Content_Types].xml":
