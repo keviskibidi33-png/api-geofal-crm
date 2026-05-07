@@ -225,6 +225,8 @@ async def actualizar_recepcion(
     # 4. Actualizar
     try:
         updated_recepcion = recepcion_service.actualizar_recepcion(db, recepcion_id, update_data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except DataError:
         db.rollback()
         raise HTTPException(status_code=400, detail="Texto demasiado largo para un campo de recepción")
