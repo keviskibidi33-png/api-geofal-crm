@@ -415,7 +415,7 @@ def generate_llp_excel(data: LLPRequest) -> bytes:
             else:
                 raw = zin.read(item.filename)
 
-            if item.filename == "xl/drawings/drawing1.xml":
+            if item.filename.startswith("xl/drawings/drawing") and item.filename.endswith(".xml"):
                 raw = _fill_drawing(raw, data)
             elif item.filename == "xl/workbook.xml":
                 raw = _enable_full_recalc_on_open(raw)

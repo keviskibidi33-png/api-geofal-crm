@@ -77,6 +77,10 @@ def _build_llp_payload() -> LLPRequest:
         horno_110_codigo="HOR-110",
         copa_casagrande_codigo="CAS-001",
         ranurador_codigo="RAN-0107",
+        revisado_por="REVISOR R",
+        revisado_fecha="2026/05/08",
+        aprobado_por="APROBADOR R",
+        aprobado_fecha="2026/05/09",
     )
 
 
@@ -150,6 +154,10 @@ def test_llp_template_replaced_and_generation_keeps_links():
     assert generated["FORMATO"]["J31"].value == '3/4"'
     assert generated["FORMATO"]["J32"].value == 5.7
     assert generated["FORMATO"]["J33"].value == "SUBREDONDEADA"
+    assert generated["FORMATO"]["D48"].value == "BAL-001"
+    assert generated["FORMATO"]["D49"].value == "HOR-110"
+    assert generated["FORMATO"]["D50"].value == "CAS-001"
+    assert generated["FORMATO"]["D51"].value == "INS-0107"
     assert generated["FORMATO"]["A8"].value == "FORMATO N° F-LEM-P-SU-23.01"
     assert generated["INFORME NTP"]["A8"].value == "=+K13"
     assert generated["DATOS"]["C15"].value == "=+FORMATO!G37"
@@ -172,6 +180,25 @@ def test_llp_template_replaced_and_generation_keeps_links():
         ns = {"m": NS_MAIN}
         assert sheet1.xpath(".//m:c[@r='P32']/m:f[@t='shared']", namespaces=ns)
         assert sheet1.xpath(".//m:c[@r='Q33']/m:f[@t='shared']", namespaces=ns)
+
+        drawing2 = etree.fromstring(archive.read("xl/drawings/drawing2.xml"))
+        drawing_ns = {
+            "xdr": "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing",
+            "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
+        }
+        footer_texts = []
+        for anchor in drawing2.findall(".//xdr:twoCellAnchor", drawing_ns):
+            footer_texts.extend(
+                (node.text or "").strip()
+                for node in anchor.findall(".//a:t", drawing_ns)
+                if (node.text or "").strip()
+            )
+        assert "Revisado:" in footer_texts
+        assert "REVISOR R" in footer_texts
+        assert "Fecha: 2026/05/08" in footer_texts
+        assert "Aprobado:" in footer_texts
+        assert "APROBADOR R" in footer_texts
+        assert "Fecha: 2026/05/09" in footer_texts
 
 
 def test_gran_suelo_template_replaced_and_generation_keeps_links():
