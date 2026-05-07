@@ -3,6 +3,7 @@ import sys
 import zipfile
 from pathlib import Path
 
+from lxml import etree
 from openpyxl import load_workbook
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -140,6 +141,11 @@ def test_llp_template_replaced_and_generation_keeps_links():
         names = set(archive.namelist())
         assert "xl/calcChain.xml" in names
         assert "xl/workbook.xml" in names
+
+        sheet1 = etree.fromstring(archive.read("xl/worksheets/sheet1.xml"))
+        ns = {"m": NS_MAIN}
+        assert sheet1.xpath(".//m:c[@r='P32']/m:f[@t='shared']", namespaces=ns)
+        assert sheet1.xpath(".//m:c[@r='Q33']/m:f[@t='shared']", namespaces=ns)
 
 
 def test_gran_suelo_template_replaced_and_generation_keeps_links():

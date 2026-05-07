@@ -135,6 +135,7 @@ def _set_formula_with_cached_value(
     formula: str,
     cached_value: Any,
     result_type: str = "number",
+    rewrite_formula: bool = False,
 ) -> None:
     """
     Writes a formula cell preserving style and updating cached value.
@@ -145,11 +146,19 @@ def _set_formula_with_cached_value(
     row = _find_or_create_row(sheet_data, row_num)
     cell = _find_or_create_cell(row, ref)
 
-    for child in list(cell):
-        cell.remove(child)
-
-    formula_el = etree.SubElement(cell, f"{{{ns}}}f")
-    formula_el.text = formula
+    formula_el = cell.find(f"{{{ns}}}f")
+    if formula_el is None:
+        formula_el = etree.SubElement(cell, f"{{{ns}}}f")
+        formula_el.text = formula
+    elif rewrite_formula:
+        # Only rewrite formulas when the caller explicitly requests it.
+        # This is important for shared-formula cells coming from the template:
+        # replacing one member of a shared group with a standalone formula can
+        # leave the workbook structurally inconsistent and trigger Excel repair.
+        for child in list(cell):
+            cell.remove(child)
+        formula_el = etree.SubElement(cell, f"{{{ns}}}f")
+        formula_el.text = formula
 
     if result_type == "error":
         cell.set("t", "e")
@@ -270,10 +279,24 @@ def _cache_limite_liquido_control(sheet_data: etree._Element, data: LLPRequest, 
             ll_r2 = _safe_round(r**2, 4)
 
     if ll_r2 is None:
-        _set_formula_with_cached_value(sheet_data, "O37", "RSQ(Q30:Q32,O30:O32)", "#DIV/0!", "error")
+        _set_formula_with_cached_value(
+            sheet_data,
+            "O37",
+            "RSQ(Q30:Q32,O30:O32)",
+            "#DIV/0!",
+            "error",
+            rewrite_formula=True,
+        )
         _set_formula_with_cached_value(sheet_data, "P37", 'IF(O37<=0.95,"NO CONFORME","CONFORME")', "PENDIENTE", "string")
     else:
-        _set_formula_with_cached_value(sheet_data, "O37", "RSQ(Q30:Q32,O30:O32)", ll_r2, "number")
+        _set_formula_with_cached_value(
+            sheet_data,
+            "O37",
+            "RSQ(Q30:Q32,O30:O32)",
+            ll_r2,
+            "number",
+            rewrite_formula=True,
+        )
         conformidad = "NO CONFORME" if ll_r2 <= 0.95 else "CONFORME"
         _set_formula_with_cached_value(sheet_data, "P37", 'IF(O37<=0.95,"NO CONFORME","CONFORME")', conformidad, "string")
 
@@ -294,11 +317,25 @@ def _cache_limite_plastico_control(sheet_data: etree._Element, humidities: list[
         control = "cumple" if d2s < 1 else "no cumple"
 
     if std_1s is None:
-        _set_formula_with_cached_value(sheet_data, "O45", "+STDEV(K45,L45)", "#DIV/0!", "error")
+        _set_formula_with_cached_value(
+            sheet_data,
+            "O45",
+            "+STDEV(K45,L45)",
+            "#DIV/0!",
+            "error",
+            rewrite_formula=True,
+        )
         _set_formula_with_cached_value(sheet_data, "P45", "ROUNDDOWN(O45*2.8,0)", "#DIV/0!", "error")
         _set_formula_with_cached_value(sheet_data, "S45", 'IF(P45<R45, "cumple", "no cumple")', "PENDIENTE", "string")
     else:
-        _set_formula_with_cached_value(sheet_data, "O45", "+STDEV(K45,L45)", std_1s, "number")
+        _set_formula_with_cached_value(
+            sheet_data,
+            "O45",
+            "+STDEV(K45,L45)",
+            std_1s,
+            "number",
+            rewrite_formula=True,
+        )
         _set_formula_with_cached_value(sheet_data, "P45", "ROUNDDOWN(O45*2.8,0)", d2s if d2s is not None else 0, "number")
         _set_formula_with_cached_value(sheet_data, "S45", 'IF(P45<R45, "cumple", "no cumple")', control or "PENDIENTE", "string")
 
