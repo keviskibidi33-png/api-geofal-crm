@@ -13,6 +13,8 @@ if str(ROOT) not in sys.path:
 from app.modules.equi_arena.excel import TEMPLATE_PATH, generate_equi_arena_excel
 from app.modules.equi_arena.schemas import EquiArenaRequest
 
+NS_MAIN = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+
 
 def _build_payload(**overrides) -> EquiArenaRequest:
     payload = {
@@ -72,13 +74,16 @@ def test_generate_equi_arena_excel_escribe_resultados():
     assert sheet["I35"].value == 50
     assert sheet["J35"].value == 50
     assert sheet["H36"].value == 50
-    assert sheet.protection.sheet is True
     assert sheet["H35"].protection.locked is True
     assert sheet["I35"].protection.locked is True
     assert sheet["J35"].protection.locked is True
     assert sheet["H36"].protection.locked is True
     assert sheet["B11"].protection.locked is False
     assert sheet["F17"].protection.locked is False
+
+    with zipfile.ZipFile(io.BytesIO(generate_equi_arena_excel(payload)), "r") as workbook_zip:
+        sheet_root = etree.fromstring(workbook_zip.read("xl/worksheets/sheet1.xml"))
+        assert sheet_root.find(f".//{{{NS_MAIN}}}sheetProtection") is not None
 
 
 def test_generate_equi_arena_excel_no_deja_calc_chain_colgante():
