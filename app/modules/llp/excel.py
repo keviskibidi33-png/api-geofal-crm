@@ -167,8 +167,15 @@ def _set_formula_with_cached_value(
     else:
         cell.attrib.pop("t", None)
 
-    value_el = etree.SubElement(cell, f"{{{ns}}}v")
-    value_el.text = str(cached_value)
+    value_nodes = cell.findall(f"{{{ns}}}v")
+    if value_nodes:
+        value_el = value_nodes[0]
+        value_el.text = str(cached_value)
+        for extra in value_nodes[1:]:
+            cell.remove(extra)
+    else:
+        value_el = etree.SubElement(cell, f"{{{ns}}}v")
+        value_el.text = str(cached_value)
 
 
 def _safe_round(value: float, digits: int) -> float:
