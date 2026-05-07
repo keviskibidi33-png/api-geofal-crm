@@ -291,11 +291,14 @@ class ExcelLogic:
             write('V', curr_row, m.pesar)
 
         # 5. Equipos & Nota (Footer)
-        write('C', 18, verificacion.equipo_bernier, is_footer=True)
-        write('E', 18, verificacion.equipo_lainas_1, is_footer=True)
-        write('G', 18, verificacion.equipo_lainas_2, is_footer=True)
-        write('I', 18, verificacion.equipo_escuadra, is_footer=True)
-        write('K', 18, verificacion.equipo_balanza, is_footer=True)
+        # The template keeps the equipment names in C/E/G/I/K and the codes
+        # should be written in the adjacent blank cells D/F/H/J/L.
+        # Writing directly into the name cells hides the labels in the final file.
+        write('D', 18, verificacion.equipo_bernier, is_footer=True)
+        write('F', 18, verificacion.equipo_lainas_1, is_footer=True)
+        write('H', 18, verificacion.equipo_lainas_2, is_footer=True)
+        write('J', 18, verificacion.equipo_escuadra, is_footer=True)
+        write('L', 18, verificacion.equipo_balanza, is_footer=True)
         if verificacion.nota: write('B', 19, verificacion.nota, is_footer=True)
 
         # 6. Structural Cleanup (Row Sorting)

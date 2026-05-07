@@ -253,10 +253,15 @@ def generate_compression_excel(data: CompressionExportRequest) -> io.BytesIO:
                 _set_cell_value(sheet_data, f'L{row_idx}', item.aprobado or '', ns)
                 _set_cell_value(sheet_data, f'M{row_idx}', item.fecha_aprobado.strftime('%Y/%m/%d') if item.fecha_aprobado else '', ns)
             
-            # Footer data (columns shifted left by 1 after removing old Hora column)
+            # Footer data
+            # NOTE: The template uses merged label cells in row 35:
+            # - C35:D35 = label "Codigo Equipo utilizado" -> value goes in E35
+            # - H35      = label "Otros" -> value goes in I35 (I35:J35 is merged)
+            # Writing into D35/H35 would place the value inside the label/merged area
+            # and Excel can hide it.
             f_row = 35 + extra_rows
-            _set_cell_value(sheet_data, f'D{f_row}', data.codigo_equipo or '', ns)
-            _set_cell_value(sheet_data, f'H{f_row}', data.otros or '', ns)
+            _set_cell_value(sheet_data, f'E{f_row}', data.codigo_equipo or '', ns)
+            _set_cell_value(sheet_data, f'I{f_row}', data.otros or '', ns)
             
             n_row = 37 + extra_rows
             _set_cell_value(sheet_data, f'C{n_row}', data.nota or '', ns)
