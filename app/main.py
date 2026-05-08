@@ -38,7 +38,6 @@ from app.modules.compresion.router import router as compresion_router
 from app.modules.tracing.router import router as tracing_router
 from app.modules.humedad.router import router as humedad_router
 from app.modules.cont_humedad.router import router as cont_humedad_router
-from app.modules.humedad_complete_demo.router import router as humedad_complete_demo_router
 from app.modules.planas.router import router as planas_router
 from app.modules.caras.router import router as caras_router
 from app.modules.cbr.router import router as cbr_router
@@ -75,7 +74,6 @@ from app.modules.tracing.models import Trazabilidad
 from app.modules.compresion.models import EnsayoCompresion, ItemCompresion
 from app.modules.humedad.models import HumedadEnsayo
 from app.modules.cont_humedad.models import ContHumedadEnsayo
-from app.modules.humedad_complete_demo.models import HumedadCompleteDemoEnsayo
 from app.modules.planas.models import PlanasEnsayo
 from app.modules.caras.models import CarasEnsayo
 from app.modules.cbr.models import CBREnsayo
@@ -142,7 +140,6 @@ class RolePermissions(BaseModel):
     tracing: ModulePermission | None = None
     humedad: ModulePermission | None = None
     cont_humedad: ModulePermission | None = None
-    humedad_complete_demo: ModulePermission | None = None
     planas: ModulePermission | None = None
     caras: ModulePermission | None = None
     cbr: ModulePermission | None = None
@@ -324,8 +321,6 @@ def _get_cors_origins() -> list[str]:
         "https://compresion.geofal.com.pe",
         "https://laboratorio.geofal.com.pe", # Added just in case
         "https://humedad.geofal.com.pe",
-        "https://humedad-complete-demo.geofal.com.pe",
-        "https://humedad01.geofal.com.pe",
         "https://cbr.geofal.com.pe",
         "https://proctor.geofal.com.pe",
         "https://llp.geofal.com.pe",
@@ -504,7 +499,6 @@ app.include_router(compresion_router)
 app.include_router(tracing_router)
 app.include_router(humedad_router)
 app.include_router(cont_humedad_router)
-app.include_router(humedad_complete_demo_router)
 app.include_router(planas_router)
 app.include_router(caras_router)
 app.include_router(cbr_router)
@@ -1163,7 +1157,6 @@ _PERMISSION_MODULE_KEYS: tuple[str, ...] = (
     "compresion",
     "humedad",
     "cont_humedad",
-    "humedad_complete_demo",
     "cbr",
     "proctor",
     "llp",
@@ -2014,7 +2007,6 @@ async def get_roles():
                         "tracing": {"read": True, "write": True, "delete": True},
                         "humedad": {"read": True, "write": True, "delete": True},
                         "cont_humedad": {"read": True, "write": True, "delete": True},
-                        "humedad_complete_demo": {"read": True, "write": True, "delete": True},
                         "planas": {"read": True, "write": True, "delete": True},
                         "caras": {"read": True, "write": True, "delete": True},
                         "cbr": {"read": True, "write": True, "delete": True},
@@ -2061,7 +2053,6 @@ async def get_roles():
                         "tracing": {"read": False, "write": False, "delete": False},
                         "humedad": {"read": False, "write": False, "delete": False},
                         "cont_humedad": {"read": False, "write": False, "delete": False},
-                        "humedad_complete_demo": {"read": False, "write": False, "delete": False},
                         "planas": {"read": False, "write": False, "delete": False},
                         "caras": {"read": False, "write": False, "delete": False},
                         "cbr": {"read": False, "write": False, "delete": False},
@@ -2104,7 +2095,6 @@ async def get_roles():
                         "tracing": {"read": True, "write": True, "delete": False},
                         "humedad": {"read": True, "write": True, "delete": False},
                         "cont_humedad": {"read": True, "write": True, "delete": False},
-                        "humedad_complete_demo": {"read": True, "write": True, "delete": False},
                         "planas": {"read": True, "write": True, "delete": False},
                         "caras": {"read": True, "write": True, "delete": False},
                         "cbr": {"read": True, "write": True, "delete": False},
@@ -2153,7 +2143,6 @@ async def get_roles():
                         "tracing": {"read": True, "write": True, "delete": False},
                         "humedad": {"read": True, "write": True, "delete": False},
                         "cont_humedad": {"read": True, "write": True, "delete": False},
-                        "humedad_complete_demo": {"read": True, "write": True, "delete": False},
                         "planas": {"read": True, "write": True, "delete": False},
                         "caras": {"read": True, "write": True, "delete": False},
                         "cbr": {"read": True, "write": True, "delete": False},
@@ -2203,7 +2192,6 @@ async def get_roles():
                         "tracing": {"read": True, "write": True, "delete": False},
                         "humedad": {"read": True, "write": True, "delete": False},
                         "cont_humedad": {"read": True, "write": True, "delete": False},
-                        "humedad_complete_demo": {"read": True, "write": True, "delete": False},
                         "planas": {"read": True, "write": True, "delete": False},
                         "caras": {"read": True, "write": True, "delete": False},
                         "cbr": {"read": True, "write": True, "delete": False},
