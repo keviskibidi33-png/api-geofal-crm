@@ -447,3 +447,42 @@ def remove_calc_chain_content_type(content_types_xml: bytes) -> bytes:
         if part_name == "/xl/calcChain.xml":
             root.remove(override)
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
+def strip_external_references(workbook_xml: bytes) -> bytes:
+    root = etree.fromstring(workbook_xml)
+    ns = {"m": NS_SHEET}
+
+    external_refs = root.find("m:externalReferences", ns)
+    if external_refs is not None:
+        root.remove(external_refs)
+
+    defined_names = root.find("m:definedNames", ns)
+    if defined_names is not None:
+        for defined_name in list(defined_names):
+            text = (defined_name.text or "").strip()
+            if text.startswith("["):
+                defined_names.remove(defined_name)
+        if len(defined_names) == 0:
+            root.remove(defined_names)
+
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
+def remove_external_link_relationships(rels_xml: bytes) -> bytes:
+    root = etree.fromstring(rels_xml)
+    for rel in list(root):
+        rel_type = rel.get("Type", "")
+        target = rel.get("Target", "")
+        if rel_type.endswith("/externalLink") or "externalLinks/" in target:
+            root.remove(rel)
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
+def remove_external_link_content_types(content_types_xml: bytes) -> bytes:
+    root = etree.fromstring(content_types_xml)
+    for override in list(root):
+        part_name = override.get("PartName", "")
+        if part_name.startswith("/xl/externalLinks/"):
+            root.remove(override)
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)

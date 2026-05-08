@@ -20,6 +20,9 @@ from app.modules.common.excel_xml import (
     enable_full_recalc_on_open,
     remove_calc_chain_content_type,
     remove_calc_chain_relationships,
+    remove_external_link_content_types,
+    remove_external_link_relationships,
+    strip_external_references,
 )
 
 from .schemas import GranSueloRequest
@@ -457,6 +460,8 @@ def generate_gran_suelo_excel(data: GranSueloRequest) -> bytes:
         for item in zin.infolist():
             if item.filename == "xl/calcChain.xml":
                 continue
+            if item.filename.startswith("xl/externalLinks/"):
+                continue
 
             if item.filename == "xl/worksheets/sheet1.xml":
                 raw = sheet_xml
@@ -464,10 +469,13 @@ def generate_gran_suelo_excel(data: GranSueloRequest) -> bytes:
                 raw = styles_xml
             elif item.filename == "xl/workbook.xml":
                 raw = enable_full_recalc_on_open(zin.read(item.filename))
+                raw = strip_external_references(raw)
             elif item.filename == "xl/_rels/workbook.xml.rels":
                 raw = remove_calc_chain_relationships(zin.read(item.filename))
+                raw = remove_external_link_relationships(raw)
             elif item.filename == "[Content_Types].xml":
                 raw = remove_calc_chain_content_type(zin.read(item.filename))
+                raw = remove_external_link_content_types(raw)
             else:
                 raw = zin.read(item.filename)
 

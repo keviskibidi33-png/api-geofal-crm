@@ -229,6 +229,7 @@ def test_gran_suelo_template_replaced_and_generation_forces_recalc():
     with zipfile.ZipFile(io.BytesIO(generate_gran_suelo_excel(_build_gran_payload())), "r") as archive:
         names = set(archive.namelist())
         assert "xl/calcChain.xml" not in names
+        assert all(not name.startswith("xl/externalLinks/") for name in names)
         assert "xl/workbook.xml" in names
 
         workbook_root = etree.fromstring(archive.read("xl/workbook.xml"))
@@ -236,6 +237,7 @@ def test_gran_suelo_template_replaced_and_generation_forces_recalc():
         workbook_pr = workbook_root.find("m:workbookPr", ns)
         assert workbook_pr is not None
         assert workbook_pr.get("updateLinks") == "never"
+        assert workbook_root.find("m:externalReferences", ns) is None
         calc_pr = workbook_root.find("m:calcPr", ns)
         assert calc_pr is not None
         assert calc_pr.get("calcMode") == "auto"
@@ -245,7 +247,9 @@ def test_gran_suelo_template_replaced_and_generation_forces_recalc():
         rels_root = etree.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
         rel_targets = [rel.get("Target", "") for rel in rels_root]
         assert all(not target.endswith("calcChain.xml") for target in rel_targets)
+        assert all("externalLinks/" not in target for target in rel_targets)
 
         content_types_root = etree.fromstring(archive.read("[Content_Types].xml"))
         overrides = [override.get("PartName", "") for override in content_types_root]
         assert "/xl/calcChain.xml" not in overrides
+        assert all(not part_name.startswith("/xl/externalLinks/") for part_name in overrides)
