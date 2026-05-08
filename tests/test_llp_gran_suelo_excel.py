@@ -223,6 +223,9 @@ def test_gran_suelo_template_replaced_and_generation_forces_recalc():
     assert generated["FORMATO"]["B22"].value == "X"
     assert generated["FORMATO"]["C26"].value == "X"
     assert generated["FORMATO"]["E38"].value == "Manual X"
+    assert generated["FORMATO"]["E42"].fill.fill_type is None
+    assert generated["FORMATO"]["E42"].font.color.type == "rgb"
+    assert generated["FORMATO"]["E42"].font.color.rgb == "FF0000FF"
     assert generated["Sucs "]["L2"].value == "=+A.Granul!R2"
     assert generated["Aashto"]["C20"].value == "=+'LL-LP'!H35"
 

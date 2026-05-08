@@ -186,54 +186,9 @@ def _set_cell(
     t_el.text = text
 
 
-def _ensure_centered_weight_style(styles_xml: bytes, base_style_id: int = 112) -> tuple[bytes, int | None]:
-    root = etree.fromstring(styles_xml)
-    cell_xfs = root.find(f".//{{{NS_SHEET}}}cellXfs")
-    if cell_xfs is None:
-        return styles_xml, None
-
-    xfs = cell_xfs.findall(f"{{{NS_SHEET}}}xf")
-    if base_style_id >= len(xfs):
-        return styles_xml, None
-
-    base_xf = xfs[base_style_id]
-    centered_xf = deepcopy(base_xf)
-
-    for child in list(centered_xf):
-        if child.tag == f"{{{NS_SHEET}}}alignment":
-            centered_xf.remove(child)
-
-    base_alignment = base_xf.find(f"{{{NS_SHEET}}}alignment")
-    alignment_attrs = dict(base_alignment.attrib) if base_alignment is not None else {}
-    alignment_attrs["horizontal"] = "center"
-    if "vertical" not in alignment_attrs:
-        alignment_attrs["vertical"] = "center"
-
-    alignment_el = etree.SubElement(centered_xf, f"{{{NS_SHEET}}}alignment")
-    for key, val in alignment_attrs.items():
-        alignment_el.set(key, val)
-
-    centered_xf.set("applyAlignment", "1")
-
-    def _serialize_xf(xf: etree._Element) -> bytes:
-        return etree.tostring(xf, encoding="utf-8")
-
-    target_sig = _serialize_xf(centered_xf)
-    for idx, xf in enumerate(xfs):
-        if _serialize_xf(xf) == target_sig:
-            return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True), idx
-
-    new_style_id = len(xfs)
-    cell_xfs.append(centered_xf)
-    cell_xfs.set("count", str(new_style_id + 1))
-
-    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True), new_style_id
-
-
 def _fill_sheet(
     sheet_xml: bytes,
     data: GranSueloRequest,
-    centered_weight_style_id: int | None = None,
 ) -> bytes:
     root = etree.fromstring(sheet_xml)
     sd = root.find(f".//{{{NS_SHEET}}}sheetData")
@@ -330,7 +285,6 @@ def _fill_sheet(
             f"E{row_num}",
             data.masa_retenida_tamiz_g[idx],
             is_number=True,
-            style_id=centered_weight_style_id,
         )
 
     # Equipos / observaciones
@@ -448,14 +402,8 @@ def generate_gran_suelo_excel(data: GranSueloRequest) -> bytes:
 
     output = io.BytesIO()
     with zipfile.ZipFile(io.BytesIO(template_bytes), "r") as zin, zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zout:
-        centered_weight_style_id: int | None = None
-        styles_xml = None
-        if "xl/styles.xml" in zin.namelist():
-            styles_original = zin.read("xl/styles.xml")
-            styles_xml, centered_weight_style_id = _ensure_centered_weight_style(styles_original, base_style_id=112)
-
         sheet_original = zin.read("xl/worksheets/sheet1.xml")
-        sheet_xml = _fill_sheet(sheet_original, data, centered_weight_style_id=centered_weight_style_id)
+        sheet_xml = _fill_sheet(sheet_original, data)
 
         for item in zin.infolist():
             if item.filename == "xl/calcChain.xml":
@@ -465,8 +413,6 @@ def generate_gran_suelo_excel(data: GranSueloRequest) -> bytes:
 
             if item.filename == "xl/worksheets/sheet1.xml":
                 raw = sheet_xml
-            elif item.filename == "xl/styles.xml" and styles_xml is not None:
-                raw = styles_xml
             elif item.filename == "xl/workbook.xml":
                 raw = enable_full_recalc_on_open(zin.read(item.filename))
                 raw = strip_external_references(raw)
