@@ -194,6 +194,26 @@ def _resolve_metodo_value(data: HumedadRequest) -> str:
     return ""
 
 
+def _build_footer_block(role_label: str, person: str | None, footer_date: str | None) -> str:
+    """
+    Construye el bloque de firma visible del Resumen de Humedad.
+
+    En este template, los textos de firma están en celdas fusionadas del
+    sheet "Resumen" (C55:E57 y G55:J57), no en drawings.
+    """
+    lines = [f"{role_label}:"]
+    person_text = (person or "").strip()
+    date_text = (footer_date or "").strip()
+
+    if person_text:
+        lines.append("")
+        lines.append(person_text)
+
+    lines.append("")
+    lines.append(f"Fecha: {date_text}" if date_text else "Fecha:")
+    return "\n".join(lines)
+
+
 # ── Shape text injection ──────────────────────────────────────────────────────
 
 def _inject_shape_text(drawing_xml: bytes, labels: dict[str, str]) -> bytes:
@@ -350,6 +370,8 @@ def generate_humedad_excel(data: HumedadRequest) -> bytes:
             # ── Modificar sheet1.xml (hoja principal) ──────────────────
             if item.filename == "xl/worksheets/sheet1.xml":
                 raw = _fill_sheet(raw, data, masa_agua, masa_seca, humedad)
+            elif item.filename == "xl/worksheets/sheet2.xml":
+                raw = _fill_resumen(raw, data)
 
             # ── Modificar drawing1.xml (shapes del footer) ─────────────
             if item.filename == "xl/drawings/drawing1.xml":
@@ -489,6 +511,24 @@ def _fill_sheet(
     _set_cell(sd, "D52", data.observaciones)
 
     _strip_interactive_validations(root)
+
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
+def _fill_resumen(sheet_xml: bytes, data: HumedadRequest) -> bytes:
+    """
+    Rellena el bloque de firmas del sheet "Resumen".
+
+    En este template, los textos visibles de Revisado/Aprobado viven en
+    celdas fusionadas y no en drawings.
+    """
+    root = etree.fromstring(sheet_xml)
+    sd = root.find(f".//{{{NS_SHEET}}}sheetData")
+    if sd is None:
+        return sheet_xml
+
+    _set_cell(sd, "C55", _build_footer_block("Revisado", data.revisado_por, data.revisado_fecha))
+    _set_cell(sd, "G55", _build_footer_block("Aprobado", data.aprobado_por, data.aprobado_fecha))
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
