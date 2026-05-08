@@ -10,7 +10,6 @@ from __future__ import annotations
 import io
 import logging
 import zipfile
-from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -285,6 +284,7 @@ def _fill_sheet(
             f"E{row_num}",
             data.masa_retenida_tamiz_g[idx],
             is_number=True,
+            style_id=750,
         )
 
     # Equipos / observaciones
