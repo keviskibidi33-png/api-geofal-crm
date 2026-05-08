@@ -371,7 +371,7 @@ def generate_humedad_excel(data: HumedadRequest) -> bytes:
             if item.filename == "xl/worksheets/sheet1.xml":
                 raw = _fill_sheet(raw, data, masa_agua, masa_seca, humedad)
             elif item.filename == "xl/worksheets/sheet2.xml":
-                raw = _fill_resumen(raw, data)
+                raw = _fill_resumen(raw, data, masa_agua, masa_seca, humedad)
 
             # ── Modificar drawing1.xml (shapes del footer) ─────────────
             if item.filename == "xl/drawings/drawing1.xml":
@@ -515,7 +515,13 @@ def _fill_sheet(
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
-def _fill_resumen(sheet_xml: bytes, data: HumedadRequest) -> bytes:
+def _fill_resumen(
+    sheet_xml: bytes,
+    data: HumedadRequest,
+    masa_agua: Optional[float],
+    masa_seca: Optional[float],
+    humedad: Optional[float],
+) -> bytes:
     """
     Rellena el bloque de firmas del sheet "Resumen".
 
@@ -526,6 +532,71 @@ def _fill_resumen(sheet_xml: bytes, data: HumedadRequest) -> bytes:
     sd = root.find(f".//{{{NS_SHEET}}}sheetData")
     if sd is None:
         return sheet_xml
+
+    # Cabecera visible del Resumen: mismo conjunto de datos del ensayo,
+    # pero anclado a las celdas reales del template resumen.
+    _set_cell(sd, "C11", data.muestra)
+    _set_cell(sd, "E11", data.numero_ot)
+    _set_cell(sd, "G11", data.fecha_ensayo)
+    _set_cell(sd, "I11", data.realizado_por)
+
+    _set_cell(sd, "J18", data.condicion_masa_menor)
+    _set_cell(sd, "J19", data.condicion_capas)
+    _set_cell(sd, "J20", data.condicion_temperatura)
+    _set_cell(sd, "J21", data.condicion_excluido)
+    if data.descripcion_material_excluido:
+        _set_cell(sd, "A22", f"Descripción material excluido: {data.descripcion_material_excluido}")
+
+    _set_cell(sd, "E25", data.tipo_muestra)
+    _set_cell(sd, "E26", data.condicion_muestra)
+    _set_cell(sd, "E27", data.tamano_maximo_particula)
+    _set_cell(sd, "E28", data.forma_particula)
+
+    _set_cell(sd, "J26", _resolve_metodo_value(data))
+    _set_cell(sd, "J27", "")
+
+    _set_cell(sd, "H30", "UND")
+    _set_cell(sd, "H31", "N°")
+    _set_cell(sd, "H32", "N°")
+    _set_cell(sd, "H33", "g")
+    _set_cell(sd, "H34", "g")
+    _set_cell(sd, "H35", "g")
+    _set_cell(sd, "H36", "g")
+    _set_cell(sd, "H37", "g")
+    _set_cell(sd, "H38", "g")
+    _set_cell(sd, "H39", "%")
+
+    _set_cell(sd, "I31", data.numero_ensayo, is_number=True)
+    _set_cell(sd, "I32", data.recipiente_numero)
+    _set_cell(sd, "I33", data.masa_recipiente_muestra_humeda, is_number=True)
+    _set_cell(sd, "I34", data.masa_recipiente_muestra_seca, is_number=True)
+    _set_cell(sd, "I35", data.masa_recipiente_muestra_seca_constante, is_number=True)
+    _set_cell(sd, "I36", data.masa_recipiente, is_number=True)
+
+    if masa_agua is not None:
+        _set_cell(sd, "I37", masa_agua, is_number=True)
+    else:
+        _set_cell(sd, "I37", "-")
+
+    if masa_seca is not None:
+        _set_cell(sd, "I38", masa_seca, is_number=True)
+    else:
+        _set_cell(sd, "I38", "-")
+
+    if humedad is not None:
+        _set_cell(sd, "I39", humedad, is_number=True)
+    else:
+        _set_cell(sd, "I39", "-")
+
+    _set_cell_style(sd, "I31", _get_cell_style(sd, "I31"))
+    for ref in ("I32", "I33", "I34", "I35", "I36", "I37", "I38", "I39"):
+        _set_cell_style(sd, ref, _get_cell_style(sd, ref) or _get_cell_style(sd, "I37"))
+
+    _set_cell(sd, "J42", data.equipo_balanza_01)
+    _set_cell(sd, "J43", data.equipo_balanza_001)
+    _set_cell(sd, "J45", data.equipo_horno)
+
+    _set_cell(sd, "D52", data.observaciones)
 
     _set_cell(sd, "C55", _build_footer_block("Revisado", data.revisado_por, data.revisado_fecha))
     _set_cell(sd, "G55", _build_footer_block("Aprobado", data.aprobado_por, data.aprobado_fecha))

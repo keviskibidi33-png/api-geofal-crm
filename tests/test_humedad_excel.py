@@ -66,6 +66,13 @@ def test_humedad_template_replaced_and_generation_forces_recalc():
     assert generated["informe NTP"]["I37"].value == 30
     assert generated["informe NTP"]["I38"].value == 100
     assert generated["informe NTP"]["I39"].value == 30
+    assert generated["Resumen"]["C11"].value == "147-SU-26"
+    assert generated["Resumen"]["E11"].value == "1000-26"
+    assert generated["Resumen"]["G11"].value == "2026/05/07"
+    assert generated["Resumen"]["I11"].value == "D.I.C"
+    assert generated["Resumen"]["I37"].value == 30
+    assert generated["Resumen"]["I38"].value == 100
+    assert generated["Resumen"]["I39"].value == 30
     assert generated["Resumen"]["C55"].value == "Revisado:\n\nREVISOR H\n\nFecha: 2026/05/08"
     assert generated["Resumen"]["G55"].value == "Aprobado:\n\nAPROBADOR H\n\nFecha: 2026/05/09"
 
