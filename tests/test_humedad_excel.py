@@ -79,6 +79,12 @@ def test_humedad_template_replaced_and_generation_forces_recalc():
         assert workbook_pr is not None
         assert workbook_pr.get("updateLinks") == "never"
         assert workbook_root.find("m:externalReferences", ns) is None
+        defined_names = workbook_root.find("m:definedNames", ns)
+        assert defined_names is not None
+        for defined_name in defined_names.findall("m:definedName", ns):
+            text = (defined_name.text or "").strip()
+            assert "#REF!" not in text
+            assert "[" not in text
         calc_pr = workbook_root.find("m:calcPr", ns)
         assert calc_pr is not None
         assert calc_pr.get("calcMode") == "auto"
