@@ -206,10 +206,8 @@ def _build_footer_block(role_label: str, person: str | None, footer_date: str | 
     date_text = (footer_date or "").strip()
 
     if person_text:
-        lines.append("")
         lines.append(person_text)
 
-    lines.append("")
     lines.append(f"Fecha: {date_text}" if date_text else "Fecha:")
     return "\n".join(lines)
 

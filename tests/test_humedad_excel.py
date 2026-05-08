@@ -73,8 +73,8 @@ def test_humedad_template_replaced_and_generation_forces_recalc():
     assert generated["Resumen"]["I37"].value == 30
     assert generated["Resumen"]["I38"].value == 100
     assert generated["Resumen"]["I39"].value == 30
-    assert generated["Resumen"]["C55"].value == "Revisado:\n\nREVISOR H\n\nFecha: 2026/05/08"
-    assert generated["Resumen"]["G55"].value == "Aprobado:\n\nAPROBADOR H\n\nFecha: 2026/05/09"
+    assert generated["Resumen"]["C55"].value == "Revisado:\nREVISOR H\nFecha: 2026/05/08"
+    assert generated["Resumen"]["G55"].value == "Aprobado:\nAPROBADOR H\nFecha: 2026/05/09"
 
     with zipfile.ZipFile(io.BytesIO(generate_humedad_excel(_build_humedad_payload())), "r") as archive:
         names = set(archive.namelist())
