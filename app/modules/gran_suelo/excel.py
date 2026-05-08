@@ -16,6 +16,12 @@ from typing import Any
 
 from lxml import etree
 
+from app.modules.common.excel_xml import (
+    enable_full_recalc_on_open,
+    remove_calc_chain_content_type,
+    remove_calc_chain_relationships,
+)
+
 from .schemas import GranSueloRequest
 
 logger = logging.getLogger(__name__)
@@ -449,10 +455,19 @@ def generate_gran_suelo_excel(data: GranSueloRequest) -> bytes:
         sheet_xml = _fill_sheet(sheet_original, data, centered_weight_style_id=centered_weight_style_id)
 
         for item in zin.infolist():
+            if item.filename == "xl/calcChain.xml":
+                continue
+
             if item.filename == "xl/worksheets/sheet1.xml":
                 raw = sheet_xml
             elif item.filename == "xl/styles.xml" and styles_xml is not None:
                 raw = styles_xml
+            elif item.filename == "xl/workbook.xml":
+                raw = enable_full_recalc_on_open(zin.read(item.filename))
+            elif item.filename == "xl/_rels/workbook.xml.rels":
+                raw = remove_calc_chain_relationships(zin.read(item.filename))
+            elif item.filename == "[Content_Types].xml":
+                raw = remove_calc_chain_content_type(zin.read(item.filename))
             else:
                 raw = zin.read(item.filename)
 

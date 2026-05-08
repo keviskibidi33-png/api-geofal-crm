@@ -404,3 +404,46 @@ def transform_template_sheet(
 
     output.seek(0)
     return output.read()
+
+
+def enable_full_recalc_on_open(workbook_xml: bytes) -> bytes:
+    """
+    Mark the workbook so Excel recomputes formulas on open.
+
+    This is important for template-based files that carry stale cached values
+    or an invalid calc chain after we rewrite source cells.
+    """
+    root = etree.fromstring(workbook_xml)
+    ns = {"m": NS_SHEET}
+
+    workbook_pr = root.find("m:workbookPr", ns)
+    if workbook_pr is None:
+        workbook_pr = etree.SubElement(root, f"{{{NS_SHEET}}}workbookPr")
+    workbook_pr.set("updateLinks", "never")
+
+    calc_pr = root.find("m:calcPr", ns)
+    if calc_pr is None:
+        calc_pr = etree.SubElement(root, f"{{{NS_SHEET}}}calcPr")
+    calc_pr.set("calcMode", "auto")
+    calc_pr.set("fullCalcOnLoad", "1")
+    calc_pr.set("forceFullCalc", "1")
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
+def remove_calc_chain_relationships(rels_xml: bytes) -> bytes:
+    root = etree.fromstring(rels_xml)
+    for rel in list(root):
+        rel_type = rel.get("Type", "")
+        target = rel.get("Target", "")
+        if rel_type.endswith("/calcChain") or target.endswith("calcChain.xml"):
+            root.remove(rel)
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
+def remove_calc_chain_content_type(content_types_xml: bytes) -> bytes:
+    root = etree.fromstring(content_types_xml)
+    for override in list(root):
+        part_name = override.get("PartName", "")
+        if part_name == "/xl/calcChain.xml":
+            root.remove(override)
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)

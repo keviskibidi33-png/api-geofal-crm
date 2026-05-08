@@ -201,7 +201,7 @@ def test_llp_template_replaced_and_generation_keeps_links():
         assert "Fecha: 2026/05/09" in footer_texts
 
 
-def test_gran_suelo_template_replaced_and_generation_keeps_links():
+def test_gran_suelo_template_replaced_and_generation_forces_recalc():
     workbook = load_workbook(GRAN_TEMPLATE_PATH, data_only=False)
 
     assert workbook["FORMATO"]["A8"].value == "FORMATO N° F-LEM-P-SU-24.01"
@@ -228,5 +228,24 @@ def test_gran_suelo_template_replaced_and_generation_keeps_links():
 
     with zipfile.ZipFile(io.BytesIO(generate_gran_suelo_excel(_build_gran_payload())), "r") as archive:
         names = set(archive.namelist())
-        assert "xl/calcChain.xml" in names
+        assert "xl/calcChain.xml" not in names
         assert "xl/workbook.xml" in names
+
+        workbook_root = etree.fromstring(archive.read("xl/workbook.xml"))
+        ns = {"m": NS_MAIN}
+        workbook_pr = workbook_root.find("m:workbookPr", ns)
+        assert workbook_pr is not None
+        assert workbook_pr.get("updateLinks") == "never"
+        calc_pr = workbook_root.find("m:calcPr", ns)
+        assert calc_pr is not None
+        assert calc_pr.get("calcMode") == "auto"
+        assert calc_pr.get("fullCalcOnLoad") == "1"
+        assert calc_pr.get("forceFullCalc") == "1"
+
+        rels_root = etree.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
+        rel_targets = [rel.get("Target", "") for rel in rels_root]
+        assert all(not target.endswith("calcChain.xml") for target in rel_targets)
+
+        content_types_root = etree.fromstring(archive.read("[Content_Types].xml"))
+        overrides = [override.get("PartName", "") for override in content_types_root]
+        assert "/xl/calcChain.xml" not in overrides
