@@ -17,6 +17,12 @@ from typing import Any
 
 from lxml import etree
 
+from app.modules.common.excel_xml import (
+    remove_external_link_content_types,
+    remove_external_link_relationships,
+    strip_external_references,
+)
+
 from .schemas import LLPRequest
 
 logger = logging.getLogger(__name__)
@@ -349,9 +355,16 @@ def _cache_limite_plastico_control(sheet_data: etree._Element, humidities: list[
 
 def _enable_full_recalc_on_open(workbook_xml: bytes) -> bytes:
     root = etree.fromstring(workbook_xml)
+    ns = {"m": NS_SHEET}
+    workbook_pr = root.find("m:workbookPr", ns)
+    if workbook_pr is None:
+        workbook_pr = etree.SubElement(root, f"{{{NS_SHEET}}}workbookPr")
+    workbook_pr.set("updateLinks", "never")
+
     calc_pr = root.find(f".//{{{NS_SHEET}}}calcPr")
     if calc_pr is None:
         calc_pr = etree.SubElement(root, f"{{{NS_SHEET}}}calcPr")
+    calc_pr.set("calcMode", "auto")
     calc_pr.set("fullCalcOnLoad", "1")
     calc_pr.set("forceFullCalc", "1")
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
@@ -403,6 +416,8 @@ def generate_llp_excel(data: LLPRequest) -> bytes:
         for item in zin.infolist():
             if item.filename == "xl/calcChain.xml":
                 continue
+            if item.filename.startswith("xl/externalLinks/"):
+                continue
 
             if item.filename == "xl/worksheets/sheet1.xml":
                 raw = sheet1_xml
@@ -410,8 +425,10 @@ def generate_llp_excel(data: LLPRequest) -> bytes:
                 raw = sheet2_xml
             elif item.filename == "xl/_rels/workbook.xml.rels":
                 raw = _remove_calc_chain_relationships(zin.read(item.filename))
+                raw = remove_external_link_relationships(raw)
             elif item.filename == "[Content_Types].xml":
                 raw = _remove_calc_chain_content_type(zin.read(item.filename))
+                raw = remove_external_link_content_types(raw)
             else:
                 raw = zin.read(item.filename)
 
@@ -419,6 +436,7 @@ def generate_llp_excel(data: LLPRequest) -> bytes:
                 raw = _fill_drawing(raw, data)
             elif item.filename == "xl/workbook.xml":
                 raw = _enable_full_recalc_on_open(raw)
+                raw = strip_external_references(raw)
 
             zout.writestr(item, raw)
 
