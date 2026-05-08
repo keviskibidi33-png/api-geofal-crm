@@ -535,7 +535,7 @@ def _fill_resumen(
 
     # Cabecera visible del Resumen: mismo conjunto de datos del ensayo,
     # pero anclado a las celdas reales del template resumen.
-    _set_cell(sd, "C11", data.muestra)
+    _set_cell(sd, "D11", data.muestra)
     _set_cell(sd, "E11", data.numero_ot)
     _set_cell(sd, "G11", data.fecha_ensayo)
     _set_cell(sd, "I11", data.realizado_por)
