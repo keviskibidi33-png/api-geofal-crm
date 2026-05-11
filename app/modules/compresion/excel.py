@@ -278,18 +278,18 @@ def generate_compression_excel(data: CompressionExportRequest) -> io.BytesIO:
                 _set_cell_value(sheet_data, f'M{row_idx}', item.fecha_aprobado.strftime('%Y/%m/%d') if item.fecha_aprobado else '', ns, wrap_style=wrap_style)
             
             # Footer data
-            # NOTE: The template uses merged label cells in row 35:
-            # - C35:D35 = label "Codigo Equipo utilizado" -> value goes in E35
-            # - H35      = label "Otros" -> value goes in I35 (I35:J35 is merged)
-            # Writing into D35/H35 would place the value inside the label/merged area
-            # and Excel can hide it.
+            # Row 35: C35:D35 = label "Codigo Equipo utilizado"
+            #   E35 = codigo_equipo, F35 = nombre_equipo
+            # Row 35: H35 = label "Otros" -> I35 value (I35:J35 is merged)
             f_row = 35 + extra_rows
-            equipo_nombre = data.nombre_equipo or EQUIPO_NOMBRES.get(data.codigo_equipo or '', '')
-            equipo_text = data.codigo_equipo or ''
+            codigo = data.codigo_equipo
+            equipo_nombre = data.nombre_equipo or EQUIPO_NOMBRES.get(codigo or '', '')
+            if codigo and codigo != '-':
+                _set_cell_value(sheet_data, f'E{f_row}', codigo, ns)
             if equipo_nombre:
-                equipo_text = f"{equipo_text} - {equipo_nombre}" if equipo_text else equipo_nombre
-            _set_cell_value(sheet_data, f'E{f_row}', equipo_text, ns)
-            _set_cell_value(sheet_data, f'I{f_row}', data.otros or '', ns)
+                _set_cell_value(sheet_data, f'F{f_row}', equipo_nombre, ns)
+            if data.otros and data.otros != '-':
+                _set_cell_value(sheet_data, f'I{f_row}', data.otros, ns)
             
             n_row = 37 + extra_rows
             _set_cell_value(sheet_data, f'C{n_row}', data.nota or '', ns)
