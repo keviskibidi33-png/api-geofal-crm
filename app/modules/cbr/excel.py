@@ -180,7 +180,7 @@ def generate_cbr_excel(data: CBRRequest) -> bytes:
         for item in zin.infolist():
             raw = zin.read(item.filename)
 
-            if item.filename == "xl/worksheets/sheet1.xml":
+            if item.filename == "xl/worksheets/sheet2.xml":
                 raw = _fill_sheet(raw, data)
 
             if item.filename == "xl/workbook.xml":
