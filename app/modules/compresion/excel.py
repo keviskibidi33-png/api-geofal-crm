@@ -222,6 +222,13 @@ def generate_compression_excel(data: CompressionExportRequest) -> io.BytesIO:
             if 'xl/styles.xml' in z_in.namelist():
                 wrap_style = _find_wrap_text_style(z_in.read('xl/styles.xml'))
             
+            # 0.5 Sanitize workbook.xml: remove absPath that triggers "vínculos" warning
+            wb_xml = z_in.read('xl/workbook.xml')
+            wb_root = etree.fromstring(wb_xml)
+            ns_mc = 'http://schemas.openxmlformats.org/markup-compatibility/2006'
+            for alt in list(wb_root.findall(f'.//{{{ns_mc}}}AlternateContent')):
+                wb_root.remove(alt)
+            
             # 1. Handle worksheet
             sheet_xml = z_in.read('xl/worksheets/sheet1.xml')
             sheet_root = etree.fromstring(sheet_xml)
@@ -347,6 +354,8 @@ def generate_compression_excel(data: CompressionExportRequest) -> io.BytesIO:
                     z_out.writestr(item, etree.tostring(sheet_root, encoding='utf-8', xml_declaration=True))
                 elif item == 'xl/drawings/drawing1.xml':
                     z_out.writestr(item, etree.tostring(drawing_root, encoding='utf-8', xml_declaration=True))
+                elif item == 'xl/workbook.xml':
+                    z_out.writestr(item, etree.tostring(wb_root, encoding='utf-8', xml_declaration=True))
                 else:
                     z_out.writestr(item, z_in.read(item))
                     
