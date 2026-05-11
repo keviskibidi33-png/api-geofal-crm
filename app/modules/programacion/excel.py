@@ -6,7 +6,7 @@ from lxml import etree
 from datetime import date
 from app.xlsx_direct_v2 import (
     NAMESPACES, _parse_cell_ref, _col_letter_to_num, _find_or_create_row, 
-    _find_or_create_cell, _set_cell_value, _duplicate_row, _shift_rows, _shift_merged_cells
+    _find_or_create_cell, _set_cell_value, _duplicate_row
 )
 
 
@@ -49,6 +49,76 @@ def _format_currency_display(value: Any) -> str:
     except (TypeError, ValueError):
         return str(value)
     return f"S/. {numeric:,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
+
+
+def _find_contiguous_data_end_row(sheet_data: etree._Element, start_row: int, ns: str) -> int:
+    """Find the last row in the contiguous data block that starts at `start_row`."""
+    row_numbers = sorted(
+        int(row.get("r"))
+        for row in sheet_data.findall(f'{{{ns}}}row')
+        if row.get("r") and row.get("r").isdigit()
+    )
+
+    end_row = start_row
+    for row_num in row_numbers:
+        if row_num < start_row:
+            continue
+        if row_num == end_row:
+            continue
+        if row_num == end_row + 1:
+            end_row = row_num
+            continue
+        if row_num > end_row + 1:
+            break
+
+    return end_row
+
+
+def _shift_rows_in_range(sheet_data: etree._Element, from_row: int, to_row: int, shift: int, ns: str) -> None:
+    """Shift only the rows inside a bounded range."""
+    if shift <= 0 or to_row < from_row:
+        return
+
+    rows = list(sheet_data.findall(f'{{{ns}}}row'))
+    rows.sort(key=lambda r: int(r.get("r")), reverse=True)
+
+    for row in rows:
+        row_ref = row.get("r")
+        if not row_ref or not row_ref.isdigit():
+            continue
+
+        row_num = int(row_ref)
+        if from_row <= row_num <= to_row:
+            new_num = row_num + shift
+            row.set("r", str(new_num))
+            for cell in row.findall(f'{{{ns}}}c'):
+                old_ref = cell.get("r")
+                if not old_ref:
+                    continue
+                col, _ = _parse_cell_ref(old_ref)
+                cell.set("r", f"{col}{new_num}")
+
+
+def _shift_merged_cells_in_range(root: etree._Element, from_row: int, to_row: int, shift: int, ns: str) -> None:
+    """Shift merged cells only when they belong to the bounded data range."""
+    if shift <= 0 or to_row < from_row:
+        return
+
+    merge_cells = root.find(f'.//{{{ns}}}mergeCells')
+    if merge_cells is None:
+        return
+
+    for merge in merge_cells.findall(f'{{{ns}}}mergeCell'):
+        ref = merge.get("ref")
+        if not ref or ":" not in ref:
+            continue
+
+        start, end = ref.split(":")
+        start_col, start_row = _parse_cell_ref(start)
+        end_col, end_row = _parse_cell_ref(end)
+
+        if start_row >= from_row and end_row <= to_row:
+            merge.set("ref", f"{start_col}{start_row + shift}:{end_col}{end_row + shift}")
 
 
 def _resolve_admin_header_field(normalized_header: str) -> tuple[str, bool] | None:
@@ -247,48 +317,15 @@ def export_programacion_xlsx(template_path: str, items: list[dict]) -> io.BytesI
     START_ROW = 9
     
     if sheet_data is not None:
-        # Loop items
-        for idx, item in enumerate(items):
-            current_row = START_ROW + idx
-            
-            # If not first item, duplicate the row style/structure from START_ROW
-            if idx > 0:
-                _duplicate_row(sheet_data, START_ROW, current_row, ns)
-                # Note: duplicate_row inserts the row. If we had rows below, they are pushed down?
-                # The _duplicate_row logic in v2 inserts and apparently does NOT shift others automatically unless specified?
-                # Checking v2 code:
-                # "insert(list(sheet_data).index(row), new_row)" -> inserts before next row.
-                # It does NOT shift 'r' attributes of subsequent rows.
-                # However, usually we generate these sequentially. If there were footer rows, we'd need _shift_rows first.
-                # Assuming the template has empty rows or we are appending. 
-                # If the template is a fixed form with footer, we MUST shift rows first.
-                # User says "rellenar las casillas y asi sucesivamente".
-                # Safest approach: Shift rows below by 1 FIRST, then duplicate.
-                # But _duplicate_row duplicates SOURCE row to TARGET row.
-                
-                # Let's assume infinite list. But if there are totals at the bottom, we need to shift.
-                # Since I don't know if there are totals, but usually these "Control" sheets might be just a list.
-                # I'll rely on appending logic if no existing row at target, othewise shift.
-                pass
-
-        # Wait, the correct logic for dynamic list insertion in a potentially bounded table is:
-        # 1. Determine Count.
-        # 2. Shift everything below START_ROW by (Count - 1).
-        # 3. Duplicate Row START_ROW (Count - 1) times.
-        # 4. Fill data.
-        
         count = len(items)
         if count > 1:
-            # We have 1 row (9). We need count-1 more.
-            # Shift everything from row 10 downwards by count-1
-            _shift_rows(sheet_data, START_ROW + 1, count - 1, ns)
-            # Also merged cells
-            _shift_merged_cells(root, START_ROW + 1, count - 1, ns)
-            
-            # Now duplicate row 9 into 10, 11, ...
+            data_end_row = _find_contiguous_data_end_row(sheet_data, START_ROW, ns)
+            _shift_rows_in_range(sheet_data, START_ROW + 1, data_end_row, count - 1, ns)
+            _shift_merged_cells_in_range(root, START_ROW + 1, data_end_row, count - 1, ns)
+
             for i in range(1, count):
                 _duplicate_row(sheet_data, START_ROW, START_ROW + i, ns)
-                
+
         # Fill Data
         for idx, item in enumerate(items):
             row = START_ROW + idx
