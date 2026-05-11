@@ -19,15 +19,15 @@ router = APIRouter(prefix="/api/compresion", tags=["Compresion"])
 compresion_service = CompresionService()
 
 
-def _resolve_compresion_sample_code(items) -> str | None:
-    for item in items or []:
-        if isinstance(item, dict):
-            codigo = item.get("codigo_lem")
-        else:
-            codigo = getattr(item, "codigo_lem", None)
-        if isinstance(codigo, str) and codigo.strip():
-            return codigo.strip()
-    return None
+def _resolve_compresion_recepcion_code(ensayo_or_payload) -> str | None:
+    numero = None
+    if hasattr(ensayo_or_payload, 'numero_recepcion'):
+        numero = ensayo_or_payload.numero_recepcion
+    elif isinstance(ensayo_or_payload, dict):
+        numero = ensayo_or_payload.get('numero_recepcion') or ensayo_or_payload.get('recepcion_numero')
+    elif hasattr(ensayo_or_payload, 'recepcion_numero'):
+        numero = ensayo_or_payload.recepcion_numero
+    return (numero or '').strip() or None
 
 
 @router.post("/", response_model=EnsayoCompresionResponse)
@@ -233,7 +233,7 @@ def generar_excel_ensayo(
         if not excel_buffer:
             raise HTTPException(status_code=500, detail="Error generando Excel")
         
-        filename = build_formato_filename(_resolve_compresion_sample_code(getattr(ensayo, "items", [])) or ensayo.numero_recepcion, "SU", "COMPRESION")
+        filename = build_formato_filename(_resolve_compresion_recepcion_code(ensayo) or ensayo.numero_recepcion, "SU", "COMPRESION")
         
         return Response(
             content=excel_buffer.getvalue(),
@@ -320,7 +320,7 @@ def export_compression(payload: CompressionExportRequest):
     """Export compression directly without DB (backwards compatible)"""
     try:
         excel_file = generate_compression_excel(payload)
-        filename = build_formato_filename(_resolve_compresion_sample_code(payload.items) or payload.recepcion_numero, "SU", "COMPRESION")
+        filename = build_formato_filename(_resolve_compresion_recepcion_code(payload) or payload.recepcion_numero, "SU", "COMPRESION")
         return StreamingResponse(
             excel_file,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

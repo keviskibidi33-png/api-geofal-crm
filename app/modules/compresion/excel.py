@@ -66,7 +66,7 @@ def _find_or_create_cell(row: etree._Element, cell_ref: str, ns: str) -> etree._
         row.append(cell)
     return cell
 
-def _set_cell_value(sheet_data: etree._Element, cell_ref: str, value: Any, ns: str, is_number: bool = False):
+def _set_cell_value(sheet_data: etree._Element, cell_ref: str, value: Any, ns: str, is_number: bool = False, wrap_style: Optional[int] = None):
     _, row_num = _parse_cell_ref(cell_ref)
     row = _find_or_create_row(sheet_data, row_num, ns)
     cell = _find_or_create_cell(row, cell_ref, ns)
@@ -89,7 +89,9 @@ def _set_cell_value(sheet_data: etree._Element, cell_ref: str, value: Any, ns: s
         t_elem = etree.SubElement(is_elem, f'{{{ns}}}t')
         t_elem.text = str(value)
     
-    if style:
+    if wrap_style is not None and not is_number:
+        cell.set('s', str(wrap_style))
+    elif style:
         cell.set('s', style)
 
 def _shift_rows(sheet_data: etree._Element, from_row: int, shift: int, ns: str):
@@ -194,6 +196,19 @@ def _update_shape_text_node(anchor: etree._Element, text_value: str, align: str 
         p.append(new_r)
 
 
+def _find_wrap_text_style(styles_xml: bytes) -> Optional[int]:
+    root = etree.fromstring(styles_xml)
+    ns_s = NAMESPACES['main']
+    cell_xfs = root.find(f'.//{{{ns_s}}}cellXfs')
+    if cell_xfs is None:
+        return None
+    for i, xf in enumerate(cell_xfs.findall(f'{{{ns_s}}}xf')):
+        alignment = xf.find(f'{{{ns_s}}}alignment')
+        if alignment is not None and alignment.get('wrapText') == '1':
+            return i
+    return None
+
+
 def generate_compression_excel(data: CompressionExportRequest) -> io.BytesIO:
     template_path = Path("app/templates/Template_Compresion.xlsx")
     if not template_path.exists():
@@ -202,6 +217,11 @@ def generate_compression_excel(data: CompressionExportRequest) -> io.BytesIO:
     output = io.BytesIO()
     with zipfile.ZipFile(template_path, 'r') as z_in:
         with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED) as z_out:
+            # 0. Parse styles to find wrap-text style
+            wrap_style = None
+            if 'xl/styles.xml' in z_in.namelist():
+                wrap_style = _find_wrap_text_style(z_in.read('xl/styles.xml'))
+            
             # 1. Handle worksheet
             sheet_xml = z_in.read('xl/worksheets/sheet1.xml')
             sheet_root = etree.fromstring(sheet_xml)
@@ -244,18 +264,18 @@ def generate_compression_excel(data: CompressionExportRequest) -> io.BytesIO:
             for idx, item in enumerate(items):
                 row_idx = 16 + idx
                 _set_cell_value(sheet_data, f'B{row_idx}', item.item, ns, is_number=True)
-                _set_cell_value(sheet_data, f'C{row_idx}', item.codigo_lem, ns)
+                _set_cell_value(sheet_data, f'C{row_idx}', item.codigo_lem, ns, wrap_style=wrap_style)
                 fecha_item = item.fecha_ensayo or item.fecha_ensayo_programado
-                _set_cell_value(sheet_data, f'D{row_idx}', fecha_item.strftime('%Y/%m/%d') if fecha_item else '', ns)
+                _set_cell_value(sheet_data, f'D{row_idx}', fecha_item.strftime('%Y/%m/%d') if fecha_item else '', ns, wrap_style=wrap_style)
                 _set_cell_value(sheet_data, f'E{row_idx}', item.carga_maxima, ns, is_number=True)
-                _set_cell_value(sheet_data, f'F{row_idx}', item.tipo_fractura or '', ns)
-                _set_cell_value(sheet_data, f'G{row_idx}', item.defectos or '', ns)
-                _set_cell_value(sheet_data, f'H{row_idx}', item.realizado or '', ns)
-                _set_cell_value(sheet_data, f'I{row_idx}', item.fecha_revisado.strftime('%Y/%m/%d') if item.fecha_revisado else '', ns)
-                _set_cell_value(sheet_data, f'J{row_idx}', item.hora_ensayo or '', ns)
-                _set_cell_value(sheet_data, f'K{row_idx}', item.revisado or '', ns)
-                _set_cell_value(sheet_data, f'L{row_idx}', item.aprobado or '', ns)
-                _set_cell_value(sheet_data, f'M{row_idx}', item.fecha_aprobado.strftime('%Y/%m/%d') if item.fecha_aprobado else '', ns)
+                _set_cell_value(sheet_data, f'F{row_idx}', item.tipo_fractura or '', ns, wrap_style=wrap_style)
+                _set_cell_value(sheet_data, f'G{row_idx}', item.defectos or '', ns, wrap_style=wrap_style)
+                _set_cell_value(sheet_data, f'H{row_idx}', item.realizado or '', ns, wrap_style=wrap_style)
+                _set_cell_value(sheet_data, f'I{row_idx}', item.fecha_revisado.strftime('%Y/%m/%d') if item.fecha_revisado else '', ns, wrap_style=wrap_style)
+                _set_cell_value(sheet_data, f'J{row_idx}', item.hora_ensayo or '', ns, wrap_style=wrap_style)
+                _set_cell_value(sheet_data, f'K{row_idx}', item.revisado or '', ns, wrap_style=wrap_style)
+                _set_cell_value(sheet_data, f'L{row_idx}', item.aprobado or '', ns, wrap_style=wrap_style)
+                _set_cell_value(sheet_data, f'M{row_idx}', item.fecha_aprobado.strftime('%Y/%m/%d') if item.fecha_aprobado else '', ns, wrap_style=wrap_style)
             
             # Footer data
             # NOTE: The template uses merged label cells in row 35:
