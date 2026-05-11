@@ -24,7 +24,7 @@ NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
 
 def _find_template() -> str:
-    filename = "Temp_CBR_ASTM.xlsx"
+    filename = "template_cbr.xlsx"
     current_dir = Path(__file__).resolve().parent
     app_dir = current_dir.parents[1]  # app/
 
@@ -164,7 +164,7 @@ def _force_full_calc_on_open(workbook_xml: bytes) -> bytes:
 
 def generate_cbr_excel(data: CBRRequest) -> bytes:
     """
-    Genera el Excel de CBR desde el template Temp_CBR_ASTM.xlsx.
+    Genera el Excel de CBR desde el template template_cbr.xlsx.
     """
     logger.info("Generando Excel CBR — ASTM D1883-21")
 

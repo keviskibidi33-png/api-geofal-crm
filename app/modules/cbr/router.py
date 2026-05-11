@@ -1,6 +1,6 @@
 """
 Router para el módulo CBR — ASTM D1883-21.
-Endpoint para generar/guardar el Excel Temp_CBR_ASTM.xlsx.
+Endpoint para generar/guardar el Excel template_cbr.xlsx.
 """
 
 import logging
