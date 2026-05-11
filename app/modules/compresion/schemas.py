@@ -108,5 +108,6 @@ class CompressionExportRequest(BaseModel):
     ot_numero: str
     items: List[CompressionItem]
     codigo_equipo: Optional[str] = None
+    nombre_equipo: Optional[str] = None
     otros: Optional[str] = None
     nota: Optional[str] = None

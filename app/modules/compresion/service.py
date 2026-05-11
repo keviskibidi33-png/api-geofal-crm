@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 from .models import EnsayoCompresion, ItemCompresion
 from .schemas import EnsayoCompresionCreate, EnsayoCompresionUpdate, CompressionExportRequest, CompressionItem
 from .exceptions import DuplicateEnsayoError, EnsayoNotFoundError
-from .excel import generate_compression_excel
+from .excel import generate_compression_excel, EQUIPO_NOMBRES
 import re
 import unicodedata
 from app.utils.http_client import http_post
@@ -384,6 +384,7 @@ class CompresionService:
                     ot_numero=numero_ot,
                     items=[CompressionItem(**item_data) for item_data in sanitized_items],
                     codigo_equipo=ensayo_data.codigo_equipo,
+                    nombre_equipo=EQUIPO_NOMBRES.get(ensayo_data.codigo_equipo or '') if ensayo_data.codigo_equipo else None,
                     otros=ensayo_data.otros,
                     nota=ensayo_data.nota
                 )
@@ -545,6 +546,7 @@ class CompresionService:
             ot_numero=ensayo.numero_ot,
             items=items,
             codigo_equipo=ensayo.codigo_equipo,
+            nombre_equipo=EQUIPO_NOMBRES.get(ensayo.codigo_equipo or '') if ensayo.codigo_equipo else None,
             otros=ensayo.otros,
             nota=ensayo.nota
         )

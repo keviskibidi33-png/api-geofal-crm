@@ -12,6 +12,10 @@ NAMESPACES = {
     'a': 'http://schemas.openxmlformats.org/drawingml/2006/main',
 }
 
+EQUIPO_NOMBRES: dict[str, str] = {
+    'EQP-0023': 'PRENSA CONCRETO',
+}
+
 def _parse_cell_ref(ref: str) -> tuple[str, int]:
     col = ''.join(c for c in ref if c.isalpha())
     row = int(''.join(c for c in ref if c.isdigit()))
@@ -260,7 +264,11 @@ def generate_compression_excel(data: CompressionExportRequest) -> io.BytesIO:
             # Writing into D35/H35 would place the value inside the label/merged area
             # and Excel can hide it.
             f_row = 35 + extra_rows
-            _set_cell_value(sheet_data, f'E{f_row}', data.codigo_equipo or '', ns)
+            equipo_nombre = data.nombre_equipo or EQUIPO_NOMBRES.get(data.codigo_equipo or '', '')
+            equipo_text = data.codigo_equipo or ''
+            if equipo_nombre:
+                equipo_text = f"{equipo_text} - {equipo_nombre}" if equipo_text else equipo_nombre
+            _set_cell_value(sheet_data, f'E{f_row}', equipo_text, ns)
             _set_cell_value(sheet_data, f'I{f_row}', data.otros or '', ns)
             
             n_row = 37 + extra_rows
