@@ -223,18 +223,22 @@ class ExcelLogic:
 
         muestras = sorted(verificacion.muestras_verificadas, key=lambda m: m.item_numero or 0)
         n_muestras = len(muestras)
-        base_rows = 8 # Template has 8 data rows (10-17)
+        # The template has 7 standard sample rows (10-16) and row 17 is a
+        # shorter spacer before the equipment/footer block. When a 8th sample
+        # exists, row 17 is promoted to a data row dynamically.
+        base_rows = 7
         data_start_row = 10
 
-        # CRITICAL: Standardize template rows (10-17) to match Row 12
-        # Row 10 has Percentage format, Row 17 has No Borders.
+        # CRITICAL: Standardize the regular sample rows (10-16) to match Row 12.
+        # Row 17 must keep the template spacer height/style unless it is needed
+        # dynamically as the 8th sample row.
         # Row 12 is verified to be correct (Number format + Borders).
         master_row_idx = 12
         if sheet_data.find(f'{{{ns}}}row[@r="{master_row_idx}"]') is not None:
              for r_idx in range(data_start_row, data_start_row + base_rows):
                  if r_idx == master_row_idx: continue
                  
-                 # Remove existing row (e.g. 10, 11, 13...17)
+                 # Remove existing row (e.g. 10, 11, 13...16)
                  existing = sheet_data.find(f'{{{ns}}}row[@r="{r_idx}"]')
                  if existing is not None:
                      sheet_data.remove(existing)
