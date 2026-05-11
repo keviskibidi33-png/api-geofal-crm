@@ -29,7 +29,7 @@ class ProgramacionItem(BaseModel):
     evidencia_solicitud_envio: Optional[str] = None
     dias_atraso_envio_coti: Union[int, str, None] = None
     motivo_dias_atraso_com: Optional[str] = None
-    costo_servicio: Optional[str] = None
+    costo_servicio: Union[str, int, float, None] = None
     
     # Administrative specific
     numero_factura: Optional[str] = None
