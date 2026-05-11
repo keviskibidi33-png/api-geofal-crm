@@ -182,6 +182,64 @@ class TestCDExcelMapping(unittest.TestCase):
         self.assertIn("xl/media/image1.jpeg", names)
         self.assertIn("xl/media/image2.png", names)
 
+    def test_generate_cd_excel_clears_blank_template_cells(self):
+        payload = CDRequest.model_validate(
+            {
+                "muestra": "2684-26",
+                "numero_ot": "869-26",
+                "fecha_ensayo": "25/04/26",
+                "peso_kg": [2.0, None, 8.0],
+                "esf_normal": [None, None, None],
+                "def_horizontal": DEF_VALUES,
+                "carga_kg_1": [round(10 + idx * 0.5, 2) for idx in range(len(DEF_VALUES))],
+                "carga_kg_2": [round(20 + idx * 0.5, 2) for idx in range(len(DEF_VALUES))],
+                "carga_kg_3": [round(30 + idx * 0.5, 2) for idx in range(len(DEF_VALUES))],
+                "humedad_puntos": [
+                    {
+                        "recipiente_numero": "E-3",
+                        "peso_recipiente_g": 93.45,
+                        "peso_recipiente_suelo_humedo_g": 247.51,
+                        "peso_recipiente_suelo_seco_g": 225.35,
+                        "peso_agua_g": 22.16,
+                        "peso_suelo_g": 131.9,
+                        "contenido_humedad_pct": 16.801,
+                    },
+                    {},
+                    {
+                        "recipiente_numero": "FG",
+                        "peso_recipiente_g": 84.32,
+                        "peso_recipiente_suelo_humedo_g": 236.3,
+                        "peso_recipiente_suelo_seco_g": 216.31,
+                        "peso_agua_g": 19.99,
+                        "peso_suelo_g": 131.99,
+                        "contenido_humedad_pct": 15.145,
+                    },
+                ],
+                "hora_1": ["10:02 am", "10 :03 am", "11:40 am", "", ""],
+                "deform_1": [3.102, 3.282, 3.318, None, None],
+                "hora_2": ["", "", "", "", ""],
+                "deform_2": [None, None, None, None, None],
+                "hora_3": ["", "", "", "", ""],
+                "deform_3": [None, None, None, None, None],
+                "realizado_por": "BEATRIZ",
+                "revisado_por": "FABIAN LA ROSA",
+                "aprobado_por": "IRMA COAQUIRA",
+            }
+        )
+
+        _, workbook = self._workbook_from_payload(payload)
+        sheet = workbook[workbook.sheetnames[0]]
+
+        self.assertEqual(sheet["B16"].value, 2.0)
+        self.assertIsNone(sheet["D16"].value)
+        self.assertEqual(sheet["F16"].value, 8.0)
+        self.assertIsNone(sheet["B17"].value)
+        self.assertIsNone(sheet["D17"].value)
+        self.assertIsNone(sheet["F17"].value)
+        self.assertEqual(sheet["B62"].value, "BEATRIZ")
+        self.assertEqual(sheet["D62"].value, "FABIAN LA ROSA")
+        self.assertEqual(sheet["F62"].value, "IRMA COAQUIRA")
+
 
 if __name__ == "__main__":
     unittest.main()

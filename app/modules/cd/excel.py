@@ -6,6 +6,7 @@ from __future__ import annotations
 import io
 import logging
 import os
+import math
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -151,7 +152,31 @@ def _find_or_create_cell(row: etree._Element, cell_ref: str) -> etree._Element:
 
 
 def _set_cell(sheet_data: etree._Element, ref: str, value: Any, is_number: bool = False) -> None:
-    if value is None:
+    if is_number and value is not None:
+        try:
+            numeric_value = float(value)
+        except (TypeError, ValueError):
+            value = None
+        else:
+            if not math.isfinite(numeric_value):
+                value = None
+            else:
+                value = numeric_value
+
+    if value is None or value == "":
+        _, row_num = _parse_cell_ref(ref)
+        row = _find_or_create_row(sheet_data, row_num)
+        cell = _find_or_create_cell(row, ref)
+        style = cell.get("s")
+
+        for child in list(cell):
+            cell.remove(child)
+
+        for attr in ("t", "v", "f", "cm", "vm", "ph"):
+            cell.attrib.pop(attr, None)
+
+        if style:
+            cell.set("s", style)
         return
 
     _, row_num = _parse_cell_ref(ref)
