@@ -86,6 +86,19 @@ class TestVerificacionExcelSpacing(unittest.TestCase):
         self.assertEqual(sheet["B19"].value, "Còdigo equipo")
         self.assertEqual(sheet["A20"].value, "Nota")
 
+    def test_main_headers_keep_wrap_text_for_long_titles(self):
+        verificacion = self._make_verificacion(sample_count=3)
+
+        workbook_bytes = self.logic.generar_excel_verificacion(verificacion)
+        workbook = load_workbook(BytesIO(workbook_bytes), data_only=False)
+        sheet = workbook.active
+
+        self.assertTrue(sheet["B8"].alignment.wrap_text)
+        self.assertTrue(sheet["C8"].alignment.wrap_text)
+        self.assertTrue(sheet["H8"].alignment.wrap_text)
+        self.assertTrue(sheet["R8"].alignment.wrap_text)
+        self.assertTrue(sheet["U8"].alignment.wrap_text)
+
 
 if __name__ == "__main__":
     unittest.main()

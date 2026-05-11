@@ -344,12 +344,9 @@ class ExcelLogic:
 
         # 6. Structural Cleanup (Row Sorting)
         
-        # CRITICAL: Force Row 8 (Header) to have Style 19 (Full Borders)
-        # The template has mixed borders (No Bottom). User wants Boxes.
-        r8 = sheet_data.find(f'{{{ns}}}row[@r="8"]')
-        if r8 is not None:
-            for c in r8.findall(f'{{{ns}}}c'):
-                c.set('s', '19') # Full Box Style
+        # Preserve the template header styles on rows 8/9 so long titles keep
+        # their wrap_text settings. The template already defines the correct
+        # box borders and typography for these merged headings.
         
         # CRITICAL: Excel requires row elements to be in ascending order
         rows_list = list(sheet_data.findall(f'{{{ns}}}row'))
