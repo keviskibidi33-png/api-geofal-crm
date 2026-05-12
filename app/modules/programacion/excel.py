@@ -6,7 +6,8 @@ from lxml import etree
 from datetime import date
 from app.xlsx_direct_v2 import (
     NAMESPACES, _parse_cell_ref, _col_letter_to_num, _find_or_create_row, 
-    _find_or_create_cell, _set_cell_value, _duplicate_row
+    _find_or_create_cell, _set_cell_value, _duplicate_row,
+    _shift_rows, _shift_merged_cells
 )
 
 
