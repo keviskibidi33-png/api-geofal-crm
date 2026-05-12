@@ -11,6 +11,7 @@ import io
 import logging
 import math
 import zipfile
+from datetime import date, datetime
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -413,6 +414,45 @@ def generate_llp_excel(data: LLPRequest) -> bytes:
         sheet1_xml = _fill_sheet(sheet1_original, data)
         sheet2_xml = _fill_sheet(sheet2_original, data)
 
+        # prepare Incertidumbre sheet (sheet5.xml) if present
+        incert_xml = None
+        try:
+            raw_incert = zin.read("xl/worksheets/sheet5.xml")
+            root = etree.fromstring(raw_incert)
+            for sp in list(root.findall(f".//{{{NS_SHEET}}}sheetProtection")):
+                parent = sp.getparent()
+                if parent is not None:
+                    parent.remove(sp)
+            sd = root.find(f".//{{{NS_SHEET}}}sheetData")
+            if sd is not None:
+                def _excel_date_serial(value: str | None) -> float | None:
+                    text = (value or "").strip()
+                    if not text:
+                        return None
+                    for fmt in ("%Y/%m/%d", "%Y-%m-%d", "%d/%m/%Y"):
+                        try:
+                            parsed = datetime.strptime(text, fmt).date()
+                            return float((parsed - date(1899, 12, 30)).days)
+                        except ValueError:
+                            continue
+                    return None
+
+                _set_cell(sd, "B98", data.revisado_por)
+                _set_cell(sd, "G98", data.aprobado_por)
+                revisado_serial = _excel_date_serial(data.revisado_fecha)
+                aprobado_serial = _excel_date_serial(data.aprobado_fecha)
+                if revisado_serial is not None:
+                    _set_cell(sd, "B100", revisado_serial, is_number=True)
+                elif data.revisado_fecha:
+                    _set_cell(sd, "B100", data.revisado_fecha)
+                if aprobado_serial is not None:
+                    _set_cell(sd, "G100", aprobado_serial, is_number=True)
+                elif data.aprobado_fecha:
+                    _set_cell(sd, "G100", data.aprobado_fecha)
+            incert_xml = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+        except KeyError:
+            incert_xml = None
+
         for item in zin.infolist():
             if item.filename == "xl/calcChain.xml":
                 continue
@@ -423,6 +463,8 @@ def generate_llp_excel(data: LLPRequest) -> bytes:
                 raw = sheet1_xml
             elif item.filename == "xl/worksheets/sheet2.xml":
                 raw = sheet2_xml
+            elif item.filename == "xl/worksheets/sheet5.xml" and incert_xml is not None:
+                raw = incert_xml
             elif item.filename == "xl/_rels/workbook.xml.rels":
                 raw = _remove_calc_chain_relationships(zin.read(item.filename))
                 raw = remove_external_link_relationships(raw)

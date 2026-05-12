@@ -10,6 +10,7 @@ Patrón idéntico a xlsx_direct_v2.py usado en recepción.
 import io
 import logging
 import zipfile
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Optional
 
@@ -370,6 +371,8 @@ def generate_humedad_excel(data: HumedadRequest) -> bytes:
                 raw = _fill_sheet(raw, data, masa_agua, masa_seca, humedad)
             elif item.filename == "xl/worksheets/sheet2.xml":
                 raw = _fill_resumen(raw, data, masa_agua, masa_seca, humedad)
+            elif item.filename == "xl/worksheets/sheet5.xml":
+                raw = _fill_incertidumbre(raw, data)
 
             # ── Modificar drawing1.xml (shapes del footer) ─────────────
             if item.filename == "xl/drawings/drawing1.xml":
@@ -598,6 +601,47 @@ def _fill_resumen(
 
     _set_cell(sd, "C55", _build_footer_block("Revisado", data.revisado_por, data.revisado_fecha))
     _set_cell(sd, "G55", _build_footer_block("Aprobado", data.aprobado_por, data.aprobado_fecha))
+
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
+def _fill_incertidumbre(sheet_xml: bytes, data: HumedadRequest) -> bytes:
+    root = etree.fromstring(sheet_xml)
+    # remove sheetProtection if present
+    for sp in list(root.findall(f".//{{{NS_SHEET}}}sheetProtection")):
+        parent = sp.getparent()
+        if parent is not None:
+            parent.remove(sp)
+
+    sd = root.find(f".//{{{NS_SHEET}}}sheetData")
+    if sd is None:
+        return sheet_xml
+
+    def _excel_date_serial(value: str | None) -> float | None:
+        text = (value or "").strip()
+        if not text:
+            return None
+        for fmt in ("%Y/%m/%d", "%Y-%m-%d", "%d/%m/%Y"):
+            try:
+                parsed = datetime.strptime(text, fmt).date()
+                return float((parsed - date(1899, 12, 30)).days)
+            except ValueError:
+                continue
+        return None
+
+    # Use the visible boxed cells in the template instead of appending rows.
+    _set_cell(sd, "B72", data.revisado_por)
+    _set_cell(sd, "G72", data.aprobado_por)
+    revisado_serial = _excel_date_serial(data.revisado_fecha)
+    aprobado_serial = _excel_date_serial(data.aprobado_fecha)
+    if revisado_serial is not None:
+        _set_cell(sd, "B74", revisado_serial, is_number=True)
+    elif data.revisado_fecha:
+        _set_cell(sd, "B74", data.revisado_fecha)
+    if aprobado_serial is not None:
+        _set_cell(sd, "G74", aprobado_serial, is_number=True)
+    elif data.aprobado_fecha:
+        _set_cell(sd, "G74", data.aprobado_fecha)
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 import io
 import logging
 import zipfile
+from datetime import date, datetime
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -391,6 +392,51 @@ def _fill_drawing(drawing_xml: bytes, data: GranSueloRequest) -> bytes:
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
+def _fill_incertidumbre(sheet_xml: bytes, data: GranSueloRequest) -> bytes:
+    root = etree.fromstring(sheet_xml)
+    # remove sheetProtection if present
+    for sp in list(root.findall(f".//{{{NS_SHEET}}}sheetProtection")):
+        parent = sp.getparent()
+        if parent is not None:
+            parent.remove(sp)
+
+    sd = root.find(f".//{{{NS_SHEET}}}sheetData")
+    if sd is None:
+        return sheet_xml
+
+    merge_anchor_map = _build_merge_anchor_map(root)
+
+    def set_cell(ref: str, value: Any, is_number: bool = False, style_id: int | None = None, font_size: float | None = None) -> None:
+        _set_cell(sd, ref, value, is_number=is_number, merge_anchor_map=merge_anchor_map, style_id=style_id, font_size=font_size)
+
+    def _excel_date_serial(value: str | None) -> float | None:
+        text = (value or "").strip()
+        if not text:
+            return None
+        for fmt in ("%Y/%m/%d", "%Y-%m-%d", "%d/%m/%Y"):
+            try:
+                parsed = datetime.strptime(text, fmt).date()
+                return float((parsed - date(1899, 12, 30)).days)
+            except ValueError:
+                continue
+        return None
+
+    set_cell("B227", data.revisado_por)
+    set_cell("G227", data.aprobado_por)
+    revisado_serial = _excel_date_serial(getattr(data, "revisado_fecha", None))
+    aprobado_serial = _excel_date_serial(getattr(data, "aprobado_fecha", None))
+    if revisado_serial is not None:
+        set_cell("B229", revisado_serial, is_number=True)
+    elif getattr(data, "revisado_fecha", None):
+        set_cell("B229", data.revisado_fecha)
+    if aprobado_serial is not None:
+        set_cell("G229", aprobado_serial, is_number=True)
+    elif getattr(data, "aprobado_fecha", None):
+        set_cell("G229", data.aprobado_fecha)
+
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
 def generate_gran_suelo_excel(data: GranSueloRequest) -> bytes:
     """Generates the Gran Suelo Excel file from template."""
     logger.info("Generating Gran Suelo Excel - ASTM D6913/D6913M-17")
@@ -406,6 +452,14 @@ def generate_gran_suelo_excel(data: GranSueloRequest) -> bytes:
         sheet_original = zin.read("xl/worksheets/sheet1.xml")
         sheet_xml = _fill_sheet(sheet_original, data)
 
+        # prepare Incertidumbre sheet (sheet3.xml) if present
+        incert_xml = None
+        try:
+            raw_incert = zin.read("xl/worksheets/sheet3.xml")
+            incert_xml = _fill_incertidumbre(raw_incert, data)
+        except KeyError:
+            incert_xml = None
+
         for item in zin.infolist():
             if item.filename == "xl/calcChain.xml":
                 continue
@@ -414,6 +468,8 @@ def generate_gran_suelo_excel(data: GranSueloRequest) -> bytes:
 
             if item.filename == "xl/worksheets/sheet1.xml":
                 raw = sheet_xml
+            elif item.filename == "xl/worksheets/sheet3.xml" and incert_xml is not None:
+                raw = incert_xml
             elif item.filename == "xl/workbook.xml":
                 raw = enable_full_recalc_on_open(zin.read(item.filename))
                 raw = strip_external_references(raw)

@@ -8,6 +8,7 @@ styles and formulas of the official template.
 import io
 import logging
 import zipfile
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -241,9 +242,19 @@ def generate_proctor_excel(data: ProctorRequest) -> bytes:
         centered_style_map = _resolve_centered_styles(sheet_original)
         sheet_xml = _fill_sheet(sheet_original, data, centered_style_map)
 
+        # prepare Incertidumbre sheet (sheet4.xml) if present
+        incert_xml = None
+        try:
+            raw_incert = zin.read("xl/worksheets/sheet4.xml")
+            incert_xml = _fill_incertidumbre(raw_incert, data)
+        except KeyError:
+            incert_xml = None
+
         for item in zin.infolist():
             if item.filename == "xl/worksheets/sheet1.xml":
                 raw = sheet_xml
+            elif item.filename == "xl/worksheets/sheet4.xml" and incert_xml is not None:
+                raw = incert_xml
             else:
                 raw = zin.read(item.filename)
 
@@ -414,3 +425,43 @@ def _fill_drawing(drawing_xml: bytes, data: ProctorRequest) -> bytes:
         aprobado_por=data.aprobado_por,
         aprobado_fecha=data.aprobado_fecha,
     )
+
+
+def _fill_incertidumbre(sheet_xml: bytes, data: ProctorRequest) -> bytes:
+    root = etree.fromstring(sheet_xml)
+    # remove sheetProtection if present
+    for sp in list(root.findall(f".//{{{NS_SHEET}}}sheetProtection")):
+        parent = sp.getparent()
+        if parent is not None:
+            parent.remove(sp)
+
+    sd = root.find(f".//{{{NS_SHEET}}}sheetData")
+    if sd is None:
+        return sheet_xml
+
+    def _excel_date_serial(value: str | None) -> float | None:
+        text = (value or "").strip()
+        if not text:
+            return None
+        for fmt in ("%Y/%m/%d", "%Y-%m-%d", "%d/%m/%Y"):
+            try:
+                parsed = datetime.strptime(text, fmt).date()
+                return float((parsed - date(1899, 12, 30)).days)
+            except ValueError:
+                continue
+        return None
+
+    _set_cell(sd, "B100", data.revisado_por)
+    _set_cell(sd, "G100", data.aprobado_por)
+    revisado_serial = _excel_date_serial(data.revisado_fecha)
+    aprobado_serial = _excel_date_serial(data.aprobado_fecha)
+    if revisado_serial is not None:
+        _set_cell(sd, "B102", revisado_serial, is_number=True)
+    elif data.revisado_fecha:
+        _set_cell(sd, "B102", data.revisado_fecha)
+    if aprobado_serial is not None:
+        _set_cell(sd, "G102", aprobado_serial, is_number=True)
+    elif data.aprobado_fecha:
+        _set_cell(sd, "G102", data.aprobado_fecha)
+
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)

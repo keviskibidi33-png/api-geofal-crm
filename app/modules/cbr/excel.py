@@ -8,6 +8,7 @@ logos, merged cells, estilos y formulas del template original.
 import io
 import logging
 import zipfile
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -113,6 +114,8 @@ def _set_cell(sheet_data: etree._Element, ref: str, value: Any, is_number: bool 
     cell.set("t", "inlineStr")
     is_el = etree.SubElement(cell, f"{{{ns}}}is")
     t_el = etree.SubElement(is_el, f"{{{ns}}}t")
+    if "\n" in text or text.endswith(" "):
+        t_el.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
     t_el.text = text
 
 
@@ -135,6 +138,28 @@ def _set_formula_cached_value(sheet_data: etree._Element, ref: str, value: Any) 
     if val is None:
         val = etree.SubElement(cell, f"{{{ns}}}v")
     val.text = str(value)
+
+
+def _build_formato_footer_text(role_label: str, name: str | None, date_text: str | None) -> str:
+    name_value = (name or "").strip()
+    date_value = (date_text or "").strip()
+    if not name_value and not date_value:
+        return ""
+    return f"{role_label}: {name_value}\nFecha: {date_value}".strip()
+
+
+def _fill_formato_revisado_aprobado(root: etree._Element, data: CBRRequest) -> None:
+    sd = root.find(f".//{{{NS_SHEET}}}sheetData")
+    if sd is None:
+        return
+
+    revisado_text = _build_formato_footer_text("Revisado", data.revisado_por, data.revisado_fecha)
+    aprobado_text = _build_formato_footer_text("Aprobado", data.aprobado_por, data.aprobado_fecha)
+
+    if revisado_text:
+        _set_cell(sd, "C59", revisado_text)
+    if aprobado_text:
+        _set_cell(sd, "I59", aprobado_text)
 
 
 def _clear_formula_cached_value(sheet_data: etree._Element, ref: str) -> None:
@@ -180,8 +205,12 @@ def generate_cbr_excel(data: CBRRequest) -> bytes:
         for item in zin.infolist():
             raw = zin.read(item.filename)
 
+            if item.filename == "xl/worksheets/sheet1.xml":
+                raw = _fill_sheet(raw, data)
             if item.filename == "xl/worksheets/sheet2.xml":
                 raw = _fill_sheet(raw, data)
+            elif item.filename == "xl/worksheets/sheet6.xml":
+                raw = _fill_incertidumbre(raw, data)
 
             if item.filename == "xl/workbook.xml":
                 raw = _force_full_calc_on_open(raw)
@@ -282,6 +311,8 @@ def _fill_sheet(sheet_xml: bytes, data: CBRRequest) -> bytes:
     _set_cell(sd, "O53", data.equipo_balanza_01g)
 
     _set_cell(sd, "D56", data.observaciones)
+
+    _fill_formato_revisado_aprobado(root, data)
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
@@ -398,5 +429,45 @@ def _fill_drawing(drawing_xml: bytes, data: CBRRequest) -> bytes:
             idx_value_fecha = idx_label_fecha + 1
             if idx_value_fecha < len(paragraphs):
                 _set_footer_value_paragraph(paragraphs[idx_value_fecha], "", font_size=800)
+
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
+def _fill_incertidumbre(sheet_xml: bytes, data: CBRRequest) -> bytes:
+    root = etree.fromstring(sheet_xml)
+    # remove sheetProtection if present
+    for sp in list(root.findall(f".//{{{NS_SHEET}}}sheetProtection")):
+        parent = sp.getparent()
+        if parent is not None:
+            parent.remove(sp)
+
+    sd = root.find(f".//{{{NS_SHEET}}}sheetData")
+    if sd is None:
+        return sheet_xml
+
+    def _excel_date_serial(value: str | None) -> float | None:
+        text = (value or "").strip()
+        if not text:
+            return None
+        for fmt in ("%Y/%m/%d", "%Y-%m-%d", "%d/%m/%Y"):
+            try:
+                parsed = datetime.strptime(text, fmt).date()
+                return float((parsed - date(1899, 12, 30)).days)
+            except ValueError:
+                continue
+        return None
+
+    _set_cell(sd, "C154", data.revisado_por)
+    _set_cell(sd, "H154", data.aprobado_por)
+    revisado_serial = _excel_date_serial(data.revisado_fecha)
+    aprobado_serial = _excel_date_serial(data.aprobado_fecha)
+    if revisado_serial is not None:
+        _set_cell(sd, "C156", revisado_serial, is_number=True)
+    elif data.revisado_fecha:
+        _set_cell(sd, "C156", data.revisado_fecha)
+    if aprobado_serial is not None:
+        _set_cell(sd, "H156", aprobado_serial, is_number=True)
+    elif data.aprobado_fecha:
+        _set_cell(sd, "H156", data.aprobado_fecha)
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
