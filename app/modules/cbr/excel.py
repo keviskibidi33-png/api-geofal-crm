@@ -14,6 +14,15 @@ from typing import Any
 
 from lxml import etree
 
+from app.modules.common.excel_xml import (
+    enable_full_recalc_on_open,
+    remove_calc_chain_content_type,
+    remove_calc_chain_relationships,
+    remove_external_link_content_types,
+    remove_external_link_relationships,
+    strip_external_references,
+)
+
 from .schemas import CBRRequest
 
 logger = logging.getLogger(__name__)
@@ -203,6 +212,11 @@ def generate_cbr_excel(data: CBRRequest) -> bytes:
 
     with zipfile.ZipFile(io.BytesIO(template_bytes), "r") as zin, zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zout:
         for item in zin.infolist():
+            if item.filename == "xl/calcChain.xml":
+                continue
+            if item.filename.startswith("xl/externalLinks/"):
+                continue
+
             raw = zin.read(item.filename)
 
             if item.filename == "xl/worksheets/sheet1.xml":
@@ -213,7 +227,14 @@ def generate_cbr_excel(data: CBRRequest) -> bytes:
                 raw = _fill_incertidumbre(raw, data)
 
             if item.filename == "xl/workbook.xml":
-                raw = _force_full_calc_on_open(raw)
+                raw = enable_full_recalc_on_open(raw)
+                raw = strip_external_references(raw)
+            elif item.filename == "xl/_rels/workbook.xml.rels":
+                raw = remove_calc_chain_relationships(raw)
+                raw = remove_external_link_relationships(raw)
+            elif item.filename == "[Content_Types].xml":
+                raw = remove_calc_chain_content_type(raw)
+                raw = remove_external_link_content_types(raw)
 
             if item.filename == "xl/drawings/drawing1.xml":
                 raw = _fill_drawing(raw, data)
