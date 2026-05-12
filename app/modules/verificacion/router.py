@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, Request
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from typing import List, Optional
 from app.database import get_db_session
 from .schemas import (
@@ -13,7 +14,29 @@ from .schemas import (
 )
 from .service import VerificacionService
 from .excel import ExcelLogic
-from app.modules.common.notifications import notify_laboratory_essay_event, resolve_actor_identity
+from app.modules.common.notifications import notify_laboratory_essay_event, resolve_actor_identity, get_request_actor_context
+
+DELETE_ALLOWED_ROLES = {"admin", "tecnico"}
+
+def require_delete_permission(request: Request, db: Session = Depends(get_db_session)):
+    actor = get_request_actor_context(request)
+    user_id = actor.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=403, detail="No tienes permisos para eliminar")
+    try:
+        row = db.execute(
+            text("SELECT role FROM perfiles WHERE id = :user_id LIMIT 1"),
+            {"user_id": user_id},
+        ).mappings().first()
+        if not row:
+            raise HTTPException(status_code=403, detail="Usuario no encontrado")
+        role = str(row.get("role") or "").strip().lower()
+        if role not in DELETE_ALLOWED_ROLES:
+            raise HTTPException(status_code=403, detail="No tienes permisos para eliminar verificaciones")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=403, detail="Error al verificar permisos")
 
 router = APIRouter(prefix="/api/verificacion", tags=["Laboratorio Verificación"])
 
@@ -125,7 +148,12 @@ def obtener_verificacion(verificacion_id: int, db: Session = Depends(get_db_sess
     return ver
 
 @router.delete("/{verificacion_id}")
-def eliminar_verificacion(verificacion_id: int, db: Session = Depends(get_db_session)):
+def eliminar_verificacion(
+    verificacion_id: int,
+    request: Request,
+    db: Session = Depends(get_db_session),
+    _perm: None = Depends(require_delete_permission),
+):
     service = VerificacionService(db)
     if not service.eliminar_verificacion(verificacion_id):
         raise HTTPException(status_code=404, detail="Verificación no encontrada")
