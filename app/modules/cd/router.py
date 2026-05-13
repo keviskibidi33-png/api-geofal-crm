@@ -59,7 +59,7 @@ def _upload_to_supabase_storage(file_bytes: bytes, bucket: str, object_path: str
             timeout=30,
         )
         if resp.status_code in (200, 201):
-            return f"{bucket}/{object_path}"
+            return object_path
 
         logger.error("Storage upload CD failed: %s - %s", resp.status_code, resp.text)
         return None
@@ -75,7 +75,13 @@ def _delete_from_supabase_storage(bucket: str, object_path: str) -> bool:
     if not supabase_url or not supabase_key or not bucket or not object_path:
         return False
 
-    delete_url = f"{supabase_url.rstrip('/')}/storage/v1/object/{bucket}/{object_path}"
+    # Normalizar: evitar duplicar el prefijo del bucket si ya está presente
+    clean_path = object_path
+    prefix = f"{bucket}/"
+    if clean_path.startswith(prefix):
+        clean_path = clean_path[len(prefix):]
+
+    delete_url = f"{supabase_url.rstrip('/')}/storage/v1/object/{bucket}/{clean_path}"
     try:
         resp = http_delete(
             delete_url,
@@ -110,6 +116,11 @@ def _move_to_supabase_trash(bucket: str, object_path: str) -> str | None:
     supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
     if not supabase_url or not supabase_key or not bucket or not object_path:
         return None
+
+    # Normalizar: evitar duplicar el prefijo del bucket si ya está presente
+    prefix = f"{bucket}/"
+    if object_path.startswith(prefix):
+        object_path = object_path[len(prefix):]
 
     base_url = supabase_url.rstrip("/")
     destination_key = _build_trash_object_key(object_path)
