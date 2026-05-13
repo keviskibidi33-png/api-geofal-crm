@@ -24,5 +24,5 @@ networks:
   coolify:
     external: true
   supabase_network:
-    name: d4w80wk0wo8gscs00wskgcgk
+    name: esc00cwwc8so0gw84ooc8gg0
     external: true
