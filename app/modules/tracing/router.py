@@ -269,9 +269,12 @@ def sugerir_recepciones(q: str = "", db: Session = Depends(get_db_session)):
     results = TracingService.buscar_sugerencias(db, q)
     return [
         {
+            "id": (t.data_consolidada or {}).get("recepcion_id") or t.id,
+            "recepcion_id": (t.data_consolidada or {}).get("recepcion_id"),
             "numero_recepcion": t.numero_recepcion,
             "cliente": t.cliente,
             "proyecto": t.proyecto,
+            "numero_ot": (t.data_consolidada or {}).get("numero_ot"),
             "muestras_count": (t.data_consolidada or {}).get("muestras_count", 0),
             "fecha_recepcion": (t.data_consolidada or {}).get("fecha_recepcion"),
             "estados": {
