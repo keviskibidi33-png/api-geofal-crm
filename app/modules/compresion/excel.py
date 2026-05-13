@@ -210,7 +210,7 @@ def _find_wrap_text_style(styles_xml: bytes) -> Optional[int]:
 
 
 def generate_compression_excel(data: CompressionExportRequest) -> io.BytesIO:
-    template_path = Path("app/templates/Template_Compresion.xlsx")
+    template_path = Path(__file__).resolve().parents[2] / "templates" / "Template_Compresion.xlsx"
     if not template_path.exists():
         raise FileNotFoundError("Template_Compresion.xlsx not found")
     

@@ -98,6 +98,29 @@ class TestCompresionDateDefaults(unittest.TestCase):
         self.assertEqual(self._as_date(item.fecha_revisado), date(2026, 5, 4))
         self.assertEqual(self._as_date(item.fecha_aprobado), date(2026, 5, 5))
 
+    def test_crear_ensayo_acepta_fechas_legacy_con_slashes(self):
+        service = CompresionService()
+        payload = EnsayoCompresionCreate(
+            numero_ot="OT-366-26",
+            numero_recepcion="365-26",
+            items=[
+                {
+                    "item": 1,
+                    "codigo_lem": "2421-CO-26",
+                    "fecha_ensayo_programado": "2026/12/28",
+                    "fecha_ensayo": "2026/12/28",
+                    "carga_maxima": 240.0,
+                    "tipo_fractura": "3",
+                }
+            ],
+        )
+
+        ensayo = service.crear_ensayo(self.db, payload)
+        item = ensayo.items[0]
+
+        self.assertEqual(self._as_date(item.fecha_ensayo_programado), date(2026, 12, 28))
+        self.assertEqual(self._as_date(item.fecha_ensayo), date(2026, 12, 28))
+
     def test_sanitize_items_ignora_filas_con_solo_fechas_automaticas(self):
         sanitized = CompresionService._sanitize_items(
             [

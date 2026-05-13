@@ -1,6 +1,14 @@
 from datetime import date, datetime
 from typing import List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+from app.utils.date_format import parse_flexible_date
+
+
+def _coerce_optional_date(value):
+    """Accept legacy date strings like YYYY/MM/DD and normalize to date objects."""
+    parsed = parse_flexible_date(value)
+    return parsed.date() if parsed else None
 
 
 # ===== Item Schemas =====
@@ -19,6 +27,17 @@ class ItemCompresionBase(BaseModel):
     fecha_revisado: Optional[date] = None
     aprobado: Optional[str] = None
     fecha_aprobado: Optional[date] = None
+
+    @field_validator(
+        "fecha_ensayo_programado",
+        "fecha_ensayo",
+        "fecha_revisado",
+        "fecha_aprobado",
+        mode="before",
+    )
+    @classmethod
+    def _parse_legacy_date_formats(cls, value):
+        return _coerce_optional_date(value)
 
 
 class ItemCompresionCreate(ItemCompresionBase):
@@ -100,6 +119,17 @@ class CompressionItem(BaseModel):
     fecha_revisado: Optional[date] = None
     aprobado: Optional[str] = None
     fecha_aprobado: Optional[date] = None
+
+    @field_validator(
+        "fecha_ensayo_programado",
+        "fecha_ensayo",
+        "fecha_revisado",
+        "fecha_aprobado",
+        mode="before",
+    )
+    @classmethod
+    def _parse_legacy_date_formats(cls, value):
+        return _coerce_optional_date(value)
 
 
 class CompressionExportRequest(BaseModel):
