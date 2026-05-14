@@ -148,7 +148,7 @@ class PesoUnitarioRequest(BaseModel):
     equipo_molde_codigo: Optional[str] = "INS-0005 (Molde 1)"
     equipo_balanza_codigo: Optional[str] = "EQP-0054"
     equipo_varilla_codigo: Optional[str] = "INS-0132"
-    equipo_horno_codigo: Optional[str] = "EQP-0049"
+    equipo_horno_codigo: Optional[str] = "EQP-0150"
 
     # Cierre
     observaciones: Optional[str] = None

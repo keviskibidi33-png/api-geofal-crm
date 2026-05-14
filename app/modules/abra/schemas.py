@@ -122,7 +122,7 @@ class AbraRequest(BaseModel):
     item_perdida_lavado_pct: list[float | None] = Field(default_factory=list)
 
     # Equipos
-    horno_codigo: Optional[str] = "EQP-0049"
+    horno_codigo: Optional[str] = "EQP-0150"
     maquina_los_angeles_codigo: Optional[str] = "EQP-0043"
     balanza_1g_codigo: Optional[str] = "EQP-0054"
     malla_no_12_codigo: Optional[str] = "INS-0144"

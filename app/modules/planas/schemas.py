@@ -243,7 +243,7 @@ class PlanasRequest(BaseModel):
     # Equipos
     dispositivo_calibre_codigo: Optional[str] = None
     balanza_01g_codigo: Optional[str] = "EQP-0046"
-    horno_codigo: Optional[str] = "EQP-0049"
+    horno_codigo: Optional[str] = "EQP-0150"
 
     # Cierre
     nota: Optional[str] = None

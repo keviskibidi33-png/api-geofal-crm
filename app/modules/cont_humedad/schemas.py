@@ -118,7 +118,7 @@ class ContHumedadRequest(BaseModel):
 
     # Equipos
     balanza_01g_codigo: Optional[str] = "EQP-0046"
-    horno_110c_codigo: Optional[str] = "EQP-0049"
+    horno_110c_codigo: Optional[str] = "EQP-0150"
 
     # Cierre
     observaciones: Optional[str] = None

@@ -113,7 +113,7 @@ class TamizRequest(BaseModel):
 
     # Equipos
     balanza_01g_codigo: Optional[str] = "EQP-0046"
-    horno_110c_codigo: Optional[str] = "EQP-0049"
+    horno_110c_codigo: Optional[str] = "EQP-0150"
     tamiz_no_200_codigo: Optional[str] = "INS-0199"
     tamiz_no_16_codigo: Optional[str] = "INS-0171"
 

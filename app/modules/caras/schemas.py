@@ -176,7 +176,7 @@ class CarasRequest(BaseModel):
     promedio_ponderado_dos_pct: Optional[float] = None
 
     # Equipos
-    horno_codigo: Optional[str] = "EQP-0049"
+    horno_codigo: Optional[str] = "EQP-0150"
     balanza_01g_codigo: Optional[str] = "EQP-0046"
     tamiz_especificado_codigo: Optional[str] = "INS-0053"
     cuarteador_codigo: Optional[str] = "EQP-0078"
