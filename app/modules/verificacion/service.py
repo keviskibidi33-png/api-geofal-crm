@@ -5,7 +5,7 @@ Implementa la lógica de fórmulas y patrones según los requerimientos
 
 from typing import Any, Optional, List
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, func
+from sqlalchemy import desc, func, Integer
 from .models import VerificacionMuestras, MuestraVerificada
 from .schemas import (
     VerificacionMuestrasCreate, 
@@ -316,10 +316,24 @@ class VerificacionService:
         return self.db.query(VerificacionMuestras).filter(VerificacionMuestras.id == verificacion_id).first()
     
     def listar_verificaciones(self, skip: int = 0, limit: int = 100) -> List[VerificacionMuestras]:
+        """Lista verificaciones ordenadas por número de verificación descendente.
+
+        El numero_verificacion tiene formato 'NNNN-YY' (ej: 1006-26).
+        Se extrae la parte numérica antes del '-' para ordenar numéricamente,
+        con fallback al texto completo para formatos no estándar.
+        """
+        # Extraer la parte numérica antes del '-' para orden numérico correcto
+        numeric_prefix = func.cast(
+            func.nullif(
+                func.split_part(VerificacionMuestras.numero_verificacion, '-', 1),
+                ''
+            ),
+            Integer
+        )
         return (
             self.db.query(VerificacionMuestras)
             .filter(func.length(func.trim(VerificacionMuestras.numero_verificacion)) > 0)
-            .order_by(desc(VerificacionMuestras.fecha_creacion), desc(VerificacionMuestras.id))
+            .order_by(desc(numeric_prefix), desc(VerificacionMuestras.numero_verificacion))
             .offset(skip)
             .limit(limit)
             .all()
