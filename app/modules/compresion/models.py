@@ -38,7 +38,12 @@ class EnsayoCompresion(Base):
     fecha_actualizacion = Column(DateTime, nullable=True, onupdate=func.now(), comment="Fecha de última actualización")
     
     # Relación con items
-    items = relationship("ItemCompresion", back_populates="ensayo", cascade="all, delete-orphan")
+    items = relationship(
+        "ItemCompresion",
+        back_populates="ensayo",
+        cascade="all, delete-orphan",
+        order_by="ItemCompresion.item",
+    )
 
 
 class ItemCompresion(Base):
