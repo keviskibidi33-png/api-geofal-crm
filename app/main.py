@@ -1201,6 +1201,7 @@ _PERMISSION_KEY_ALIASES: dict[str, str] = {
 }
 
 _ROLE_ID_ALIASES: dict[str, str] = {
+    "comercial": "auxiliar_comercial",
     "vendor": "auxiliar_comercial",
     "vendedor": "auxiliar_comercial",
     "sig_el_rol": "auxiliar_comercial",
@@ -1218,6 +1219,41 @@ _CONTROL_PERMISSION_MODULE_KEYS: tuple[str, ...] = (
     "oficina_tecnica",
     "comercial",
     "administracion",
+)
+_OFICINA_TECNICA_DELETE_MODULE_KEYS: tuple[str, ...] = (
+    "verificacion",
+    "verificacion_muestras",
+    "recepcion",
+    "compresion",
+    "humedad",
+    "cont_humedad",
+    "planas",
+    "caras",
+    "cbr",
+    "proctor",
+    "llp",
+    "gran_suelo",
+    "gran_agregado",
+    "cont_mat_organica",
+    "terrones_fino_grueso",
+    "azul_metileno",
+    "part_livianas",
+    "imp_organicas",
+    "sul_magnesio",
+    "angularidad",
+    "abra",
+    "abrass",
+    "peso_unitario",
+    "tamiz",
+    "equi_arena",
+    "ge_fino",
+    "ge_grueso",
+    "cd",
+    "ph",
+    "cloro_soluble",
+    "sales_solubles",
+    "sulfatos_solubles",
+    "compresion_no_confinada",
 )
 _RESTRICTED_TECHNICAL_MODULE_KEYS: tuple[str, ...] = (
     "clientes",
@@ -1261,6 +1297,23 @@ def _sanitize_permissions_for_role(role_id: str | None, permission_map: dict[str
     return sanitized
 
 
+def _grant_delete_to_oficina_tecnica(permission_map: dict[str, dict[str, bool]] | None, role_id: str | None) -> dict[str, dict[str, bool]]:
+    normalized_role = _normalize_role_name(role_id)
+    if not normalized_role.startswith("oficina_tecnica"):
+        return dict(permission_map or {})
+
+    granted = dict(permission_map or {})
+    for module_key in _OFICINA_TECNICA_DELETE_MODULE_KEYS:
+        module_permissions = granted.get(module_key)
+        if isinstance(module_permissions, dict) and module_permissions.get("write") is True:
+            granted[module_key] = _permission(
+                bool(module_permissions.get("read")),
+                True,
+                True,
+            )
+    return granted
+
+
 def _extra_special_lab_permissions(role_id: str) -> dict[str, dict[str, bool]]:
     normalized = (role_id or "").strip().lower()
     new_modules = (
@@ -1302,6 +1355,8 @@ def _apply_role_permission_extensions(role_rows: list[dict[str, Any]]) -> list[d
         if normalized_role in {"administracion", "administrativo"}:
             permissions["ingenieria_archivos"] = _permission(True, True, False)
             permissions["correlativos"] = _permission(True, True, False)
+
+        permissions = _grant_delete_to_oficina_tecnica(permissions, normalized_role)
 
         role_data["permissions"] = permissions
         extended_roles.append(role_data)
@@ -2437,6 +2492,7 @@ async def update_role(role_id: str, payload: RoleUpdate):
                 current_permissions = _normalize_permission_map((existing_role_row or {}).get("permissions") if isinstance(existing_role_row, dict) else None)
                 incoming_permissions = _normalize_permission_map(payload.permissions.model_dump(exclude_unset=True))
                 merged_permissions = _merge_permission_maps(current_permissions, incoming_permissions)
+                merged_permissions = _grant_delete_to_oficina_tecnica(merged_permissions, canonical_role_id)
                 # Ensure we serialize to JSON string for Postgres JSONB
                 params.append(json.dumps(merged_permissions))
             
@@ -2534,6 +2590,7 @@ async def get_user_permissions_override(user_id: str, request: Request):
                     role_row = cur.fetchone()
             role_permissions = _normalize_permission_map((role_row or {}).get("permissions") if isinstance(role_row, dict) else None)
             role_permissions = _sanitize_permissions_for_role(target_role, role_permissions)
+            role_permissions = _grant_delete_to_oficina_tecnica(role_permissions, target_role)
             if not row:
                 effective_permissions = _merge_permission_maps(role_permissions, {})
                 return {
@@ -2606,6 +2663,7 @@ async def upsert_user_permissions_override(user_id: str, payload: UserPermission
             )
             role_row = cur.fetchone()
             role_permissions = _sanitize_permissions_for_role(target_role, _normalize_permission_map((role_row or {}).get("permissions") if isinstance(role_row, dict) else None))
+            role_permissions = _grant_delete_to_oficina_tecnica(role_permissions, target_role)
             if _is_restricted_technical_role(target_role):
                 forbidden_modules = [
                     module for module in (*_CONTROL_PERMISSION_MODULE_KEYS, *_RESTRICTED_TECHNICAL_MODULE_KEYS)
