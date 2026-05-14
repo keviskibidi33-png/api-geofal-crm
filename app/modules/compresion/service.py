@@ -1,7 +1,7 @@
 import os
 import logging
 import io
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import desc, or_
 from typing import Any, List, Optional
 from datetime import date, datetime
@@ -10,6 +10,7 @@ from .models import EnsayoCompresion, ItemCompresion
 from .schemas import EnsayoCompresionCreate, EnsayoCompresionUpdate, CompressionExportRequest, CompressionItem
 from .exceptions import DuplicateEnsayoError, EnsayoNotFoundError
 from .excel import generate_compression_excel, EQUIPO_NOMBRES
+from app.modules.recepcion.models import RecepcionMuestra
 import re
 import unicodedata
 from app.utils.http_client import http_post
@@ -279,6 +280,57 @@ class CompresionService:
             )
 
         return [deduped_by_item[item_num] for item_num in sorted(deduped_by_item)]
+
+    @classmethod
+    def _backfill_codigo_lem_from_recepcion(
+        cls,
+        db: Session,
+        numero_recepcion: str,
+        recepcion_id: Optional[int],
+        items_data: List[dict],
+    ) -> List[dict]:
+        """
+        Sanea el código de compresión usando la recepción como fuente de verdad.
+
+        Regla de negocio:
+        - si la compresión está vinculada a una recepción, cada item debe heredar
+          el `codigo_muestra_lem` oficial del item homólogo en recepción;
+        - si no existe vínculo o no hay match por item, se conserva el valor enviado.
+        """
+        if not items_data:
+            return items_data
+
+        query = db.query(RecepcionMuestra).options(selectinload(RecepcionMuestra.muestras))
+        recepcion = None
+
+        if recepcion_id is not None:
+            recepcion = query.filter(RecepcionMuestra.id == recepcion_id).first()
+        if recepcion is None and numero_recepcion:
+            variantes = cls._build_numero_variants(numero_recepcion)
+            recepcion = query.filter(RecepcionMuestra.numero_recepcion.in_(variantes)).first()
+
+        if not recepcion or not recepcion.muestras:
+            return items_data
+
+        codigo_por_item = {
+            int(m.item_numero): (m.codigo_muestra_lem or "").strip().upper()
+            for m in recepcion.muestras
+            if m.item_numero is not None and (m.codigo_muestra_lem or "").strip()
+        }
+
+        if not codigo_por_item:
+            return items_data
+
+        saneados: List[dict] = []
+        for item in items_data:
+            item_dict = dict(item)
+            item_num = cls._coerce_item_num(item_dict.get("item")) or cls._coerce_item_num(item_dict.get("item_numero"))
+            codigo_recepcion = codigo_por_item.get(item_num or -1)
+            if codigo_recepcion:
+                item_dict["codigo_lem"] = codigo_recepcion
+            saneados.append(item_dict)
+
+        return saneados
     
     @staticmethod
     def _calcular_estado(items_data) -> str:
@@ -333,6 +385,12 @@ class CompresionService:
                 self._raise_duplicate_error(ensayo_existente, numero_recepcion)
 
             sanitized_items = self._sanitize_items(ensayo_data.items)
+            sanitized_items = self._backfill_codigo_lem_from_recepcion(
+                db,
+                numero_recepcion=numero_recepcion,
+                recepcion_id=ensayo_data.recepcion_id,
+                items_data=sanitized_items,
+            )
             if not sanitized_items:
                 raise ValueError("Debe registrar al menos un item válido de ensayo")
 
@@ -459,21 +517,24 @@ class CompresionService:
             if ensayo_existente:
                 self._raise_duplicate_error(ensayo_existente, numero_recepcion_nuevo)
 
-        update_data = ensayo_data.dict(exclude_unset=True, exclude={'items'})
+        update_data = ensayo_data.dict(exclude_unset=True, exclude={"items"})
         for key, value in update_data.items():
             if value is not None:
                 setattr(ensayo, key, value)
-        
-        # Handle items update if provided
+
         if ensayo_data.items is not None:
             sanitized_items = self._sanitize_items(ensayo_data.items)
+            sanitized_items = self._backfill_codigo_lem_from_recepcion(
+                db,
+                numero_recepcion=numero_recepcion_nuevo,
+                recepcion_id=recepcion_id_nuevo,
+                items_data=sanitized_items,
+            )
             if not sanitized_items:
                 raise ValueError("Debe registrar al menos un item válido de ensayo")
 
-            # Delete existing items
             db.query(ItemCompresion).filter(ItemCompresion.ensayo_id == ensayo_id).delete()
-            
-            # Create new items
+
             for item_data in sanitized_items:
                 item_data = self._apply_item_date_defaults(item_data)
                 item = ItemCompresion(

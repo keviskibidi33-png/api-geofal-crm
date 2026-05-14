@@ -17,6 +17,8 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from app.database import Base
 from app.modules.compresion.router import buscar_recepcion as buscar_recepcion_compresion
+from app.modules.compresion.schemas import EnsayoCompresionCreate, EnsayoCompresionUpdate
+from app.modules.compresion.service import CompresionService
 from app.modules.recepcion.models import MuestraConcreto, RecepcionMuestra
 from app.modules.tracing.router import validar_estado
 
@@ -96,6 +98,79 @@ class TestCompresionCodigoLemEndpoints(unittest.TestCase):
         self.assertTrue(response["encontrado"])
         self.assertEqual(response["datos"]["muestras"][0]["codigo_lem"], "7507-CO-26")
         self.assertNotEqual(response["datos"]["muestras"][0]["codigo_lem"], "053")
+
+    def test_crear_ensayo_sanea_codigo_lem_desde_recepcion(self):
+        service = CompresionService()
+        ensayo = service.crear_ensayo(
+            self.db,
+            EnsayoCompresionCreate(
+                numero_ot="OT-1042-26",
+                numero_recepcion="1039-26",
+                recepcion_id=1,
+                items=[
+                    {
+                        "item": 1,
+                        "codigo_lem": "053",
+                        "carga_maxima": 242.21,
+                        "tipo_fractura": "2",
+                    },
+                    {
+                        "item": 2,
+                        "codigo_lem": "",
+                        "carga_maxima": 240.0,
+                        "tipo_fractura": "3",
+                    },
+                ],
+            ),
+        )
+
+        stored_codes = [item.codigo_lem for item in ensayo.items]
+        self.assertEqual(stored_codes, ["7507-CO-26", "7508-CO-26"])
+        self.assertNotIn("053", stored_codes)
+
+    def test_actualizar_ensayo_sanea_codigo_lem_desde_recepcion(self):
+        service = CompresionService()
+        ensayo = service.crear_ensayo(
+            self.db,
+            EnsayoCompresionCreate(
+                numero_ot="OT-1042-26",
+                numero_recepcion="1039-26",
+                recepcion_id=1,
+                items=[
+                    {
+                        "item": 1,
+                        "codigo_lem": "053",
+                        "carga_maxima": 242.21,
+                        "tipo_fractura": "2",
+                    }
+                ],
+            ),
+        )
+
+        updated = service.actualizar_ensayo(
+            self.db,
+            ensayo.id,
+            EnsayoCompresionUpdate(
+                items=[
+                    {
+                        "item": 1,
+                        "codigo_lem": "053",
+                        "carga_maxima": 250.0,
+                        "tipo_fractura": "1",
+                    },
+                    {
+                        "item": 2,
+                        "codigo_lem": "",
+                        "carga_maxima": 251.0,
+                        "tipo_fractura": "1",
+                    },
+                ]
+            ),
+        )
+
+        stored_codes = [item.codigo_lem for item in updated.items]
+        self.assertEqual(stored_codes, ["7507-CO-26", "7508-CO-26"])
+        self.assertNotIn("053", stored_codes)
 
 
 if __name__ == "__main__":
