@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import List, Optional
 from app.database import get_db_session
+from app.modules.common.recepcion_codes import resolve_codigo_muestra_lem
 from .schemas import (
     VerificacionMuestrasCreate, 
     VerificacionMuestrasResponse, 
@@ -117,7 +118,7 @@ async def buscar_recepcion(
             "muestras": [
                 {
                     "item_numero": m.item_numero,
-                    "codigo_lem": m.codigo_muestra_lem or m.codigo_muestra,
+                    "codigo_lem": resolve_codigo_muestra_lem(m),
                     "tipo_testigo": "6in x 12in", # Default value as MuestraConcreto has no specific type field
                 } 
                 for m in recepcion.muestras

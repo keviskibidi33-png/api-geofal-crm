@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db_session
+from app.modules.common.recepcion_codes import resolve_codigo_muestra_lem
 from app.utils.export_filename import build_formato_filename
 from .schemas import (
     EnsayoCompresionCreate, 
@@ -152,7 +153,7 @@ async def buscar_recepcion(
             "muestras": [
                 {
                     "item_numero": m.item_numero,
-                    "codigo_lem": m.codigo_muestra_lem or m.codigo_muestra
+                    "codigo_lem": resolve_codigo_muestra_lem(m)
                 }
                 for m in recepcion.muestras
             ]

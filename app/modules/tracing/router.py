@@ -9,6 +9,7 @@ from sqlalchemy import desc, text
 from sqlalchemy.orm import Session, load_only
 
 from app.database import get_db_session
+from app.modules.common.recepcion_codes import resolve_codigo_muestra_lem
 from app.modules.compresion.models import EnsayoCompresion
 from app.modules.recepcion.models import RecepcionMuestra
 from app.modules.verificacion.models import VerificacionMuestras
@@ -315,7 +316,7 @@ def validar_estado(numero_recepcion: str, db: Session = Depends(get_db_session))
                 muestras_data = [
                     {
                         "item_numero": m.item_numero,
-                        "codigo_lem": m.codigo_muestra_lem or m.codigo_muestra,
+                        "codigo_lem": resolve_codigo_muestra_lem(m),
                         "tipo_testigo": m.estructura,
                         "fecha_rotura": m.fecha_rotura,
                     }
