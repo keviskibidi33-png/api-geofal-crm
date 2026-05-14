@@ -156,8 +156,25 @@ def eliminar_verificacion(
     _perm: None = Depends(require_delete_permission),
 ):
     service = VerificacionService(db)
+    verificacion = service.obtener_verificacion(verificacion_id)
     if not service.eliminar_verificacion(verificacion_id):
         raise HTTPException(status_code=404, detail="Verificación no encontrada")
+    if verificacion is not None:
+        actor = resolve_actor_identity(db, request)
+        notify_laboratory_essay_event(
+            module_key="verificacion_muestras",
+            record_id=verificacion.id,
+            record_code=str(verificacion.numero_verificacion or "").strip(),
+            actor_name=actor["full_name"],
+            actor_user_id=actor["user_id"] or None,
+            actor_role=actor["role"] or None,
+            actor_avatar_url=actor.get("avatar_url") or None,
+            action="deleted",
+            extra_metadata={
+                "codigo_documento": verificacion.codigo_documento,
+                "detail_route": "verificacion_muestras",
+            },
+        )
     return {"message": "Verificación eliminada correctamente"}
 
 @router.put("/{verificacion_id}", response_model=VerificacionMuestrasResponse)

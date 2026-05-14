@@ -305,12 +305,30 @@ async def actualizar_ensayo(
 @router.delete("/{ensayo_id}")
 async def eliminar_ensayo(
     ensayo_id: int,
+    request: Request,
     db: Session = Depends(get_db_session)
 ):
     """Eliminar ensayo de compresión"""
+    ensayo = compresion_service.obtener_ensayo(db, ensayo_id)
     success = compresion_service.eliminar_ensayo(db, ensayo_id)
     if not success:
         raise HTTPException(status_code=404, detail="Ensayo no encontrado")
+    if request is not None and ensayo is not None:
+        actor = resolve_actor_identity(db, request)
+        notify_laboratory_essay_event(
+            module_key="compresion",
+            record_id=ensayo.id,
+            record_code=str(ensayo.numero_recepcion or "").strip(),
+            actor_name=actor["full_name"],
+            actor_user_id=actor["user_id"] or None,
+            actor_role=actor["role"] or None,
+            actor_avatar_url=actor.get("avatar_url") or None,
+            action="deleted",
+            extra_metadata={
+                "numero_ot": ensayo.numero_ot,
+                "detail_route": "compresion",
+            },
+        )
     return {"message": "Ensayo eliminado correctamente"}
 
 

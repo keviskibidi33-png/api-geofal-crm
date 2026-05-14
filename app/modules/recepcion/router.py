@@ -329,10 +329,28 @@ def generar_excel_recepcion(
 @router.delete("/{recepcion_id}")
 async def eliminar_recepcion(
     recepcion_id: int,
+    request: Request,
     db: Session = Depends(get_db_session)
 ):
     """Eliminar recepción"""
+    recepcion = recepcion_service.obtener_recepcion(db, recepcion_id)
     success = recepcion_service.eliminar_recepcion(db, recepcion_id)
     if not success:
         raise HTTPException(status_code=404, detail="Recepción no encontrada")
+    if request is not None and recepcion is not None:
+        actor = resolve_actor_identity(db, request)
+        notify_laboratory_essay_event(
+            module_key="recepcion",
+            record_id=recepcion.id,
+            record_code=str(recepcion.numero_recepcion or "").strip(),
+            actor_name=actor["full_name"],
+            actor_user_id=actor["user_id"] or None,
+            actor_role=actor["role"] or None,
+            actor_avatar_url=actor.get("avatar_url") or None,
+            action="deleted",
+            extra_metadata={
+                "numero_ot": recepcion.numero_ot,
+                "detail_route": "recepcion",
+            },
+        )
     return {"message": "Recepción eliminada correctamente"}

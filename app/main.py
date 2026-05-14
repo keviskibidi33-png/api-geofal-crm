@@ -1866,7 +1866,7 @@ def _fetch_laboratory_notifications(cur, role_id: str, limit: int = 12) -> list[
             updated_at,
             metadata
         FROM dashboard_notifications
-        WHERE type IN ('lab_essay_created', 'lab_essay_updated')
+        WHERE type IN ('lab_essay_created', 'lab_essay_updated', 'lab_essay_deleted')
           AND COALESCE(metadata->'audience_roles', '[]'::jsonb) ? %s
         ORDER BY last_detected_at DESC, created_at DESC
         LIMIT %s
@@ -2024,7 +2024,7 @@ def _can_acknowledge_notification(role: str, notification: dict[str, Any]) -> bo
         return notification_type == "quote_created" and "auxiliar_comercial" in audience_roles
 
     if normalized_role in {"jefe_laboratorio", "laboratorio_tipificador"}:
-        return notification_type in {"lab_essay_created", "lab_essay_updated"} and bool(
+        return notification_type in {"lab_essay_created", "lab_essay_updated", "lab_essay_deleted"} and bool(
             audience_roles.intersection({"jefe_laboratorio", "laboratorio_tipificador"})
         )
 

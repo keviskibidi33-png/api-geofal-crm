@@ -15,11 +15,24 @@ logger = logging.getLogger(__name__)
 
 LAB_LABORATORY_AUDIENCE_ROLES = ("jefe_laboratorio", "laboratorio_tipificador")
 LAB_LABORATORY_SOURCE_ROLES = ("laboratorio_lector", "oficina_tecnica", "tecnico", "tecnico_suelos")
+LAB_LABORATORY_ROLE_ALIASES = {
+    "tecnico_general": "tecnico",
+    "tecnico_no_lab_write": "tecnico",
+    "laboratorio_tipificador_no_lab_write": "laboratorio_lector",
+    "oficina_tecnica_humedad": "oficina_tecnica",
+    "oficina_tecnica_humedad_tipificador": "oficina_tecnica",
+    "oficina_tecnica_sup": "oficina_tecnica",
+}
 LAB_MODULE_LABELS = {
     "recepcion": "Recepción",
     "verificacion_muestras": "Verificación",
     "compresion": "Compresión",
 }
+
+
+def _normalize_laboratory_role(value: str | None) -> str:
+    normalized = str(value or "").strip().lower()
+    return LAB_LABORATORY_ROLE_ALIASES.get(normalized, normalized)
 
 _DASHBOARD_NOTIFICATION_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS dashboard_notifications (
@@ -234,12 +247,12 @@ def notify_laboratory_essay_event(
     action: str,
     extra_metadata: Mapping[str, Any] | None = None,
 ) -> None:
-    normalized_actor_role = str(actor_role or "").strip().lower()
+    normalized_actor_role = _normalize_laboratory_role(actor_role)
     if normalized_actor_role and normalized_actor_role not in LAB_LABORATORY_SOURCE_ROLES:
         return
 
     module_label = LAB_MODULE_LABELS.get(module_key, module_key.replace("_", " ").title())
-    normalized_action = "updated" if action == "updated" else "created"
+    normalized_action = action if action in {"created", "updated", "deleted"} else "created"
     record_code_clean = str(record_code or "").strip() or "Sin código"
     notification_type = f"lab_essay_{normalized_action}"
     notification_key = f"{notification_type}:{module_key}:{record_id}"
@@ -253,7 +266,7 @@ def notify_laboratory_essay_event(
         "action": normalized_action,
         "created_by": actor_name or "Usuario",
         "created_by_user_id": actor_user_id,
-        "created_by_role": actor_role,
+        "created_by_role": normalized_actor_role,
         "created_by_avatar_url": resolved_avatar_url,
         "audience_roles": list(LAB_LABORATORY_AUDIENCE_ROLES),
         "detail_module": module_key,
@@ -265,6 +278,8 @@ def notify_laboratory_essay_event(
     message = (
         f"{actor_name or 'Usuario'} actualizó {module_label} {record_code_clean}."
         if normalized_action == "updated"
+        else f"{actor_name or 'Usuario'} eliminó {module_label} {record_code_clean}."
+        if normalized_action == "deleted"
         else f"{actor_name or 'Usuario'} creó {module_label} {record_code_clean}."
     )
     title = f"{module_label} {record_code_clean}"
