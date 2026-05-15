@@ -290,9 +290,15 @@ async def download_quote(quote_id: str, background_tasks: BackgroundTasks):
                 # --- SMART RECONSTRUCTION ---
                 print(f"[SMART RECONSTRUCTION] Rebuilding missing Excel for COT-{row['numero']}-{row['year']}")
                 
-                try:
-                    items_data = json.loads(row['items_json']) if row.get('items_json') else []
-                except Exception:
+                items_val = row.get('items_json')
+                if isinstance(items_val, str):
+                    try:
+                        items_data = json.loads(items_val)
+                    except Exception:
+                        items_data = []
+                elif isinstance(items_val, list):
+                    items_data = items_val
+                else:
                     items_data = []
                 
                 from .schemas import QuoteItem
@@ -356,8 +362,10 @@ async def download_quote(quote_id: str, background_tasks: BackgroundTasks):
                 headers={"Content-Disposition": f'attachment; filename="{filepath.name}"'},
             )
     except Exception as e:
-        print(f"Error downloading or reconstructing quote {quote_id}: {e}")
-        raise HTTPException(status_code=500, detail="Error al descargar o reconstruir la cotización")
+        import traceback
+        err_msg = traceback.format_exc()
+        print(f"Error downloading or reconstructing quote {quote_id}:\n{err_msg}")
+        raise HTTPException(status_code=500, detail=f"Error al descargar o reconstruir: {str(e)}\n\n{err_msg}")
     finally:
         conn.close()
 
