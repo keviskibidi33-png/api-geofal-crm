@@ -346,7 +346,7 @@ async def download_quote(quote_id: str, background_tasks: BackgroundTasks):
                     include_igv=row['include_igv'] if row.get('include_igv') is not None else True,
                     igv_rate=igv_rate,
                     items=items,
-                    template_id=row['template_id'],
+                    template_id=str(row['template_id']) if row.get('template_id') else None,
                     user_id=str(row['user_created']) if row.get('user_created') else None,
                     proyecto_id=str(row['proyecto_id']) if row.get('proyecto_id') else None,
                     cliente_id=str(row['cliente_id']) if row.get('cliente_id') else None
