@@ -533,11 +533,11 @@ app.include_router(control_informes_router)
 # Note: All legacy endpoints for Quotes and Programacion have been moved to their respective modules.
 # Check app/modules/cotizacion and app/modules/programacion.
  
-from fastapi import BackgroundTasks
-@app.get("/by-token/test-reconstruct/{quote_id}")
-async def test_reconstruct(quote_id: str, background_tasks: BackgroundTasks):
-    from app.modules.cotizacion.router import download_quote
-    return await download_quote(quote_id, background_tasks)
+
+
+
+
+
 
  
  
