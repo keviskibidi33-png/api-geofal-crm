@@ -272,6 +272,10 @@ async def list_quotes(year: int = None, limit: int = 50):
                 })
     return {"quotes": quotes, "total": len(quotes)}
 
+@router.get("/quotes/test-reconstruct/{quote_id}")
+async def test_reconstruct(quote_id: str, background_tasks: BackgroundTasks):
+    return await download_quote(quote_id, background_tasks)
+
 @router.get("/quotes/{quote_id}/download")
 async def download_quote(quote_id: str, background_tasks: BackgroundTasks):
     if not _has_database_url():
