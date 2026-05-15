@@ -330,7 +330,7 @@ async def download_quote(quote_id: str, background_tasks: BackgroundTasks):
                     plazo_dias=row['plazo_dias'],
                     condicion_pago=row['condicion_pago'],
                     condiciones_ids=row['condiciones_ids'] or [],
-                    include_igv=row['include_igv'],
+                    include_igv=row['include_igv'] if row.get('include_igv') is not None else True,
                     igv_rate=igv_rate,
                     items=items,
                     template_id=row['template_id'],
