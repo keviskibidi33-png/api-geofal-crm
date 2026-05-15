@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
-from sqlalchemy import desc, text
+from sqlalchemy import desc, func, Integer, text
 from sqlalchemy.orm import Session, load_only
 
 from app.database import get_db_session
@@ -379,10 +379,16 @@ def listar_seguimiento(db: Session = Depends(get_db_session), skip: int = 0, lim
     if has_fecha_entrega:
         cols.append(Trazabilidad.fecha_entrega)
 
+    # Extraer prefijo numérico de numero_recepcion para ordenar como en verificación
+    numeric_prefix = func.cast(
+        func.nullif(func.split_part(Trazabilidad.numero_recepcion, '-', 1), ''),
+        Integer
+    )
+
     trazas = (
         db.query(Trazabilidad)
         .options(load_only(*cols))
-        .order_by(desc(Trazabilidad.fecha_creacion))
+        .order_by(desc(numeric_prefix), desc(Trazabilidad.numero_recepcion))
         .offset(skip)
         .limit(limit)
         .all()
