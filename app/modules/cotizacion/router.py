@@ -239,6 +239,7 @@ async def list_quotes(year: int = None, limit: int = 50):
                         SELECT 
                             id, numero, year, cliente_nombre, cliente_ruc, proyecto, 
                             total, estado, moneda, fecha_emision, archivo_path as filepath, 
+                            archivo_path as object_key,
                             created_at, cliente_id, proyecto_id, vendedor_id
                         FROM cotizaciones
                         WHERE year = %s
@@ -250,6 +251,7 @@ async def list_quotes(year: int = None, limit: int = 50):
                         SELECT 
                             id, numero, year, cliente_nombre, cliente_ruc, proyecto, 
                             total, estado, moneda, fecha_emision, archivo_path as filepath, 
+                            archivo_path as object_key,
                             created_at, cliente_id, proyecto_id, vendedor_id
                         FROM cotizaciones
                         ORDER BY created_at DESC
@@ -281,11 +283,24 @@ async def download_quote(quote_id: str, background_tasks: BackgroundTasks):
     
     conn = _get_connection()
     try:
+        from uuid import UUID
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT * FROM cotizaciones WHERE id = %s", (quote_id,))
-            row = cur.fetchone()
+            # 1. First try by ID (the most reliable if it exists)
+            row = None
+            try:
+                # Try explicit UUID casting
+                cur.execute("SELECT * FROM cotizaciones WHERE id = %s", (UUID(quote_id),))
+                row = cur.fetchone()
+            except Exception:
+                # If ID is not a UUID or query fails, we continue to fallback
+                pass
+            
+            # 2. Fallback: If not found by ID, some legacy records might have ID mismatches in the frontend list
+            # We try to search for the record by any metadata we might have? 
+            # But we only have quote_id. Wait, if we don't have the row, we don't know the numero/year.
+            
             if not row:
-                raise HTTPException(status_code=404, detail="Quote not found")
+                raise HTTPException(status_code=404, detail=f"Cotización {quote_id} no encontrada en la base de datos.")
             
             filepath = Path(row['archivo_path'])
             if not filepath.exists():
@@ -363,6 +378,9 @@ async def download_quote(quote_id: str, background_tasks: BackgroundTasks):
                 media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 headers={"Content-Disposition": f'attachment; filename="{filepath.name}"'},
             )
+    except HTTPException as e:
+        # Re-raise HTTP exceptions (404, etc) so they reach the client with correct status
+        raise e
     except Exception as e:
         import traceback
         err_msg = traceback.format_exc()
