@@ -14,7 +14,7 @@ from app.database import engine
 logger = logging.getLogger(__name__)
 
 LAB_LABORATORY_AUDIENCE_ROLES = ("jefe_laboratorio", "laboratorio_tipificador")
-LAB_LABORATORY_SOURCE_ROLES = ("laboratorio_lector", "oficina_tecnica", "tecnico", "tecnico_suelos")
+LAB_LABORATORY_SOURCE_ROLES = ("laboratorio_lector", "oficina_tecnica", "tecnico", "tecnico_suelos", "laboratorio", "laboratorio_tipificador")
 LAB_LABORATORY_ROLE_ALIASES = {
     "tecnico_general": "tecnico",
     "tecnico_no_lab_write": "tecnico",
