@@ -2833,9 +2833,4 @@ if __name__ == "__main__":
 
     uvicorn.run(app, host="0.0.0.0", port=8000)
 
-from fastapi import BackgroundTasks
-@app.get('/by-token/test-reconstruct/{quote_id}')
-async def test_reconstruct(quote_id: str, background_tasks: BackgroundTasks):
-    from app.modules.cotizacion.router import download_quote
-    return await download_quote(quote_id, background_tasks)
 
