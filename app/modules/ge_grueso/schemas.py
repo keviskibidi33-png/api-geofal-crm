@@ -245,14 +245,12 @@ class GeGruesoRequest(BaseModel):
             setattr(self, field_name, _coerce_float(getattr(self, field_name)))
 
         if self.fr1_masa_total_g is None:
-            candidates = [self.fr1_a_g, self.fr1_b_g, self.fr1_c_g, self.fr1_d_g]
-            if any(v is not None for v in candidates):
-                self.fr1_masa_total_g = sum(v or 0.0 for v in candidates)
+            if self.fr1_d_g is not None:
+                self.fr1_masa_total_g = self.fr1_d_g
 
         if self.fr2_masa_total_g is None:
-            candidates = [self.fr2_a_g, self.fr2_b_g, self.fr2_c_g, self.fr2_d_g]
-            if any(v is not None for v in candidates):
-                self.fr2_masa_total_g = sum(v or 0.0 for v in candidates)
+            if self.fr2_d_g is not None:
+                self.fr2_masa_total_g = self.fr2_d_g
 
         self.fr1_masa_total_g = _round4(self.fr1_masa_total_g)
         self.fr2_masa_total_g = _round4(self.fr2_masa_total_g)
