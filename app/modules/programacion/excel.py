@@ -52,6 +52,20 @@ def _format_currency_display(value: Any) -> str:
     return f"S/. {numeric:,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
 
 
+def _parse_currency_number(value: Any) -> float | None:
+    """Extract raw numeric value from currency strings for Excel number cells."""
+    if value is None or value == "":
+        return None
+    try:
+        return round(float(value), 2)
+    except (TypeError, ValueError):
+        cleaned = str(value).replace("S/.", "").replace("S/", "").replace(",", "").strip()
+        try:
+            return round(float(cleaned), 2)
+        except (TypeError, ValueError):
+            return None
+
+
 def _find_contiguous_data_end_row(sheet_data: etree._Element, start_row: int, ns: str) -> int:
     """Find the last row in the contiguous data block that starts at `start_row`."""
     row_numbers = sorted(
@@ -497,7 +511,8 @@ def export_programacion_comercial_xlsx(template_path: str, items: list[dict]) ->
             # E: COTIZACION
             _set_cell_value(sheet_data, f'E{row}', item.get('cotizacion_lab', ''), ns, get_string_idx=string_idx_getter)
             # F: COSTO DEL SERVICIO
-            _set_cell_value(sheet_data, f'F{row}', _format_currency_display(item.get('costo_servicio', '')), ns, get_string_idx=string_idx_getter)
+            costo_val = _parse_currency_number(item.get('costo_servicio', ''))
+            _set_cell_value(sheet_data, f'F{row}', costo_val, ns, is_number=True)
             # G: FECHA SOLICITUD
             _set_cell_value(sheet_data, f'G{row}', item.get('fecha_solicitud_com', ''), ns, get_string_idx=string_idx_getter)
             # H: FECHA ENTREGA
@@ -645,7 +660,8 @@ def export_programacion_administracion_xlsx(template_path: str, items: list[dict
                     raw_cost = item.get("costo_servicio")
                     if raw_cost is None or raw_cost == "":
                         raw_cost = item.get("precio_servicio", "")
-                    value = _format_currency_display(raw_cost)
+                    value = _parse_currency_number(raw_cost)
+                    is_number = True
                 else:
                     value = item.get(field_name, "")
 
