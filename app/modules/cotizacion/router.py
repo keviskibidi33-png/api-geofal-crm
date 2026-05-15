@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Response, UploadFile, File, Query
+from fastapi import APIRouter, HTTPException, Response, UploadFile, File, Query, BackgroundTasks
 from psycopg2.extras import RealDictCursor
 from datetime import date
 from typing import List, Optional
@@ -273,21 +273,79 @@ async def list_quotes(year: int = None, limit: int = 50):
     return {"quotes": quotes, "total": len(quotes)}
 
 @router.get("/quotes/{quote_id}/download")
-async def download_quote(quote_id: str):
+async def download_quote(quote_id: str, background_tasks: BackgroundTasks):
     if not _has_database_url():
         raise HTTPException(status_code=400, detail="Database not configured")
     
     conn = _get_connection()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT archivo_path FROM cotizaciones WHERE id = %s", (quote_id,))
+            cur.execute("SELECT * FROM cotizaciones WHERE id = %s", (quote_id,))
             row = cur.fetchone()
             if not row:
                 raise HTTPException(status_code=404, detail="Quote not found")
             
             filepath = Path(row['archivo_path'])
             if not filepath.exists():
-                raise HTTPException(status_code=404, detail="File not found")
+                # --- SMART RECONSTRUCTION ---
+                print(f"[SMART RECONSTRUCTION] Rebuilding missing Excel for COT-{row['numero']}-{row['year']}")
+                
+                try:
+                    items_data = json.loads(row['items_json']) if row.get('items_json') else []
+                except Exception:
+                    items_data = []
+                
+                from .schemas import QuoteItem
+                items = [QuoteItem(**item) for item in items_data]
+                
+                # Calculate IGV rate safely
+                subtotal = float(row['subtotal']) if row.get('subtotal') else 0.0
+                igv = float(row['igv']) if row.get('igv') else 0.0
+                igv_rate = igv / subtotal if subtotal > 0 else 0.18
+                
+                payload = QuoteExportRequest(
+                    cotizacion_numero=row['numero'],
+                    fecha_emision=row['fecha_emision'],
+                    fecha_solicitud=row['fecha_solicitud'],
+                    cliente=row['cliente_nombre'],
+                    ruc=row['cliente_ruc'],
+                    contacto=row['cliente_contacto'],
+                    telefono_contacto=row['cliente_telefono'],
+                    correo=row['cliente_email'],
+                    proyecto=row['proyecto'],
+                    ubicacion=row['ubicacion'],
+                    personal_comercial=row['personal_comercial'],
+                    telefono_comercial=row['telefono_comercial'],
+                    correo_vendedor=row['correo_vendedor'],
+                    plazo_dias=row['plazo_dias'],
+                    condicion_pago=row['condicion_pago'],
+                    condiciones_ids=row['condiciones_ids'] or [],
+                    include_igv=row['include_igv'],
+                    igv_rate=igv_rate,
+                    items=items,
+                    template_id=row['template_id'],
+                    user_id=row['user_created'],
+                    proyecto_id=row['proyecto_id'],
+                    cliente_id=row['cliente_id']
+                )
+                
+                # Generate Excel
+                xlsx_bytes = generate_quote_excel(payload)
+                
+                # Save locally
+                safe_cliente = _get_safe_filename(payload.cliente, "")
+                filepath = _save_quote_to_folder(xlsx_bytes, row['numero'], row['year'], safe_cliente)
+                
+                # Update DB with new filepath
+                cur.execute("UPDATE cotizaciones SET archivo_path = %s WHERE id = %s", (str(filepath), quote_id))
+                conn.commit()
+                
+                # Upload to Supabase as background task
+                cloud_path = f"{row['year']}/COT-{row['year']}-{row['numero']}-{safe_cliente}.xlsx"
+                # We need a new bytesio object since the other one was read or might be closed
+                import io
+                cloud_bytes = io.BytesIO(xlsx_bytes.getvalue())
+                background_tasks.add_task(_upload_to_supabase_storage, cloud_bytes, "cotizaciones", cloud_path)
             
             with open(filepath, 'rb') as f:
                 content = f.read()
@@ -297,6 +355,9 @@ async def download_quote(quote_id: str):
                 media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 headers={"Content-Disposition": f'attachment; filename="{filepath.name}"'},
             )
+    except Exception as e:
+        print(f"Error downloading or reconstructing quote {quote_id}: {e}")
+        raise HTTPException(status_code=500, detail="Error al descargar o reconstruir la cotización")
     finally:
         conn.close()
 
