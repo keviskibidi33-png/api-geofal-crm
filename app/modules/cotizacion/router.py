@@ -342,14 +342,14 @@ async def download_quote(quote_id: str, background_tasks: BackgroundTasks):
                     correo_vendedor=row['correo_vendedor'],
                     plazo_dias=row['plazo_dias'],
                     condicion_pago=row['condicion_pago'],
-                    condiciones_ids=row['condiciones_ids'] or [],
+                    condiciones_ids=[str(cid) for cid in row['condiciones_ids']] if row.get('condiciones_ids') else [],
                     include_igv=row['include_igv'] if row.get('include_igv') is not None else True,
                     igv_rate=igv_rate,
                     items=items,
                     template_id=row['template_id'],
-                    user_id=row['user_created'],
-                    proyecto_id=row['proyecto_id'],
-                    cliente_id=row['cliente_id']
+                    user_id=str(row['user_created']) if row.get('user_created') else None,
+                    proyecto_id=str(row['proyecto_id']) if row.get('proyecto_id') else None,
+                    cliente_id=str(row['cliente_id']) if row.get('cliente_id') else None
                 )
                 
                 # Generate Excel
