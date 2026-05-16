@@ -1,26 +1,49 @@
 -- 035_sanitize_programacion_item_numero.sql
--- One-time cleanup: renumber programacion_lab.item_numero sequentially
--- preserving the historical correlativa order (starting at 209) and then
+-- One-time cleanup: only renumber duplicated programacion_lab.item_numero
+-- values while preserving valid existing correlatives such as ITEM 22, then
 -- enforce uniqueness at the database level.
 
 BEGIN;
 
 DROP TRIGGER IF EXISTS trg_programacion_lab_item_numero ON public.programacion_lab;
 
-WITH ordered_rows AS (
+WITH duplicate_groups AS (
+    SELECT item_numero
+    FROM public.programacion_lab
+    WHERE item_numero IS NOT NULL
+    GROUP BY item_numero
+    HAVING COUNT(*) > 1
+),
+duplicate_rows AS (
     SELECT
         l.id,
-        208 + ROW_NUMBER() OVER (
-            ORDER BY COALESCE(l.item_numero, 999999999) ASC,
-                     COALESCE(l.created_at, 'epoch'::timestamptz) ASC,
-                     l.id ASC
-        ) AS new_item_numero
+        l.item_numero,
+        ROW_NUMBER() OVER (
+            PARTITION BY l.item_numero
+            ORDER BY COALESCE(l.created_at, 'epoch'::timestamptz) ASC, l.id ASC
+        ) AS rn
     FROM public.programacion_lab l
+    INNER JOIN duplicate_groups d
+        ON d.item_numero = l.item_numero
+),
+max_current AS (
+    SELECT COALESCE(MAX(item_numero), 0) AS current_max
+    FROM public.programacion_lab
+),
+reassigned AS (
+    SELECT
+        dr.id,
+        mc.current_max + ROW_NUMBER() OVER (
+            ORDER BY dr.item_numero ASC, dr.rn ASC, dr.id ASC
+        ) AS new_item_numero
+    FROM duplicate_rows dr
+    CROSS JOIN max_current mc
+    WHERE dr.rn > 1
 )
 UPDATE public.programacion_lab l
-SET item_numero = ordered_rows.new_item_numero
-FROM ordered_rows
-WHERE l.id = ordered_rows.id;
+SET item_numero = reassigned.new_item_numero
+FROM reassigned
+WHERE l.id = reassigned.id;
 
 DO $$
 BEGIN
