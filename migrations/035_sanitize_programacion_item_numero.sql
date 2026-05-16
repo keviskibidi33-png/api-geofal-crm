@@ -1,6 +1,7 @@
 -- 035_sanitize_programacion_item_numero.sql
--- One-time cleanup: renumber programacion_lab.item_numero sequentially and
--- then enforce uniqueness at the database level.
+-- One-time cleanup: renumber programacion_lab.item_numero sequentially
+-- preserving the historical correlativa order (starting at 209) and then
+-- enforce uniqueness at the database level.
 
 BEGIN;
 
@@ -9,8 +10,10 @@ DROP TRIGGER IF EXISTS trg_programacion_lab_item_numero ON public.programacion_l
 WITH ordered_rows AS (
     SELECT
         l.id,
-        ROW_NUMBER() OVER (
-            ORDER BY COALESCE(l.created_at, 'epoch'::timestamptz) ASC, l.id ASC
+        208 + ROW_NUMBER() OVER (
+            ORDER BY COALESCE(l.item_numero, 999999999) ASC,
+                     COALESCE(l.created_at, 'epoch'::timestamptz) ASC,
+                     l.id ASC
         ) AS new_item_numero
     FROM public.programacion_lab l
 )
