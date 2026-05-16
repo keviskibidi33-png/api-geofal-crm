@@ -5,6 +5,8 @@
 
 BEGIN;
 
+LOCK TABLE public.programacion_lab IN ACCESS EXCLUSIVE MODE;
+
 DROP TRIGGER IF EXISTS trg_programacion_lab_item_numero ON public.programacion_lab;
 
 ALTER TABLE public.programacion_lab
@@ -12,8 +14,18 @@ ALTER TABLE public.programacion_lab
 
 -- Pass 1: move all current values into a safe temporary range to avoid any
 -- collisions while the table is being rewritten.
-UPDATE public.programacion_lab
-SET item_numero = COALESCE(item_numero, 0) + 1000000;
+WITH temp_rows AS (
+    SELECT
+        l.id,
+        1000000 + ROW_NUMBER() OVER (
+            ORDER BY COALESCE(l.created_at, 'epoch'::timestamptz) ASC, l.id ASC
+        ) AS temp_item_numero
+    FROM public.programacion_lab l
+)
+UPDATE public.programacion_lab l
+SET item_numero = temp_rows.temp_item_numero
+FROM temp_rows
+WHERE l.id = temp_rows.id;
 
 WITH ordered_rows AS (
     SELECT
