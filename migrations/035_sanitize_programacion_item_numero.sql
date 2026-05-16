@@ -4,6 +4,8 @@
 
 BEGIN;
 
+DROP TRIGGER IF EXISTS trg_programacion_lab_item_numero ON public.programacion_lab;
+
 WITH ordered_rows AS (
     SELECT
         l.id,
@@ -32,6 +34,11 @@ BEGIN
             ADD CONSTRAINT uq_programacion_lab_item_numero UNIQUE (item_numero);
     END IF;
 END $$;
+
+CREATE TRIGGER trg_programacion_lab_item_numero
+BEFORE INSERT OR UPDATE OF item_numero ON public.programacion_lab
+FOR EACH ROW
+EXECUTE FUNCTION public.ensure_programacion_lab_item_numero();
 
 DO $$
 DECLARE
