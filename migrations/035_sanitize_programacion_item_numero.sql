@@ -1,11 +1,19 @@
 -- 035_sanitize_programacion_item_numero.sql
 -- One-time cleanup: renumber the full programacion_lab.item_numero sequence
--- starting at 209, preserving the current relative order, then enforce
--- uniqueness at the database level.
+-- starting at 209, preserving the current relative order, and do it in two
+-- passes so UNIQUE creation never collides with existing values.
 
 BEGIN;
 
 DROP TRIGGER IF EXISTS trg_programacion_lab_item_numero ON public.programacion_lab;
+
+ALTER TABLE public.programacion_lab
+    DROP CONSTRAINT IF EXISTS uq_programacion_lab_item_numero;
+
+-- Pass 1: move all current values into a safe temporary range to avoid any
+-- collisions while the table is being rewritten.
+UPDATE public.programacion_lab
+SET item_numero = COALESCE(item_numero, 0) + 1000000;
 
 WITH ordered_rows AS (
     SELECT
