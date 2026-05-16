@@ -4,34 +4,31 @@
 
 BEGIN;
 
-WITH duplicate_rows AS (
-    SELECT
-        id,
-        item_numero,
-        ROW_NUMBER() OVER (
-            PARTITION BY item_numero
-            ORDER BY created_at ASC NULLS LAST, id ASC
-        ) AS rn
+WITH duplicate_keys AS (
+    SELECT item_numero
     FROM public.programacion_lab
+    WHERE item_numero IS NOT NULL
+    GROUP BY item_numero
+    HAVING COUNT(*) > 1
 ),
-to_fix AS (
+rows_to_renumber AS (
     SELECT
         l.id,
         ROW_NUMBER() OVER (
-            ORDER BY l.created_at ASC NULLS LAST, l.id ASC
+            ORDER BY COALESCE(l.created_at, 'epoch'::timestamptz) ASC, l.id ASC
         ) AS new_seq
     FROM public.programacion_lab l
-    JOIN duplicate_rows d ON d.id = l.id
-    WHERE d.rn > 1 OR l.item_numero IS NULL
+    WHERE l.item_numero IS NULL
+       OR l.item_numero IN (SELECT dk.item_numero FROM duplicate_keys dk)
 ),
 current_max AS (
     SELECT COALESCE(MAX(item_numero), 0) AS max_item
     FROM public.programacion_lab
 )
 UPDATE public.programacion_lab l
-SET item_numero = current_max.max_item + to_fix.new_seq
-FROM to_fix, current_max
-WHERE l.id = to_fix.id;
+SET item_numero = current_max.max_item + rows_to_renumber.new_seq
+FROM rows_to_renumber, current_max
+WHERE l.id = rows_to_renumber.id;
 
 DO $$
 BEGIN
