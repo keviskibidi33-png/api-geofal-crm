@@ -160,6 +160,31 @@ def _fill_sheet(sheet_xml: bytes, data: TamizRequest) -> bytes:
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
+def _fill_datos_ens_sheet(sheet_xml: bytes, data: TamizRequest) -> bytes:
+    root = etree.fromstring(sheet_xml)
+    sd = root.find(f".//{{{NS_SHEET}}}sheetData")
+    if sd is None:
+        return sheet_xml
+
+    _set_cell(sd, "H6", data.realizado_por)
+
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
+def _fill_incertidumbre_sheet(sheet_xml: bytes, data: TamizRequest) -> bytes:
+    root = etree.fromstring(sheet_xml)
+    sd = root.find(f".//{{{NS_SHEET}}}sheetData")
+    if sd is None:
+        return sheet_xml
+
+    _set_cell(sd, "B58", data.revisado_por)
+    _set_cell(sd, "B60", data.revisado_fecha)
+    _set_cell(sd, "G58", data.aprobado_por)
+    _set_cell(sd, "G60", data.aprobado_fecha)
+
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
 def _fill_drawing(drawing_xml: bytes, data: TamizRequest) -> bytes:
     return fill_standard_footer_shapes(
         drawing_xml,
@@ -182,12 +207,25 @@ def generate_tamiz_excel(data: TamizRequest) -> bytes:
 
     output = io.BytesIO()
     with zipfile.ZipFile(io.BytesIO(template_bytes), "r") as zin, zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zout:
-        sheet_original = zin.read("xl/worksheets/sheet1.xml")
+        sheet_original = zin.read("xl/worksheets/sheet8.xml")
         sheet_xml = _fill_sheet(sheet_original, data)
 
+        datos_ensayo_original = zin.read("xl/worksheets/sheet10.xml")
+        datos_ensayo_xml = _fill_datos_ens_sheet(datos_ensayo_original, data)
+
+        incertidumbre_original = zin.read("xl/worksheets/sheet11.xml")
+        incertidumbre_xml = _fill_incertidumbre_sheet(incertidumbre_original, data)
+
         for item in zin.infolist():
-            if item.filename == "xl/worksheets/sheet1.xml":
+            if item.filename == "xl/calcChain.xml":
+                continue
+
+            if item.filename == "xl/worksheets/sheet8.xml":
                 raw = sheet_xml
+            elif item.filename == "xl/worksheets/sheet10.xml":
+                raw = datos_ensayo_xml
+            elif item.filename == "xl/worksheets/sheet11.xml":
+                raw = incertidumbre_xml
             else:
                 raw = zin.read(item.filename)
 

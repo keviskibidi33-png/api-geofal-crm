@@ -185,6 +185,29 @@ def _fill_sheet(sheet_xml: bytes, data: GeGruesoRequest) -> bytes:
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
+def _fill_datos_sheet(sheet_xml: bytes, data: GeGruesoRequest) -> bytes:
+    root = etree.fromstring(sheet_xml)
+    sd = root.find(f".//{{{NS_SHEET}}}sheetData")
+    if sd is None:
+        return sheet_xml
+
+    _set_cell(sd, "K9", data.realizado_por)
+
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
+def _fill_incertidumbre_sheet(sheet_xml: bytes, data: GeGruesoRequest) -> bytes:
+    root = etree.fromstring(sheet_xml)
+    sd = root.find(f".//{{{NS_SHEET}}}sheetData")
+    if sd is None:
+        return sheet_xml
+
+    _set_cell(sd, "B8", data.revisado_por)
+    _set_cell(sd, "B9", data.aprobado_por)
+
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
 def _fill_drawing(drawing_xml: bytes, data: GeGruesoRequest) -> bytes:
     return fill_standard_footer_shapes(
         drawing_xml,
@@ -210,9 +233,22 @@ def generate_ge_grueso_excel(data: GeGruesoRequest) -> bytes:
         sheet_original = zin.read("xl/worksheets/sheet1.xml")
         sheet_xml = _fill_sheet(sheet_original, data)
 
+        datos_original = zin.read("xl/worksheets/sheet3.xml")
+        datos_xml = _fill_datos_sheet(datos_original, data)
+
+        incertidumbre_original = zin.read("xl/worksheets/sheet4.xml")
+        incertidumbre_xml = _fill_incertidumbre_sheet(incertidumbre_original, data)
+
         for item in zin.infolist():
+            if item.filename == "xl/calcChain.xml":
+                continue
+
             if item.filename == "xl/worksheets/sheet1.xml":
                 raw = sheet_xml
+            elif item.filename == "xl/worksheets/sheet3.xml":
+                raw = datos_xml
+            elif item.filename == "xl/worksheets/sheet4.xml":
+                raw = incertidumbre_xml
             else:
                 raw = zin.read(item.filename)
 
