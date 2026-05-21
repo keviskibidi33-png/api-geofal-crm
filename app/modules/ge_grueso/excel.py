@@ -165,10 +165,10 @@ def _fill_sheet(sheet_xml: bytes, data: GeGruesoRequest) -> bytes:
     _set_cell(sd, "O29", data.masa_fraccion_02_kg, is_number=True)
 
     # Reporte de datos 1° fracción
-    _set_cell(sd, "M34", data.fr1_a_g, is_number=True)
-    _set_cell(sd, "M35", data.fr1_b_g, is_number=True)
-    _set_cell(sd, "M36", data.fr1_c_g, is_number=True)
-    _set_cell(sd, "M37", data.fr1_d_g, is_number=True)
+    _set_cell(sd, "N34", data.fr1_a_g, is_number=True)
+    _set_cell(sd, "N35", data.fr1_b_g, is_number=True)
+    _set_cell(sd, "N36", data.fr1_c_g, is_number=True)
+    _set_cell(sd, "O37", data.fr1_d_g, is_number=True)
     _set_cell(sd, "O38", data.fr1_masa_total_g, is_number=True)
 
     # Reporte de datos 2° fracción
@@ -192,6 +192,22 @@ def _fill_datos_sheet(sheet_xml: bytes, data: GeGruesoRequest) -> bytes:
         return sheet_xml
 
     _set_cell(sd, "K9", data.realizado_por)
+
+    replacements = {
+        "+'FORMATO PEG'!M34": "+'FORMATO PEG'!N34",
+        "+'FORMATO PEG'!M35": "+'FORMATO PEG'!N35",
+        "+'FORMATO PEG'!M36": "+'FORMATO PEG'!N36",
+        "+'FORMATO PEG'!O38": "+'FORMATO PEG'!O37",
+    }
+
+    for formula in sd.findall(f".//{{{NS_SHEET}}}f"):
+        if formula.text is None:
+            continue
+        new_text = formula.text
+        for old, new in replacements.items():
+            if old in new_text:
+                new_text = new_text.replace(old, new)
+        formula.text = new_text
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
