@@ -15,6 +15,14 @@ from typing import Any
 
 from lxml import etree
 
+from app.modules.common.excel_xml import (
+    enable_full_recalc_on_open,
+    remove_calc_chain_content_type,
+    remove_calc_chain_relationships,
+    remove_external_link_content_types,
+    remove_external_link_relationships,
+    strip_external_references,
+)
 from app.utils.excel_footer import fill_standard_footer_shapes
 
 from .schemas import GeFinoRequest
@@ -227,6 +235,8 @@ def generate_ge_fino_excel(data: GeFinoRequest) -> bytes:
         for item in zin.infolist():
             if item.filename == "xl/calcChain.xml":
                 continue
+            if item.filename.startswith("xl/externalLinks/"):
+                continue
 
             if item.filename == "xl/worksheets/sheet1.xml":
                 raw = sheet_xml
@@ -239,6 +249,15 @@ def generate_ge_fino_excel(data: GeFinoRequest) -> bytes:
 
             if item.filename.startswith("xl/drawings/drawing") and item.filename.endswith(".xml"):
                 raw = _fill_drawing(raw, data)
+            elif item.filename == "xl/workbook.xml":
+                raw = enable_full_recalc_on_open(raw)
+                raw = strip_external_references(raw)
+            elif item.filename == "xl/_rels/workbook.xml.rels":
+                raw = remove_calc_chain_relationships(raw)
+                raw = remove_external_link_relationships(raw)
+            elif item.filename == "[Content_Types].xml":
+                raw = remove_calc_chain_content_type(raw)
+                raw = remove_external_link_content_types(raw)
 
             zout.writestr(item, raw)
 
