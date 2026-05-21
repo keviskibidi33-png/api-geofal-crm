@@ -2112,6 +2112,7 @@ async def get_roles():
                         "proyectos": {"read": True, "write": True, "delete": False},
                         "cotizadora": {"read": True, "write": True, "delete": False},
                         "programacion": {"read": True, "write": False, "delete": False},
+                        "laboratorio": {"read": True, "write": False, "delete": False},
                         "recepcion": {"read": False, "write": False, "delete": False},
                         "verificacion_muestras": {"read": False, "write": False, "delete": False},
                         "compresion": {"read": False, "write": False, "delete": False},
