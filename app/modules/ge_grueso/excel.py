@@ -10,12 +10,21 @@ from __future__ import annotations
 import io
 import logging
 import zipfile
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
 from lxml import etree
 
 from app.utils.excel_footer import fill_standard_footer_shapes
+from app.modules.common.excel_xml import (
+    enable_full_recalc_on_open,
+    remove_calc_chain_content_type,
+    remove_calc_chain_relationships,
+    remove_external_link_content_types,
+    remove_external_link_relationships,
+    strip_external_references,
+)
 
 from .schemas import GeGruesoRequest
 
@@ -127,6 +136,21 @@ def _si_no_text(value: str | None) -> str:
     return "    SI [ ]                NO [ ]"
 
 
+def _excel_date_serial(value: str | None) -> float | None:
+    text = (value or "").strip()
+    if not text:
+        return None
+
+    for fmt in ("%Y/%m/%d", "%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            parsed = datetime.strptime(text, fmt).date()
+            return float((parsed - date(1899, 12, 30)).days)
+        except ValueError:
+            continue
+
+    return None
+
+
 def _fill_sheet(sheet_xml: bytes, data: GeGruesoRequest) -> bytes:
     root = etree.fromstring(sheet_xml)
     sd = root.find(f".//{{{NS_SHEET}}}sheetData")
@@ -221,6 +245,31 @@ def _fill_incertidumbre_sheet(sheet_xml: bytes, data: GeGruesoRequest) -> bytes:
     _set_cell(sd, "B8", data.revisado_por)
     _set_cell(sd, "B9", data.aprobado_por)
 
+    # Footer visible en la hoja de incertidumbre
+    _set_cell(sd, "B93", data.revisado_por)
+    _set_cell(sd, "G93", data.aprobado_por)
+
+    revisado_serial = _excel_date_serial(data.revisado_fecha)
+    aprobado_serial = _excel_date_serial(data.aprobado_fecha)
+    if revisado_serial is not None:
+        _set_cell(sd, "B95", revisado_serial, is_number=True)
+    elif data.revisado_fecha:
+        _set_cell(sd, "B95", data.revisado_fecha)
+
+    if aprobado_serial is not None:
+        _set_cell(sd, "G95", aprobado_serial, is_number=True)
+    elif data.aprobado_fecha:
+        _set_cell(sd, "G95", data.aprobado_fecha)
+
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
+def _strip_sheet_protection(sheet_xml: bytes) -> bytes:
+    root = etree.fromstring(sheet_xml)
+    for protection in list(root.findall(f".//{{{NS_SHEET}}}sheetProtection")):
+        parent = protection.getparent()
+        if parent is not None:
+            parent.remove(protection)
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
@@ -249,6 +298,9 @@ def generate_ge_grueso_excel(data: GeGruesoRequest) -> bytes:
         sheet_original = zin.read("xl/worksheets/sheet1.xml")
         sheet_xml = _fill_sheet(sheet_original, data)
 
+        informe_original = zin.read("xl/worksheets/sheet2.xml")
+        informe_xml = _strip_sheet_protection(informe_original)
+
         datos_original = zin.read("xl/worksheets/sheet3.xml")
         datos_xml = _fill_datos_sheet(datos_original, data)
 
@@ -258,9 +310,13 @@ def generate_ge_grueso_excel(data: GeGruesoRequest) -> bytes:
         for item in zin.infolist():
             if item.filename == "xl/calcChain.xml":
                 continue
+            if item.filename.startswith("xl/externalLinks/"):
+                continue
 
             if item.filename == "xl/worksheets/sheet1.xml":
                 raw = sheet_xml
+            elif item.filename == "xl/worksheets/sheet2.xml":
+                raw = informe_xml
             elif item.filename == "xl/worksheets/sheet3.xml":
                 raw = datos_xml
             elif item.filename == "xl/worksheets/sheet4.xml":
@@ -270,6 +326,15 @@ def generate_ge_grueso_excel(data: GeGruesoRequest) -> bytes:
 
             if item.filename.startswith("xl/drawings/drawing") and item.filename.endswith(".xml"):
                 raw = _fill_drawing(raw, data)
+            elif item.filename == "xl/workbook.xml":
+                raw = enable_full_recalc_on_open(raw)
+                raw = strip_external_references(raw)
+            elif item.filename == "xl/_rels/workbook.xml.rels":
+                raw = remove_calc_chain_relationships(raw)
+                raw = remove_external_link_relationships(raw)
+            elif item.filename == "[Content_Types].xml":
+                raw = remove_calc_chain_content_type(raw)
+                raw = remove_external_link_content_types(raw)
 
             zout.writestr(item, raw)
 
