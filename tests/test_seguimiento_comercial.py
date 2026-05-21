@@ -18,8 +18,9 @@ if str(PROJECT_ROOT) not in sys.path:
 # Force SQLite in-memory database for testing to avoid connection errors with the external Postgres DB
 os.environ["QUOTES_DATABASE_URL"] = "sqlite:///:memory:"
 
+import app.database as app_database
+
 from app.database import Base, get_db_session
-from app.main import app
 from app.modules.seguimiento_cliente_comercial.models import SeguimientoClienteComercial
 from app.modules.seguimiento_cliente_comercial.service import SeguimientoClienteComercialService
 
@@ -32,6 +33,14 @@ test_engine = create_engine(
     poolclass=StaticPool
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
+
+# Patch the shared database module before importing the FastAPI app so that
+# app.main binds to the in-memory SQLite engine instead of the real Postgres
+# connection used in production.
+app_database.engine = test_engine
+app_database.SessionLocal = TestingSessionLocal
+
+from app.main import app
 
 class TestSeguimientoComercialEndpoints(unittest.TestCase):
     def setUp(self):
