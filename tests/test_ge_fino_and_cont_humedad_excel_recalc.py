@@ -87,6 +87,8 @@ class TestGeFinoAndContHumedadExcelRecalc(unittest.TestCase):
             aprobado_fecha="2026/05/09",
         )
 
+        assert payload.muestra == "147-AG-26"
+
         workbook = load_workbook(io.BytesIO(generate_ge_fino_excel(payload)), data_only=False)
 
         assert workbook["FORMATO"]["F11"].value == "D.I.C"
