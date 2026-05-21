@@ -23,18 +23,16 @@ DB_DATABASE = os.getenv('DB_DATABASE', 'directus')
 DATABASE_URL = os.getenv('QUOTES_DATABASE_URL') or \
     f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_DATABASE}"
 
-# Create engine with optimized pooling for concurrent loads
-# pool_size=20: Increases concurrent connections (default is 5)
-# max_overflow=10: Allows 10 more temporary connections during spikes
-# pool_recycle=3600: Recycles connections every hour to prevent stale connection errors
-engine = create_engine(
-    DATABASE_URL, 
-    pool_pre_ping=True,
-    pool_size=20,
-    max_overflow=10,
-    pool_recycle=3600,
-    connect_args={"connect_timeout": 3}
-)
+# Create engine with optimized pooling for concurrent loads (Postgres-only)
+engine_kwargs = {"pool_pre_ping": True}
+if not DATABASE_URL.startswith("sqlite"):
+    engine_kwargs.update({
+        "pool_size": 20,
+        "max_overflow": 10,
+        "pool_recycle": 3600,
+        "connect_args": {"connect_timeout": 3}
+    })
+engine = create_engine(DATABASE_URL, **engine_kwargs)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

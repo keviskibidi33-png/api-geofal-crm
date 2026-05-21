@@ -68,6 +68,7 @@ from app.modules.angularidad.router import router as angularidad_router
 from app.modules.ingenieria_archivos.router import router as ingenieria_archivos_router
 from app.modules.correlativos.router import router as correlativos_router
 from app.modules.control_informes.router import router as control_informes_router
+from app.modules.seguimiento_cliente_comercial.router import router as seguimiento_comercial_router
 from app.modules.recepcion.models import Base as RecepcionBase
 from app.modules.verificacion.models import Base as VerificacionBase
 from app.modules.tracing.models import Trazabilidad
@@ -109,6 +110,7 @@ from app.modules.control_informes.models import (
     ControlInforme,
     ControlInformeDetalle,
 )
+from app.modules.seguimiento_cliente_comercial.models import SeguimientoClienteComercial
 from app.database import engine
 from app.auth import JWTAuthMiddleware
 from app.utils.http_client import http_get, http_patch
@@ -529,6 +531,7 @@ app.include_router(angularidad_router)
 app.include_router(ingenieria_archivos_router)
 app.include_router(correlativos_router)
 app.include_router(control_informes_router)
+app.include_router(seguimiento_comercial_router)
 
 # Note: All legacy endpoints for Quotes and Programacion have been moved to their respective modules.
 # Check app/modules/cotizacion and app/modules/programacion.

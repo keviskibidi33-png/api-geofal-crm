@@ -1,0 +1,1 @@
+from app.modules.seguimiento_cliente_comercial.models import SeguimientoClienteComercial
