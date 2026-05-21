@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import io
 import os
+import unicodedata
 from datetime import date, datetime
 from typing import List, Tuple, Optional
 import openpyxl
+from openpyxl import Workbook
 from sqlalchemy import or_, and_, func
 from sqlalchemy.orm import Session
 
@@ -20,20 +22,114 @@ PREDEFINED_ESTADOS = [
     "SE SOLICITÓ INFORMACIÓN",
     "EN ESPERA DE INFORMACIÓN",
     "NO ENVIÓ LA INFORMACIÓN",
-    "DESCARTO El SERVICIO",
+    "DESCARTO EL SERVICIO",
     "COTIZACIÓN REALIZADA",
     "PROSPECTO",
     "CONTACTADO",
-    "INFORMACIÓN RECIBIDA",
-    "COTIZACIÓN EN PROCESO",
-    "COTIZACIÓN ENVIADA",
-    "1. SOLICITUD INFORMACION",
-    "2. PROCESANDO INFORMACION",
-    "3. COTIZACION",
-    "4. SEG. COTIZACION",
+]
+
+STATE_ALIASES = {
+    "1 SOLICITUD INFORMACION": "SE SOLICITÓ INFORMACIÓN",
+    "1. SOLICITUD INFORMACION": "SE SOLICITÓ INFORMACIÓN",
+    "SE SOLICITO INFORMACION": "SE SOLICITÓ INFORMACIÓN",
+    "2 PROCESANDO INFORMACION": "EN ESPERA DE INFORMACIÓN",
+    "2. PROCESANDO INFORMACION": "EN ESPERA DE INFORMACIÓN",
+    "INFORMACION RECIBIDA": "EN ESPERA DE INFORMACIÓN",
+    "3 COTIZACION": "COTIZACIÓN REALIZADA",
+    "3. COTIZACION": "COTIZACIÓN REALIZADA",
+    "4 SEG COTIZACION": "COTIZACIÓN REALIZADA",
+    "4. SEG. COTIZACION": "COTIZACIÓN REALIZADA",
+    "DESCARTO EL SERVICIO": "DESCARTO EL SERVICIO",
+    "DESCARTO EL SERVICIO ": "DESCARTO EL SERVICIO",
+}
+
+SEG_CLIENTE_HEADERS = [
+    "N°",
+    "FECHA CONTACTO",
+    "PERSONA CONTACTO",
+    "CELULAR",
+    "EMAIL",
+    "RAZÓN SOCIAL",
+    "RUC",
+    "ASESOR",
+    "CONTACTO",
+    "RUBRO",
+    "ESTADO CLIENTE",
+    "SERVICIO SOLICITADO",
+    "F. ÚLTIMO CONTACTO",
+    "OBSERVACIONES",
+    "N° COTIZACIÓN",
+    "ESTADO SEGUIMIENTO",
 ]
 
 class SeguimientoClienteComercialService:
+    @staticmethod
+    def _normalize_catalog_key(value: object) -> str:
+        raw_value = str(value or "").strip()
+        if not raw_value:
+            return ""
+        normalized = unicodedata.normalize("NFKD", raw_value)
+        ascii_value = normalized.encode("ascii", "ignore").decode("ascii")
+        return " ".join(ascii_value.upper().split())
+
+    @staticmethod
+    def _normalize_catalog_value(value: object, allowed_values: list[str], aliases: Optional[dict[str, str]] = None) -> Optional[str]:
+        raw_value = str(value or "").strip()
+        if not raw_value:
+            return None
+
+        normalized_key = SeguimientoClienteComercialService._normalize_catalog_key(raw_value)
+        if aliases:
+            alias_value = aliases.get(normalized_key)
+            if alias_value:
+                return alias_value
+
+        for allowed_value in allowed_values:
+            if SeguimientoClienteComercialService._normalize_catalog_key(allowed_value) == normalized_key:
+                return allowed_value
+
+        return raw_value
+
+    @staticmethod
+    def crear_plantilla_excel_defecto() -> io.BytesIO:
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "SEG.CLIENTE"
+
+        sheet.cell(row=1, column=1).value = "SEGUIMIENTO CLIENTE COMERCIAL"
+        sheet.cell(row=2, column=1).value = "Plantilla generada automáticamente"
+
+        for index, header in enumerate(SEG_CLIENTE_HEADERS, start=1):
+            sheet.cell(row=4, column=index).value = header
+
+        lista_sheet = workbook.create_sheet("LISTA")
+        lista_sheet.cell(row=1, column=1).value = "ASESORES"
+        lista_sheet.cell(row=1, column=2).value = "CONTACTOS"
+        lista_sheet.cell(row=1, column=3).value = "RUBROS"
+        lista_sheet.cell(row=1, column=4).value = "ESTADOS"
+
+        max_len = max(
+            len(PREDEFINED_ASESORES),
+            len(PREDEFINED_CONTACTOS),
+            len(PREDEFINED_RUBROS),
+            len(PREDEFINED_ESTADOS),
+        )
+
+        for row_index in range(max_len):
+            if row_index < len(PREDEFINED_ASESORES):
+                lista_sheet.cell(row=row_index + 2, column=1).value = PREDEFINED_ASESORES[row_index]
+            if row_index < len(PREDEFINED_CONTACTOS):
+                lista_sheet.cell(row=row_index + 2, column=2).value = PREDEFINED_CONTACTOS[row_index]
+            if row_index < len(PREDEFINED_RUBROS):
+                lista_sheet.cell(row=row_index + 2, column=3).value = PREDEFINED_RUBROS[row_index]
+            if row_index < len(PREDEFINED_ESTADOS):
+                lista_sheet.cell(row=row_index + 2, column=4).value = PREDEFINED_ESTADOS[row_index]
+
+        output = io.BytesIO()
+        workbook.save(output)
+        output.seek(0)
+        return output
+
     @staticmethod
     def listar_seguimientos(
         db: Session,
@@ -207,17 +303,23 @@ class SeguimientoClienteComercialService:
 
         # Merge utility helper
         def merge_catalogs(predefined: list, db_results: list) -> list[str]:
-            merged = set()
-            # Add predefined first
+            merged: list[str] = []
+            seen: set[str] = set()
+
+            def add_value(raw_value: object) -> None:
+                value = SeguimientoClienteComercialService._normalize_catalog_value(raw_value, predefined, STATE_ALIASES if predefined is PREDEFINED_ESTADOS else None)
+                if value and value not in seen:
+                    seen.add(value)
+                    merged.append(value)
+
             for item in predefined:
-                if item:
-                    merged.add(item.strip())
+                add_value(item)
+
             # Add database results
             for row in db_results:
-                val = row[0]
-                if val:
-                    merged.add(val.strip())
-            return sorted(list(merged))
+                add_value(row[0])
+
+            return merged
 
         return {
             "asesores": merge_catalogs(PREDEFINED_ASESORES, db_asesores),
@@ -255,6 +357,9 @@ class SeguimientoClienteComercialService:
             if isinstance(val, float) and val.is_integer():
                 return str(int(val))
             return val_str
+
+        def normalize_catalog(val: object, allowed_values: list[str], aliases: Optional[dict[str, str]] = None) -> Optional[str]:
+            return SeguimientoClienteComercialService._normalize_catalog_value(val, allowed_values, aliases)
             
         def to_int(val) -> Optional[int]:
             if val is None:
@@ -313,10 +418,10 @@ class SeguimientoClienteComercialService:
                 email=to_str(email_val),
                 razon_social=to_str(razon_social_val),
                 ruc=to_str(ruc_val),
-                asesor=to_str(asesor_val),
-                contacto=to_str(contacto_val),
-                rubro=to_str(rubro_val),
-                estado_cliente=to_str(estado_cliente_val),
+                asesor=normalize_catalog(asesor_val, PREDEFINED_ASESORES),
+                contacto=normalize_catalog(contacto_val, PREDEFINED_CONTACTOS),
+                rubro=normalize_catalog(rubro_val, PREDEFINED_RUBROS),
+                estado_cliente=normalize_catalog(estado_cliente_val, PREDEFINED_ESTADOS, STATE_ALIASES),
                 servicio_solicitado=to_str(servicio_val),
                 fecha_ultimo_contacto=to_date(fecha_ultimo_val),
                 observaciones=to_str(observaciones_val),
@@ -341,14 +446,15 @@ class SeguimientoClienteComercialService:
         and returns the result as a BytesIO file.
         """
         if not os.path.exists(template_path):
-            raise FileNotFoundError(f"El template del excel no existe en {template_path}")
+            workbook_io = SeguimientoClienteComercialService.crear_plantilla_excel_defecto()
+            workbook = openpyxl.load_workbook(workbook_io, data_only=False)
+        else:
+            workbook = openpyxl.load_workbook(template_path, data_only=False)
             
-        # Load template
-        wb = openpyxl.load_workbook(template_path, data_only=False)
-        if 'SEG.CLIENTE' not in wb.sheetnames:
+        if 'SEG.CLIENTE' not in workbook.sheetnames:
             raise ValueError("La hoja 'SEG.CLIENTE' no fue encontrada en el template de Excel.")
             
-        sheet = wb['SEG.CLIENTE']
+        sheet = workbook['SEG.CLIENTE']
         
         # Get all records sorted by 'no' ascending
         records = db.query(SeguimientoClienteComercial).order_by(
@@ -383,6 +489,6 @@ class SeguimientoClienteComercialService:
 
         # Save workbook to BytesIO
         output = io.BytesIO()
-        wb.save(output)
+        workbook.save(output)
         output.seek(0)
         return output

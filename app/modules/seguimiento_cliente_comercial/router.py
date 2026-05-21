@@ -26,7 +26,7 @@ TEMPLATE_PATH = os.path.abspath(
         "..",
         "..",
         "templates",
-        "Seguimiento cliente ACTUALIZADO.xlsx"
+        "template_Seguimiento cliente.xlsx"
     )
 )
 

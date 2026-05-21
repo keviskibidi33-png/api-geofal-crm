@@ -27,19 +27,19 @@ def main():
             "..",
             "..",
             "templates",
-            "Seguimiento cliente ACTUALIZADO.xlsx"
+            "template_Seguimiento cliente.xlsx"
         )
     )
     
     if not os.path.exists(template_path):
-        print(f"Error: El archivo plantilla no existe en: {template_path}")
-        sys.exit(1)
-        
-    print(f"Leyendo plantilla desde: {template_path}")
-    
-    # Read the file bytes
-    with open(template_path, "rb") as f:
-        file_content = f.read()
+        print(f"Advertencia: no se encontró la plantilla en {template_path}. Se generará una plantilla por defecto.")
+        file_content = SeguimientoClienteComercialService.crear_plantilla_excel_defecto().getvalue()
+    else:
+        print(f"Leyendo plantilla desde: {template_path}")
+
+        # Read the file bytes
+        with open(template_path, "rb") as f:
+            file_content = f.read()
         
     # 3. Perform import
     db = SessionLocal()

@@ -4,10 +4,12 @@ import os
 import sys
 import unittest
 from datetime import date
+from io import BytesIO
 from pathlib import Path
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from openpyxl import Workbook
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -19,6 +21,7 @@ os.environ["QUOTES_DATABASE_URL"] = "sqlite:///:memory:"
 from app.database import Base, get_db_session
 from app.main import app
 from app.modules.seguimiento_cliente_comercial.models import SeguimientoClienteComercial
+from app.modules.seguimiento_cliente_comercial.service import SeguimientoClienteComercialService
 
 from sqlalchemy.pool import StaticPool
 
@@ -63,7 +66,7 @@ class TestSeguimientoComercialEndpoints(unittest.TestCase):
             asesor="Silvia Peralta",
             contacto="WHATSAPP",
             rubro="LABORATORIO",
-            estado_cliente="1. SOLICITUD INFORMACION",
+            estado_cliente="SE SOLICITÓ INFORMACIÓN",
             servicio_solicitado="Ensayos de concreto",
             fecha_ultimo_contacto=date(2026, 5, 21),
             observaciones="Test observations",
@@ -122,7 +125,7 @@ class TestSeguimientoComercialEndpoints(unittest.TestCase):
             "asesor": "Juan Garcia",
             "contacto": "LLAMADA",
             "rubro": "INGENIERÍA",
-            "estado_cliente": "3. COTIZACION",
+            "estado_cliente": "COTIZACIÓN REALIZADA",
             "servicio_solicitado": "Ensayos de suelos",
             "observaciones": "New observations"
         }
@@ -138,15 +141,58 @@ class TestSeguimientoComercialEndpoints(unittest.TestCase):
 
     def test_patch_record(self):
         payload = {
-            "estado_cliente": "2. PROCESANDO INFORMACION",
+            "estado_cliente": "EN ESPERA DE INFORMACIÓN",
             "observaciones": "Patched observations"
         }
         headers = {"x-dev-user-id": "dev-user"}
         response = self.client.patch(f"/api/seguimiento-comercial/{self.test_record.id}", json=payload, headers=headers)
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertEqual(data["estado_cliente"], "2. PROCESANDO INFORMACION")
+        self.assertEqual(data["estado_cliente"], "EN ESPERA DE INFORMACIÓN")
         self.assertEqual(data["observaciones"], "Patched observations")
+
+    def test_import_normalizes_catalog_values(self):
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "SEG.CLIENTE"
+
+        headers = [
+            "N°", "FECHA CONTACTO", "PERSONA CONTACTO", "CELULAR", "EMAIL", "RAZÓN SOCIAL", "RUC",
+            "ASESOR", "CONTACTO", "RUBRO", "ESTADO CLIENTE", "SERVICIO SOLICITADO",
+            "F. ÚLTIMO CONTACTO", "OBSERVACIONES", "N° COTIZACIÓN", "ESTADO SEGUIMIENTO",
+        ]
+        for index, header in enumerate(headers, start=1):
+            sheet.cell(row=4, column=index).value = header
+
+        sheet.cell(row=5, column=1).value = 1
+        sheet.cell(row=5, column=2).value = "2026-05-21"
+        sheet.cell(row=5, column=3).value = "Import Contact"
+        sheet.cell(row=5, column=4).value = "999999999"
+        sheet.cell(row=5, column=5).value = "import@example.com"
+        sheet.cell(row=5, column=6).value = "Import Company S.A.C."
+        sheet.cell(row=5, column=7).value = "20111111111"
+        sheet.cell(row=5, column=8).value = "silvia peralta"
+        sheet.cell(row=5, column=9).value = "whatsapp"
+        sheet.cell(row=5, column=10).value = "ingenieria"
+        sheet.cell(row=5, column=11).value = "1. SOLICITUD INFORMACION"
+        sheet.cell(row=5, column=12).value = "Ensayos de concreto"
+        sheet.cell(row=5, column=13).value = "2026-05-22"
+        sheet.cell(row=5, column=14).value = "Observaciones importadas"
+        sheet.cell(row=5, column=15).value = "COT-999"
+        sheet.cell(row=5, column=16).value = "Enviado"
+
+        payload_buffer = BytesIO()
+        workbook.save(payload_buffer)
+
+        inserted = SeguimientoClienteComercialService.importar_excel(self.db, payload_buffer.getvalue(), creado_por="Test Import")
+        self.assertEqual(inserted, 1)
+
+        imported = self.db.query(SeguimientoClienteComercial).order_by(SeguimientoClienteComercial.id.desc()).first()
+        self.assertIsNotNone(imported)
+        self.assertEqual(imported.asesor, "Silvia Peralta")
+        self.assertEqual(imported.contacto, "WHATSAPP")
+        self.assertEqual(imported.rubro, "INGENIERÍA")
+        self.assertEqual(imported.estado_cliente, "SE SOLICITÓ INFORMACIÓN")
 
     def test_delete_record(self):
         headers = {"x-dev-user-id": "dev-user"}
