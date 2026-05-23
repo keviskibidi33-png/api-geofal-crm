@@ -422,10 +422,10 @@ class SeguimientoClienteComercialService:
         if estado_cliente:
             query = query.filter(SeguimientoClienteComercial.estado_cliente.ilike(estado_cliente.strip()))
             
-        # Order by: first by 'no' descending or 'id' descending to show newest first
+        # Order by: first by 'no' ascending or 'id' ascending to show oldest first
         query = query.order_by(
-            SeguimientoClienteComercial.no.desc().nullslast(),
-            SeguimientoClienteComercial.id.desc()
+            SeguimientoClienteComercial.no.asc().nullslast(),
+            SeguimientoClienteComercial.id.asc()
         )
         
         total = query.count()
