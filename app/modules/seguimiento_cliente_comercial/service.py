@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import io
 import os
+import csv
+import re
 import unicodedata
 from datetime import date, datetime
 from typing import List, Tuple, Optional
@@ -14,7 +16,10 @@ from .models import SeguimientoClienteComercial
 from .schemas import SeguimientoClienteComercialCreate, SeguimientoClienteComercialUpdate, SeguimientoClienteComercialPatch
 
 # Predefined catalogs from the LISTA sheet to merge with dynamic values
-PREDEFINED_ASESORES = ["Silvia Peralta", "Juan Garcia", "SILVIA"]
+PREDEFINED_ASESORES = ["Silvia Peralta", "Juan Garcia"]
+ADVISOR_ALIASES = {
+    "SILVIA": "Silvia Peralta",
+}
 PREDEFINED_CONTACTOS = ["WHATSAPP", "LLAMADA", "CORREO", "EN PROSPECTO"]
 PREDEFINED_RUBROS = ["LABORATORIO", "INGENIERÍA", "ALQUILER", "EN ESPERA"]
 PREDEFINED_ESTADOS = [
@@ -89,6 +94,239 @@ class SeguimientoClienteComercialService:
                 return allowed_value
 
         return raw_value
+
+    @staticmethod
+    def _normalize_tsv_header(value: object) -> str:
+        raw_value = str(value or "").strip()
+        if not raw_value:
+            return ""
+        normalized = unicodedata.normalize("NFKD", raw_value)
+        ascii_value = normalized.encode("ascii", "ignore").decode("ascii").upper()
+        ascii_value = re.sub(r"[^A-Z0-9]+", " ", ascii_value).strip()
+        normalized = " ".join(ascii_value.split())
+        header_aliases = {
+            "N": "NO",
+            "N DE COTIZACION": "N COTIZACION",
+            "N COTIZACION": "N COTIZACION",
+            "NUMERO CELULAR": "CELULAR",
+            "TELEFONO": "CELULAR",
+            "E MAIL": "EMAIL",
+            "CORREO ELECTRONICO": "EMAIL",
+            "RAZON SOCIAL": "RAZON SOCIAL",
+            "F ULTIMO CONTACTO": "F ULTIMO CONTACTO",
+            "FECHA ULTIMO CONTACTO": "F ULTIMO CONTACTO",
+            "F ULTIMO C": "F ULTIMO CONTACTO",
+            "ESTADO DE SEGUIMIENTO": "ESTADO SEGUIMIENTO",
+        }
+        return header_aliases.get(normalized, normalized)
+
+    @staticmethod
+    def _parse_text_date(value: object) -> Optional[date]:
+        raw_value = str(value or "").strip()
+        if not raw_value:
+            return None
+
+        direct_date = SeguimientoClienteComercialService._parse_date_value(raw_value)
+        if direct_date:
+            return direct_date
+
+        normalized = SeguimientoClienteComercialService._normalize_catalog_key(raw_value)
+        month_map = {
+            "ENE": 1,
+            "FEB": 2,
+            "MAR": 3,
+            "ABR": 4,
+            "MAY": 5,
+            "JUN": 6,
+            "JUL": 7,
+            "AGO": 8,
+            "SEP": 9,
+            "SET": 9,
+            "OCT": 10,
+            "NOV": 11,
+            "DIC": 12,
+        }
+
+        compact_value = normalized.replace(" ", "").replace(".", "")
+        match = re.match(r"^(\d{1,2})[-./]?([A-Z]{3,4}|\d{1,2})[-./]?(\d{2,4})$", compact_value)
+        if match:
+            day_str, month_str, year_str = match.groups()
+            if month_str.isdigit():
+                month = int(month_str)
+            else:
+                month = month_map.get(month_str[:3])
+            if month:
+                year = int(year_str)
+                if year < 100:
+                    year += 2000 if year < 70 else 1900
+                try:
+                    return date(year, month, int(day_str))
+                except ValueError:
+                    return None
+
+        return None
+
+    @staticmethod
+    def _parse_date_value(value: object) -> Optional[date]:
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, date):
+            return value
+        if isinstance(value, str):
+            val_str = value.strip()
+            if not val_str:
+                return None
+            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+                try:
+                    return datetime.strptime(val_str, fmt).date()
+                except ValueError:
+                    continue
+        return None
+
+    @staticmethod
+    def _build_seguimiento_item_from_values(
+        values: dict[str, object],
+        *,
+        creado_por: Optional[str] = None,
+        allow_missing_no: bool = True,
+    ) -> Optional[SeguimientoClienteComercial]:
+        def to_str(val) -> Optional[str]:
+            if val is None:
+                return None
+            val_str = str(val).strip()
+            if not val_str:
+                return None
+            if isinstance(val, float) and val.is_integer():
+                return str(int(val))
+            return val_str
+
+        def to_int(val) -> Optional[int]:
+            if val is None:
+                return None
+            try:
+                return int(float(val))
+            except (ValueError, TypeError):
+                return None
+
+        no_val = values.get("no")
+        fecha_contacto_val = values.get("fecha_contacto")
+        persona_contacto_val = values.get("persona_contacto")
+        razon_social_val = values.get("razon_social")
+        ruc_val = values.get("ruc")
+
+        if not any([no_val, fecha_contacto_val, persona_contacto_val, razon_social_val, ruc_val]):
+            return None
+
+        return SeguimientoClienteComercial(
+            no=to_int(no_val) if allow_missing_no or no_val is not None else None,
+            fecha_contacto=SeguimientoClienteComercialService._parse_date_value(fecha_contacto_val) or SeguimientoClienteComercialService._parse_text_date(fecha_contacto_val),
+            persona_contacto=to_str(persona_contacto_val),
+            numero_celular=to_str(values.get("numero_celular")),
+            email=to_str(values.get("email")),
+            razon_social=to_str(razon_social_val),
+            ruc=to_str(ruc_val),
+            asesor=SeguimientoClienteComercialService._normalize_catalog_value(values.get("asesor"), PREDEFINED_ASESORES, ADVISOR_ALIASES),
+            contacto=SeguimientoClienteComercialService._normalize_catalog_value(values.get("contacto"), PREDEFINED_CONTACTOS),
+            rubro=SeguimientoClienteComercialService._normalize_catalog_value(values.get("rubro"), PREDEFINED_RUBROS),
+            estado_cliente=SeguimientoClienteComercialService._normalize_catalog_value(values.get("estado_cliente"), PREDEFINED_ESTADOS, STATE_ALIASES),
+            servicio_solicitado=to_str(values.get("servicio_solicitado")),
+            fecha_ultimo_contacto=SeguimientoClienteComercialService._parse_date_value(values.get("fecha_ultimo_contacto")) or SeguimientoClienteComercialService._parse_text_date(values.get("fecha_ultimo_contacto")),
+            observaciones=to_str(values.get("observaciones")),
+            numero_cotizacion=to_str(values.get("numero_cotizacion")),
+            estado_seguimiento=to_str(values.get("estado_seguimiento")),
+            creado_por=creado_por,
+        )
+
+    @staticmethod
+    def _import_from_text_tsv(db: Session, file_content: bytes, creado_por: Optional[str] = None) -> int:
+        text = file_content.decode("utf-8-sig", errors="replace")
+        reader = csv.reader(io.StringIO(text), delimiter="\t")
+        rows = list(reader)
+
+        if not rows:
+            return 0
+
+        header_map: dict[str, int] = {}
+        data_start_index = 0
+        for index, row in enumerate(rows):
+            normalized_row = [SeguimientoClienteComercialService._normalize_tsv_header(cell) for cell in row]
+            if any(cell == "FECHA CONTACTO" for cell in normalized_row) and any(cell == "ESTADO CLIENTE" for cell in normalized_row):
+                for column_index, cell in enumerate(normalized_row):
+                    if not cell:
+                        continue
+                    canonical_header = {
+                        "N": "NO",
+                        "NO": "NO",
+                        "FECHA CONTACTO": "FECHA CONTACTO",
+                        "PERSONA CONTACTO": "PERSONA CONTACTO",
+                        "CELULAR": "CELULAR",
+                        "EMAIL": "EMAIL",
+                        "RAZON SOCIAL": "RAZON SOCIAL",
+                        "RUC": "RUC",
+                        "ASESOR": "ASESOR",
+                        "CONTACTO": "CONTACTO",
+                        "RUBRO": "RUBRO",
+                        "ESTADO CLIENTE": "ESTADO CLIENTE",
+                        "SERVICIO SOLICITADO": "SERVICIO SOLICITADO",
+                        "F ULTIMO CONTACTO": "F ULTIMO CONTACTO",
+                        "OBSERVACIONES": "OBSERVACIONES",
+                        "N COTIZACION": "N COTIZACION",
+                        "ESTADO SEGUIMIENTO": "ESTADO SEGUIMIENTO",
+                    }.get(cell, cell)
+                    header_map[canonical_header] = column_index
+                data_start_index = index + 1
+                break
+
+        if not header_map:
+            raise ValueError("El TXT no contiene una fila de encabezados válida para Seguimiento Comercial.")
+
+        def get_value(row: list[str], header: str) -> Optional[str]:
+            column_index = header_map.get(header)
+            if column_index is None or column_index >= len(row):
+                return None
+            value = row[column_index].strip()
+            return value or None
+
+        db.query(SeguimientoClienteComercial).delete()
+        db.commit()
+
+        inserted_count = 0
+        for row in rows[data_start_index:]:
+            if not any(cell.strip() for cell in row if cell):
+                continue
+
+            values = {
+                "no": get_value(row, "NO"),
+                "fecha_contacto": get_value(row, "FECHA CONTACTO"),
+                "persona_contacto": get_value(row, "PERSONA CONTACTO"),
+                "numero_celular": get_value(row, "CELULAR"),
+                "email": get_value(row, "EMAIL"),
+                "razon_social": get_value(row, "RAZON SOCIAL"),
+                "ruc": get_value(row, "RUC"),
+                "asesor": get_value(row, "ASESOR"),
+                "contacto": get_value(row, "CONTACTO"),
+                "rubro": get_value(row, "RUBRO"),
+                "estado_cliente": get_value(row, "ESTADO CLIENTE"),
+                "servicio_solicitado": get_value(row, "SERVICIO SOLICITADO"),
+                "fecha_ultimo_contacto": get_value(row, "F ULTIMO CONTACTO"),
+                "observaciones": get_value(row, "OBSERVACIONES"),
+                "numero_cotizacion": get_value(row, "N COTIZACION"),
+                "estado_seguimiento": get_value(row, "ESTADO SEGUIMIENTO"),
+            }
+
+            db_item = SeguimientoClienteComercialService._build_seguimiento_item_from_values(values, creado_por=creado_por)
+            if not db_item:
+                continue
+
+            db.add(db_item)
+            inserted_count += 1
+            if inserted_count % 100 == 0:
+                db.flush()
+
+        db.commit()
+        return inserted_count
 
     @staticmethod
     def crear_plantilla_excel_defecto() -> io.BytesIO:
@@ -302,12 +540,12 @@ class SeguimientoClienteComercialService:
         db_estados = db.query(SeguimientoClienteComercial.estado_cliente).distinct().all()
 
         # Merge utility helper
-        def merge_catalogs(predefined: list, db_results: list) -> list[str]:
+        def merge_catalogs(predefined: list, db_results: list, aliases: Optional[dict[str, str]] = None) -> list[str]:
             merged: list[str] = []
             seen: set[str] = set()
 
             def add_value(raw_value: object) -> None:
-                value = SeguimientoClienteComercialService._normalize_catalog_value(raw_value, predefined, STATE_ALIASES if predefined is PREDEFINED_ESTADOS else None)
+                value = SeguimientoClienteComercialService._normalize_catalog_value(raw_value, predefined, aliases)
                 if value and value not in seen:
                     seen.add(value)
                     merged.append(value)
@@ -322,10 +560,10 @@ class SeguimientoClienteComercialService:
             return merged
 
         return {
-            "asesores": merge_catalogs(PREDEFINED_ASESORES, db_asesores),
+            "asesores": merge_catalogs(PREDEFINED_ASESORES, db_asesores, ADVISOR_ALIASES),
             "contactos": merge_catalogs(PREDEFINED_CONTACTOS, db_contactos),
             "rubros": merge_catalogs(PREDEFINED_RUBROS, db_rubros),
-            "estados": merge_catalogs(PREDEFINED_ESTADOS, db_estados),
+            "estados": merge_catalogs(PREDEFINED_ESTADOS, db_estados, STATE_ALIASES),
         }
 
     @staticmethod
@@ -334,8 +572,11 @@ class SeguimientoClienteComercialService:
         Imports database records from the Excel file contents.
         This deletes all existing records in 'seguimiento_cliente_comercial' and inserts from row 5 onwards.
         """
-        # Load workbook
-        wb = openpyxl.load_workbook(io.BytesIO(file_content), data_only=True)
+        try:
+            wb = openpyxl.load_workbook(io.BytesIO(file_content), data_only=True)
+        except Exception:
+            return SeguimientoClienteComercialService._import_from_text_tsv(db, file_content, creado_por=creado_por)
+
         if 'SEG.CLIENTE' not in wb.sheetnames:
             raise ValueError("La hoja 'SEG.CLIENTE' no fue encontrada en el archivo de Excel.")
             
@@ -347,17 +588,6 @@ class SeguimientoClienteComercialService:
         
         inserted_count = 0
         
-        def to_str(val) -> Optional[str]:
-            if val is None:
-                return None
-            val_str = str(val).strip()
-            if not val_str:
-                return None
-            # Handle float representation (e.g. RUC, cellular converted to float with .0)
-            if isinstance(val, float) and val.is_integer():
-                return str(int(val))
-            return val_str
-
         def normalize_catalog(val: object, allowed_values: list[str], aliases: Optional[dict[str, str]] = None) -> Optional[str]:
             return SeguimientoClienteComercialService._normalize_catalog_value(val, allowed_values, aliases)
             
@@ -369,23 +599,19 @@ class SeguimientoClienteComercialService:
             except (ValueError, TypeError):
                 return None
 
-        def to_date(val) -> Optional[date]:
+        def to_str(val) -> Optional[str]:
             if val is None:
                 return None
-            if isinstance(val, datetime):
-                return val.date()
-            if isinstance(val, date):
-                return val
-            if isinstance(val, str):
-                val_str = val.strip()
-                if not val_str:
-                    return None
-                for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
-                    try:
-                        return datetime.strptime(val_str, fmt).date()
-                    except ValueError:
-                        continue
-            return None
+            val_str = str(val).strip()
+            if not val_str:
+                return None
+            # Handle float representation (e.g. RUC, cellular converted to float with .0)
+            if isinstance(val, float) and val.is_integer():
+                return str(int(val))
+            return val_str
+
+        def to_date(val) -> Optional[date]:
+            return SeguimientoClienteComercialService._parse_date_value(val) or SeguimientoClienteComercialService._parse_text_date(val)
 
         # Parse rows starting from row 5
         for r in range(5, sheet.max_row + 1):
@@ -410,25 +636,29 @@ class SeguimientoClienteComercialService:
             if not any([no_val, fecha_contacto_val, persona_contacto_val, razon_social_val, ruc_val]):
                 continue
                 
-            db_item = SeguimientoClienteComercial(
-                no=to_int(no_val),
-                fecha_contacto=to_date(fecha_contacto_val),
-                persona_contacto=to_str(persona_contacto_val),
-                numero_celular=to_str(celular_val),
-                email=to_str(email_val),
-                razon_social=to_str(razon_social_val),
-                ruc=to_str(ruc_val),
-                asesor=normalize_catalog(asesor_val, PREDEFINED_ASESORES),
-                contacto=normalize_catalog(contacto_val, PREDEFINED_CONTACTOS),
-                rubro=normalize_catalog(rubro_val, PREDEFINED_RUBROS),
-                estado_cliente=normalize_catalog(estado_cliente_val, PREDEFINED_ESTADOS, STATE_ALIASES),
-                servicio_solicitado=to_str(servicio_val),
-                fecha_ultimo_contacto=to_date(fecha_ultimo_val),
-                observaciones=to_str(observaciones_val),
-                numero_cotizacion=to_str(cotizacion_val),
-                estado_seguimiento=to_str(estado_seg_val),
-                creado_por=creado_por
+            db_item = SeguimientoClienteComercialService._build_seguimiento_item_from_values(
+                {
+                    "no": no_val,
+                    "fecha_contacto": fecha_contacto_val,
+                    "persona_contacto": persona_contacto_val,
+                    "numero_celular": celular_val,
+                    "email": email_val,
+                    "razon_social": razon_social_val,
+                    "ruc": ruc_val,
+                    "asesor": asesor_val,
+                    "contacto": contacto_val,
+                    "rubro": rubro_val,
+                    "estado_cliente": estado_cliente_val,
+                    "servicio_solicitado": servicio_val,
+                    "fecha_ultimo_contacto": fecha_ultimo_val,
+                    "observaciones": observaciones_val,
+                    "numero_cotizacion": cotizacion_val,
+                    "estado_seguimiento": estado_seg_val,
+                },
+                creado_por=creado_por,
             )
+            if not db_item:
+                continue
             db.add(db_item)
             inserted_count += 1
             

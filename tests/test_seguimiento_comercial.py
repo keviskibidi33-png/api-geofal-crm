@@ -123,6 +123,25 @@ class TestSeguimientoComercialEndpoints(unittest.TestCase):
         self.assertIn("Silvia Peralta", data["asesores"])
         self.assertIn("WHATSAPP", data["contactos"])
 
+    def test_get_catalogs_normalizes_legacy_advisors(self):
+        # Insert a record with advisor = "SILVIA"
+        legacy_record = SeguimientoClienteComercial(
+            no=10,
+            fecha_contacto=date(2026, 5, 20),
+            persona_contacto="Legacy Contact",
+            razon_social="Legacy Company",
+            asesor="SILVIA"
+        )
+        self.db.add(legacy_record)
+        self.db.commit()
+
+        response = self.client.get("/api/seguimiento-comercial/catalogs")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("Silvia Peralta", data["asesores"])
+        self.assertNotIn("SILVIA", data["asesores"])
+        self.assertEqual(len(data["asesores"]), 2)
+
     def test_create_record(self):
         payload = {
             "fecha_contacto": "2026-05-21",
@@ -202,6 +221,27 @@ class TestSeguimientoComercialEndpoints(unittest.TestCase):
         self.assertEqual(imported.contacto, "WHATSAPP")
         self.assertEqual(imported.rubro, "INGENIERÍA")
         self.assertEqual(imported.estado_cliente, "SE SOLICITÓ INFORMACIÓN")
+
+    def test_import_tsv_txt_normalizes_catalog_values(self):
+        txt_content = "\n".join(
+            [
+                "N°\tFECHA CONTACTO\tPERSONA CONTACTO\tCELULAR\tEMAIL\tRAZÓN SOCIAL\tRUC\tASESOR\tCONTACTO\tRUBRO\tESTADO CLIENTE\tSERVICIO SOLICITADO\tF. ÚLTIMO CONTACTO\tOBSERVACIONES\tN° COTIZACIÓN\tESTADO SEGUIMIENTO",
+                "1\t23-feb.-26\tImport Contact\t999999999\timport@example.com\tImport Company S.A.C.\t20111111111\tsilvia peralta\twhatsapp\tingenieria\t4. SEG. COTIZACION\tEnsayos de concreto\t24-feb.-26\tObservaciones importadas\tCOT-999\tEnviado",
+            ]
+        )
+
+        inserted = SeguimientoClienteComercialService.importar_excel(self.db, txt_content.encode("utf-8"), creado_por="Test Import TXT")
+        self.assertEqual(inserted, 1)
+
+        imported = self.db.query(SeguimientoClienteComercial).order_by(SeguimientoClienteComercial.id.desc()).first()
+        self.assertIsNotNone(imported)
+        self.assertEqual(imported.persona_contacto, "Import Contact")
+        self.assertEqual(imported.asesor, "Silvia Peralta")
+        self.assertEqual(imported.contacto, "WHATSAPP")
+        self.assertEqual(imported.rubro, "INGENIERÍA")
+        self.assertEqual(imported.estado_cliente, "COTIZACIÓN REALIZADA")
+        self.assertEqual(imported.fecha_contacto.isoformat(), "2026-02-23")
+        self.assertEqual(imported.fecha_ultimo_contacto.isoformat(), "2026-02-24")
 
     def test_delete_record(self):
         headers = {"x-dev-user-id": "dev-user"}
