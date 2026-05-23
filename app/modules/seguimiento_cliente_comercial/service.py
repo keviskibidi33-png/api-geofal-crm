@@ -429,7 +429,7 @@ class SeguimientoClienteComercialService:
         )
         
         total = query.count()
-        items = query.offset(max(0, offset)).limit(max(1, min(limit, 200))).all()
+        items = query.offset(max(0, offset)).limit(max(1, min(limit, 10000))).all()
         return total, items
 
     @staticmethod
