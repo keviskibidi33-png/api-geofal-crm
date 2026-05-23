@@ -218,8 +218,11 @@ class SeguimientoClienteComercialService:
         persona_contacto_val = values.get("persona_contacto")
         razon_social_val = values.get("razon_social")
         ruc_val = values.get("ruc")
+        celular_val = values.get("numero_celular")
+        email_val = values.get("email")
 
-        if not any([no_val, fecha_contacto_val, persona_contacto_val, razon_social_val, ruc_val]):
+        # Skip rows that are empty of actual contact/customer details
+        if not any([fecha_contacto_val, persona_contacto_val, razon_social_val, ruc_val, celular_val, email_val]):
             return None
 
         return SeguimientoClienteComercial(
@@ -315,7 +318,7 @@ class SeguimientoClienteComercialService:
                 continue
 
             values = {
-                "no": get_value(row, "NO"),
+                "no": inserted_count + 1,
                 "fecha_contacto": get_value(row, "FECHA CONTACTO"),
                 "persona_contacto": get_value(row, "PERSONA CONTACTO"),
                 "numero_celular": get_value(row, "CELULAR"),
@@ -337,6 +340,7 @@ class SeguimientoClienteComercialService:
             if not db_item:
                 continue
 
+            db_item.no = inserted_count + 1
             db.add(db_item)
             inserted_count += 1
             if inserted_count % 100 == 0:
@@ -655,7 +659,7 @@ class SeguimientoClienteComercialService:
                 
             db_item = SeguimientoClienteComercialService._build_seguimiento_item_from_values(
                 {
-                    "no": no_val,
+                    "no": inserted_count + 1,
                     "fecha_contacto": fecha_contacto_val,
                     "persona_contacto": persona_contacto_val,
                     "numero_celular": celular_val,
@@ -676,6 +680,8 @@ class SeguimientoClienteComercialService:
             )
             if not db_item:
                 continue
+
+            db_item.no = inserted_count + 1
             db.add(db_item)
             inserted_count += 1
             
