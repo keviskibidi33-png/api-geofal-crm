@@ -109,12 +109,15 @@ class SeguimientoClienteComercialService:
             "N DE COTIZACION": "N COTIZACION",
             "N COTIZACION": "N COTIZACION",
             "NUMERO CELULAR": "CELULAR",
+            "NMERO CELULAR": "CELULAR",
             "TELEFONO": "CELULAR",
             "E MAIL": "EMAIL",
             "CORREO ELECTRONICO": "EMAIL",
             "RAZON SOCIAL": "RAZON SOCIAL",
             "F ULTIMO CONTACTO": "F ULTIMO CONTACTO",
             "FECHA ULTIMO CONTACTO": "F ULTIMO CONTACTO",
+            "FECHA LTIMO CONTACTO": "F ULTIMO CONTACTO",
+            "N DE COTIZACIN": "N COTIZACION",
             "F ULTIMO C": "F ULTIMO CONTACTO",
             "ESTADO DE SEGUIMIENTO": "ESTADO SEGUIMIENTO",
         }
@@ -242,7 +245,21 @@ class SeguimientoClienteComercialService:
     @staticmethod
     def _import_from_text_tsv(db: Session, file_content: bytes, creado_por: Optional[str] = None) -> int:
         text = file_content.decode("utf-8-sig", errors="replace")
-        reader = csv.reader(io.StringIO(text), delimiter="\t")
+        
+        # Detect delimiter dynamically
+        first_lines = text.splitlines()[:5]
+        delimiter = "\t"
+        if first_lines:
+            counts = {
+                "\t": sum(line.count("\t") for line in first_lines),
+                ";": sum(line.count(";") for line in first_lines),
+                ",": sum(line.count(",") for line in first_lines),
+            }
+            best_delim = max(counts, key=counts.get)
+            if counts[best_delim] > 0:
+                delimiter = best_delim
+
+        reader = csv.reader(io.StringIO(text), delimiter=delimiter)
         rows = list(reader)
 
         if not rows:

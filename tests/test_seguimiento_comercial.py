@@ -243,6 +243,28 @@ class TestSeguimientoComercialEndpoints(unittest.TestCase):
         self.assertEqual(imported.fecha_contacto.isoformat(), "2026-02-23")
         self.assertEqual(imported.fecha_ultimo_contacto.isoformat(), "2026-02-24")
 
+    def test_import_csv_semicolon_and_misspelled_headers(self):
+        csv_content = "\n".join([
+            ";;;;;;SEGUIMIENTO DE CLIENTES;;;;;;;;",
+            "",
+            "No;FECHA CONTACTO;PERSONA CONTACTO;NMERO CELULAR;E-MAIL;RAZON SOCIAL;RUC;ASESOR;CONTACTO;RUBRO;ESTADO CLIENTE;SERVICIO SOLICITADO;FECHA LTIMO CONTACTO;OBSERVACIONES;N DE COTIZACIN;ESTADO DE SEGUIMIENTO",
+            "1;23-feb.-26;Import Contact;999999999;import@example.com;Import Company;20111111111;SILVIA;whatsapp;ingenieria;4. SEG. COTIZACION;Ensayos de concreto;24-feb.-26;Observaciones importadas;COT-999;Enviado"
+        ])
+
+        inserted = SeguimientoClienteComercialService.importar_excel(self.db, csv_content.encode("utf-8"), creado_por="Test Import CSV Semicolon")
+        self.assertEqual(inserted, 1)
+
+        imported = self.db.query(SeguimientoClienteComercial).order_by(SeguimientoClienteComercial.id.desc()).first()
+        self.assertIsNotNone(imported)
+        self.assertEqual(imported.persona_contacto, "Import Contact")
+        self.assertEqual(imported.numero_celular, "999999999")
+        self.assertEqual(imported.asesor, "Silvia Peralta")
+        self.assertEqual(imported.contacto, "WHATSAPP")
+        self.assertEqual(imported.rubro, "INGENIERÍA")
+        self.assertEqual(imported.estado_cliente, "COTIZACIÓN REALIZADA")
+        self.assertEqual(imported.fecha_contacto.isoformat(), "2026-02-23")
+        self.assertEqual(imported.fecha_ultimo_contacto.isoformat(), "2026-02-24")
+
     def test_delete_record(self):
         headers = {"x-dev-user-id": "dev-user"}
         response = self.client.delete(f"/api/seguimiento-comercial/{self.test_record.id}", headers=headers)
