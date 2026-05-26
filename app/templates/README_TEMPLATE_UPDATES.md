@@ -1,90 +1,103 @@
-# Guía de Actualización de Plantillas Excel y Sincronización de Firmas/Operador
+# Guía de Organización de Plantillas Excel y Cambios de Rediseño
 
-Esta guía detalla los pasos requeridos para actualizar las plantillas Excel en el CRM de Geofal, garantizando la preservación de estilos, fórmulas, gráficos y la vinculación dinámica del operador y las firmas.
-
----
-
-## 1. Protocolo de Respaldo
-
-Antes de sobreescribir cualquier plantilla original:
-- Copie la versión antigua y renómbrela a `Template_[NombreOriginal]-copia.xlsx` en la carpeta `app/templates/`.
-- De esta manera se preserva un respaldo de seguridad del archivo original y su estructura de hojas previa.
+Este documento detalla el rediseño del árbol de carpetas de plantillas Excel en el CRM de Geofal y el registro de cambios aplicados a las plantillas en producción.
 
 ---
 
-## 2. Inspección del Mapeo de Hojas XML
+## 1. Rediseño del Árbol de Archivos (`app/templates/`)
 
-Excel guarda las hojas en archivos internos como `sheet1.xml`, `sheet2.xml`, etc. Al modificar y guardar una plantilla nueva en Excel, el orden de estos archivos XML en la estructura del ZIP puede cambiar (por ejemplo, la hoja `FORMATO` que antes era `sheet1.xml` puede pasar a ser `sheet8.xml`).
+Para mantener la organización y escalabilidad del laboratorio, las plantillas Excel se estructuran en carpetas según su complejidad y función:
 
-Para evitar la corrupción de datos, ejecute un script Python como el siguiente para mapear el nombre visible de cada hoja con su ruta XML exacta:
-
-```python
-import zipfile
-from lxml import etree
-
-with zipfile.ZipFile("app/templates/Template_Nombre.xlsx", "r") as z:
-    wb_xml = etree.fromstring(z.read("xl/workbook.xml"))
-    ns = {"r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
-          "main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
-    
-    rels_xml = etree.fromstring(z.read("xl/_rels/workbook.xml.rels"))
-    rel_map = {rel.attrib["Id"]: rel.attrib["Target"] for rel in rels_xml}
-        
-    for sheet in wb_xml.xpath("//main:sheet", namespaces=ns):
-        name = sheet.attrib["name"]
-        rid = sheet.attrib["{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"]
-        xml_path = rel_map[rid]
-        print(f"Sheet '{name}' -> XML Path: {xml_path}")
+```text
+app/templates/
+├── README_TEMPLATE_UPDATES.md (Este archivo)
+├── Resumen N-XXX-26 Compresion.xlsx
+├── Template_Programacion.xlsx
+├── Template_Programacion_Administracion.xlsx
+├── Template_Programacion_Comercial.xlsx
+├── template_Seguimiento cliente.xlsx
+├── Temp_Cotizacion.xlsx
+├── Temp_Recepcion.xlsx
+│
+├── copias/              # Respaldos históricos y copias de seguridad (ej. *-copia.xlsx)
+│   ├── Seguimiento cliente ACTUALIZADO.xlsx
+│   ├── Template,GE_FINO-copia.xlsx
+│   ├── template_cbr-copia.xlsx
+│   ├── Template_GE_GRUESO-copia.xlsx
+│   └── Template_Proctor-copia.xlsx
+│
+├── ensayos/             # Ensayos geomecánicos/químicos simples de HOJA ÚNICA
+│   ├── Template_ABRA.xlsx
+│   ├── Template_ABRASCRM.xlsx
+│   ├── Template_Angularidad.xlsx
+│   ├── Template_Azul_Metileno.xlsx
+│   ├── Template_Caras.xlsx
+│   ├── Template_CD.xlsx
+│   ├── Template_Cloro_Soluble.xlsx
+│   ├── Template_Compresion.xlsx
+│   ├── Template_Compresion_No_Confinada.xlsx
+│   ├── Template_Cont_Mat_Organica.xlsx
+│   ├── Template_GranAgregado.xlsx
+│   ├── Template_Imp_Organicas.xlsx
+│   ├── Template_Part_Livinas_Fino_Grueso.xlsx
+│   ├── Template_PH.xlsx
+│   ├── Template_Planas.xlsx
+│   ├── Template_SALES_SOLUBLES.xlsx
+│   ├── Template_SULFATOS_SOLUBLES.xlsx
+│   ├── Template_Sul_Magnesio.xlsx
+│   ├── Template_Terrones_Fino_Grueso.xlsx
+│   └── Template_Verificacion.xlsx
+│
+└── informes/            # Informes de MÚLTIPLES HOJAS agrupados en subcarpetas
+    ├── CBR/
+    │   └── template_cbr.xlsx
+    ├── ContHumedad/
+    │   └── Template_ContHumedad.xlsx
+    ├── EquiArena/
+    │   └── Template_EquiArena.xlsx
+    ├── GE_FINO/
+    │   └── Template,GE_FINO.xlsx
+    ├── GE_GRUESO/
+    │   └── Template_GE_GRUESO.xlsx
+    ├── GranSuelo/
+    │   └── Template_GranSuelo.xlsx
+    ├── Humedad/
+    │   └── Template_Humedad.xlsx
+    ├── LLP/
+    │   └── Template_LLP.xlsx
+    ├── P.unit/          # MIGRADO: Ahora estructurado como informe multi-hoja
+    │   └── 1-INF.-N-000-26-AG22-P.UNIT.-V07-1.xlsx
+    ├── Proctor/
+    │   └── Template_Proctor.xlsx
+    └── Tamiz/
+        └── Template_Tamiz.xlsx
 ```
 
 ---
 
-## 3. Vinculación Dinámica del Operador y Firmas
+## 2. Registro de Cambios Recientes (Migraciones y Ajustes)
 
-### A. Operador (`realizado_por`)
-En el archivo `excel.py` del módulo correspondiente:
-1. Identifique el nombre de la hoja de datos de ensayo (por ejemplo, `Datos ensayo`, `DATOS ENS`, `DATOS`).
-2. Encuentre la celda destinada al Operador/Técnico en esa hoja (usualmente debajo de la etiqueta "OPERADORES" o al lado de "Técnico").
-3. Implemente una función `_fill_datos_sheet` y escriba dinámicamente `data.realizado_por` a esa celda.
-   
-*Ejemplo:*
-```python
-def _fill_datos_sheet(sheet_xml: bytes, data: MimoduloRequest) -> bytes:
-    root = etree.fromstring(sheet_xml)
-    sd = root.find(f".//{{{NS_SHEET}}}sheetData")
-    if sd is not None:
-        _set_cell(sd, "H6", data.realizado_por)  # Ajustar coordenada según plantilla
-    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
-```
+### A. Migración de Peso Unitario (p.unit)
+* **Antes:** Se procesaba como un ensayo simple de hoja única usando la plantilla `app/templates/ensayos/Template_PesoUni.xlsx`.
+* **Cambio:** Se migró a la carpeta de informes complejos debido al formato multi-hoja (`FORMATO`, `INFORME`, `DATOS`, `Incertidumbre`, etc.).
+* **Archivo Nuevo:** `app/templates/informes/P.unit/1-INF.-N-000-26-AG22-P.UNIT.-V07-1.xlsx`.
+* **Código:** El generador `app/modules/peso_unitario/excel.py` fue actualizado para cargar dinámicamente este nuevo archivo y completar los datos en la hoja `FORMATO`.
 
-### B. Firmas de Incertidumbre (`revisado_por`, `aprobado_por`)
-En la hoja `Incertidumbre`:
-1. Identifique las celdas para el nombre del revisor, fecha de revisión, nombre del aprobador y fecha de aprobación.
-2. Implemente la escritura dinámica:
-   
-*Ejemplo:*
-```python
-def _fill_incertidumbre_sheet(sheet_xml: bytes, data: MimoduloRequest) -> bytes:
-    root = etree.fromstring(sheet_xml)
-    sd = root.find(f".//{{{NS_SHEET}}}sheetData")
-    if sd is not None:
-        _set_cell(sd, "B58", data.revisado_por)
-        _set_cell(sd, "B60", data.revisado_fecha)
-        _set_cell(sd, "G58", data.aprobado_por)
-        _set_cell(sd, "G60", data.aprobado_fecha)
-    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
-```
+### B. Actualización de Fórmulas y Recálculo en CBR
+* Se actualizó la plantilla `informes/CBR/template_cbr.xlsx` para asegurar la integridad de las fórmulas de expansión y diales (ej. celda `F36` y correlativos).
+* El generador del backend fuerza la directiva `fullCalcOnLoad` y elimina `xl/calcChain.xml` para garantizar que Excel recalcule las celdas bloqueadas al abrir el archivo.
+
+### C. Actualización de Proctor y GE Fino
+* Se subieron las últimas versiones actualizadas de las plantillas `Template_Proctor.xlsx` e `Template,GE_FINO.xlsx` en sus respectivas carpetas dentro de `informes/`, preservando sus respaldos en la carpeta `copias/`.
 
 ---
 
-## 4. Omitir `calcChain.xml`
+## 3. Protocolo para Nuevas Actualizaciones de Plantilla
 
-Para evitar que Excel muestre advertencias de celdas desactualizadas ("Stale Value Warnings") cuando se reescriben los valores dinámicos, **siempre descarte** el archivo `xl/calcChain.xml` al empaquetar el archivo resultante:
-
-```python
-for item in zin.infolist():
-    if item.filename == "xl/calcChain.xml":
-        continue  # Omitir
-```
-
-Esto obliga a Excel a recalcular todas las fórmulas basadas en los nuevos valores cuando el usuario abra el reporte.
+1. **Respaldar primero:** Guardar una copia con el sufijo `-copia.xlsx` en `app/templates/copias/`.
+2. **Revisar estructura XML:** Si se reorganizan hojas, verificar el orden y mapeo en `xl/workbook.xml` antes de asociar el código Python.
+3. **Usar resolución dinámica:** No codificar rutas relativas estáticas en el código de los módulos. Utilizar siempre el resolvedor recursivo:
+   ```python
+   from app.modules.common.excel_xml import find_template_path
+   TEMPLATE_PATH = str(find_template_path("nombre_archivo.xlsx"))
+   ```
