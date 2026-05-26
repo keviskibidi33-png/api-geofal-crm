@@ -22,15 +22,46 @@ NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 def find_template_path(filename: str) -> Path:
     current_dir = Path(__file__).resolve().parent
     app_dir = current_dir.parents[1]
-    candidates = [
-        app_dir / "templates" / filename,
-        Path("/app/templates") / filename,
-        current_dir.parents[2] / "app" / "templates" / filename,
+    roots = [
+        app_dir / "templates",
+        Path("/app/templates"),
+        current_dir.parents[2] / "app" / "templates",
     ]
-    for path in candidates:
+    for root in roots:
+        if not root.exists():
+            continue
+
+        # 1. Direct path in root
+        path = root / filename
         if path.exists():
             return path
-    return candidates[0]
+
+        # 2. Under 'ensayos/'
+        path = root / "ensayos" / filename
+        if path.exists():
+            return path
+
+        # 3. Under 'informes/'
+        path = root / "informes" / filename
+        if path.exists():
+            return path
+
+        # 4. Under 'copias/'
+        path = root / "copias" / filename
+        if path.exists():
+            return path
+
+        # 5. Under any subdirectory of 'informes/'
+        informes_dir = root / "informes"
+        if informes_dir.exists():
+            for sub in informes_dir.iterdir():
+                if sub.is_dir():
+                    path = sub / filename
+                    if path.exists():
+                        return path
+
+    # Fallback to default candidate
+    return app_dir / "templates" / filename
 
 
 def fetch_template_from_storage(filename: str) -> bytes | None:

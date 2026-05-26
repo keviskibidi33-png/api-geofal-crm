@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import logging
+from app.modules.common.excel_xml import find_template_path
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -29,23 +30,7 @@ TAMIZ_ROWS = [30, 31, 32, 33, 34, 35]
 ITEM_ROWS = [38, 39, 40, 41, 42, 43, 44]
 
 
-def _find_template() -> str:
-    filename = "Template_ABRA.xlsx"
-    current_dir = Path(__file__).resolve().parent
-    app_dir = current_dir.parents[1]  # app/
-
-    possible = [
-        app_dir / "templates" / filename,
-        Path("/app/templates") / filename,
-        current_dir.parents[2] / "app" / "templates" / filename,
-    ]
-    for path in possible:
-        if path.exists():
-            return str(path)
-    return str(app_dir / "templates" / filename)
-
-
-TEMPLATE_PATH = _find_template()
+TEMPLATE_PATH = str(find_template_path("Template_ABRA.xlsx"))
 
 
 def _parse_cell_ref(ref: str) -> tuple[str, int]:

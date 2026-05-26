@@ -18,7 +18,8 @@ from app.modules.verificacion.excel import ExcelLogic
 class TestVerificacionExcelSpacing(unittest.TestCase):
     def setUp(self):
         self.logic = ExcelLogic()
-        self.template_path = PROJECT_ROOT / "app" / "templates" / "Template_Verificacion.xlsx"
+        from app.modules.common.excel_xml import find_template_path
+        self.template_path = find_template_path("Template_Verificacion.xlsx")
 
     def _make_sample(self, item_numero: int) -> SimpleNamespace:
         return SimpleNamespace(

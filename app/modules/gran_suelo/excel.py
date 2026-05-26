@@ -24,7 +24,7 @@ from app.modules.common.excel_xml import (
     remove_external_link_content_types,
     remove_external_link_relationships,
     strip_external_references,
-)
+    find_template_path,)
 
 from .schemas import GranSueloRequest
 
@@ -36,23 +36,7 @@ NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 SIEVE_ROWS = [42, 43, 44, 45, 46, 47, 48, 50, 51, 52, 53, 54, 55, 56, 57]
 
 
-def _find_template() -> str:
-    filename = "Template_GranSuelo.xlsx"
-    current_dir = Path(__file__).resolve().parent
-    app_dir = current_dir.parents[1]  # app/
-
-    possible = [
-        app_dir / "templates" / filename,
-        Path("/app/templates") / filename,
-        current_dir.parents[2] / "app" / "templates" / filename,
-    ]
-    for path in possible:
-        if path.exists():
-            return str(path)
-    return str(app_dir / "templates" / filename)
-
-
-TEMPLATE_PATH = _find_template()
+TEMPLATE_PATH = str(find_template_path("Template_GranSuelo.xlsx"))
 
 
 def _parse_cell_ref(ref: str) -> tuple[str, int]:

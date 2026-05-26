@@ -1,6 +1,7 @@
 import io
 import zipfile
 from datetime import date
+from app.modules.common.excel_xml import find_template_path
 from typing import Any, List, Optional
 from pathlib import Path
 from lxml import etree
@@ -210,9 +211,7 @@ def _find_wrap_text_style(styles_xml: bytes) -> Optional[int]:
 
 
 def generate_compression_excel(data: CompressionExportRequest) -> io.BytesIO:
-    template_path = Path(__file__).resolve().parents[2] / "templates" / "Template_Compresion.xlsx"
-    if not template_path.exists():
-        raise FileNotFoundError("Template_Compresion.xlsx not found")
+    template_path = find_template_path("Template_Compresion.xlsx")
     
     output = io.BytesIO()
     with zipfile.ZipFile(template_path, 'r') as z_in:

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import logging
+from app.modules.common.excel_xml import find_template_path
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -28,23 +29,7 @@ NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 PRUEBA_COLS = ["G", "H", "J"]
 
 
-def _find_template() -> str:
-    filename = "Template_PesoUni.xlsx"
-    current_dir = Path(__file__).resolve().parent
-    app_dir = current_dir.parents[1]  # app/
-
-    possible = [
-        app_dir / "templates" / filename,
-        Path("/app/templates") / filename,
-        current_dir.parents[2] / "app" / "templates" / filename,
-    ]
-    for path in possible:
-        if path.exists():
-            return str(path)
-    return str(app_dir / "templates" / filename)
-
-
-TEMPLATE_PATH = _find_template()
+TEMPLATE_PATH = str(find_template_path("Template_PesoUni.xlsx"))
 
 
 def _parse_cell_ref(ref: str) -> tuple[str, int]:

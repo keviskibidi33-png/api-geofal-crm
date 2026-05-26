@@ -165,25 +165,8 @@ class ExcelLogic:
         if template_path:
             self.template_path = template_path
         else:
-            # Standardized robust resolution
-            filename = "Temp_Recepcion.xlsx"
-            from pathlib import Path
-            current_dir = Path(__file__).resolve().parent
-            app_dir = current_dir.parents[1] # app/
-            
-            possible_paths = [
-                app_dir / "templates" / filename,
-                Path("/app/templates") / filename,
-                current_dir.parents[2] / "app" / "templates" / filename,
-            ]
-            
-            final_path = None
-            for p in possible_paths:
-                if p.exists():
-                    final_path = p
-                    break
-            
-            self.template_path = str(final_path or (app_dir / "templates" / filename))
+            from app.modules.common.excel_xml import find_template_path
+            self.template_path = str(find_template_path("Temp_Recepcion.xlsx"))
 
     def generar_excel_recepcion(self, recepcion: RecepcionMuestra) -> bytes:
         if not os.path.exists(self.template_path):

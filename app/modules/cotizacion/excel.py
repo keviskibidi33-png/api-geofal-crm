@@ -33,22 +33,8 @@ TEMPLATE_VARIANTS = {
 def _get_template_path(template_id: str | None = None) -> Path:
     """Get template path based on template_id or default"""
     filename = TEMPLATE_VARIANTS.get(template_id, 'Temp_Cotizacion.xlsx') if template_id else 'Temp_Cotizacion.xlsx'
-    
-    current_dir = Path(__file__).resolve().parent
-    app_dir = current_dir.parents[1] # app/
-    
-    possible_paths = [
-        app_dir / "templates" / filename,  # Standard: app/templates/
-        Path("/app/templates") / filename, # Docker absolute
-        current_dir.parents[2] / "app" / "templates" / filename, # Root/app/templates/
-    ]
-    
-    for p in possible_paths:
-        if p.exists():
-            return p
-            
-    # Fallback to standard app location
-    return app_dir / "templates" / filename
+    from app.modules.common.excel_xml import find_template_path
+    return find_template_path(filename)
 
 
 def generate_quote_excel(payload: QuoteExportRequest) -> io.BytesIO:

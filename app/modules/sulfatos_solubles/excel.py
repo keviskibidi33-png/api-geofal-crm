@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import logging
+from app.modules.common.excel_xml import find_template_path
 import os
 from pathlib import Path
 
@@ -14,19 +15,7 @@ from .schemas import SulfatosSolublesRequest
 logger = logging.getLogger(__name__)
 
 
-def _find_template_path(filename: str) -> Path:
-    current_dir = Path(__file__).resolve().parent
-    app_dir = current_dir.parents[1]
 
-    candidates = [
-        app_dir / "templates" / filename,
-        Path("/app/templates") / filename,
-        current_dir.parents[2] / "app" / "templates" / filename,
-    ]
-    for path in candidates:
-        if path.exists():
-            return path
-    return candidates[0]
 
 
 def _fetch_template_from_storage(filename: str) -> bytes | None:
@@ -54,7 +43,7 @@ def _fetch_template_from_storage(filename: str) -> bytes | None:
 
 
 def _get_template_bytes(filename: str) -> bytes:
-    local_path = _find_template_path(filename)
+    local_path = find_template_path(filename)
     if local_path.exists():
         return local_path.read_bytes()
 

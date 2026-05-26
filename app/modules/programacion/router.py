@@ -10,20 +10,11 @@ router = APIRouter(prefix="/programacion", tags=["Programacion"])
 
 def _find_template(filename: str) -> Path:
     """Helper to locate a template file in possible locations."""
-    current_dir = Path(__file__).resolve().parent
-    app_dir = current_dir.parents[1]  # app/
-    
-    possible_paths = [
-        app_dir / "templates" / filename,
-        Path("/app/templates") / filename,
-        current_dir.parents[2] / "app" / "templates" / filename,
-    ]
-    
-    for p in possible_paths:
-        if p.exists():
-            return p
-    
-    raise HTTPException(status_code=500, detail=f"Template {filename} not found in any expected location.")
+    from app.modules.common.excel_xml import find_template_path
+    path = find_template_path(filename)
+    if not path.exists():
+        raise HTTPException(status_code=500, detail=f"Template {filename} not found in any expected location.")
+    return path
 
 
 @router.post("/export")

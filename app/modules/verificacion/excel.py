@@ -32,11 +32,8 @@ class ExcelLogic:
     }
 
     def __init__(self):
-        filename = "Template_Verificacion.xlsx"
-        from pathlib import Path
-        current_dir = Path(__file__).resolve().parent
-        app_dir = current_dir.parents[1]
-        self.template_path = str(app_dir / "templates" / filename)
+        from app.modules.common.excel_xml import find_template_path
+        self.template_path = str(find_template_path("Template_Verificacion.xlsx"))
 
     # --- XML Helpers ---
 

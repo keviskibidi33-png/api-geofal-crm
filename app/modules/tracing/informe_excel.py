@@ -1,5 +1,6 @@
 import io
 import zipfile
+from app.modules.common.excel_xml import find_template_path
 import logging
 import copy
 from pathlib import Path
@@ -14,24 +15,7 @@ NAMESPACES = {
 }
 
 # Ruta del template
-def _find_template():
-    filename = "Resumen N-XXX-26 Compresion.xlsx"
-    current_dir = Path(__file__).resolve().parent
-    app_dir = current_dir.parents[1]  # app/
-
-    possible_paths = [
-        app_dir / "templates" / filename,
-        Path("/app/templates") / filename,
-        current_dir.parents[2] / "app" / "templates" / filename,
-    ]
-
-    for p in possible_paths:
-        if p.exists():
-            return str(p)
-
-    return str(app_dir / "templates" / filename)
-
-TEMPLATE_PATH = _find_template()
+TEMPLATE_PATH = str(find_template_path("Resumen N-XXX-26 Compresion.xlsx"))
 
 # --- XML Helpers ---
 
@@ -401,4 +385,3 @@ def generate_informe_excel(data: dict) -> bytes:
     
     output.seek(0)
     return output.getvalue()
-

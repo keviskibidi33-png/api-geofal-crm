@@ -23,7 +23,7 @@ from app.modules.common.excel_xml import (
     remove_external_link_content_types,
     remove_external_link_relationships,
     strip_external_references,
-)
+    find_template_path,)
 
 from .schemas import HumedadRequest
 
@@ -37,23 +37,7 @@ NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
 # ── Template path ──────────────────────────────────────────────────────────────
 
-def _find_template() -> str:
-    filename = "Template_Humedad.xlsx"
-    current_dir = Path(__file__).resolve().parent
-    app_dir = current_dir.parents[1]  # app/
-
-    possible = [
-        app_dir / "templates" / filename,
-        Path("/app/templates") / filename,
-        current_dir.parents[2] / "app" / "templates" / filename,
-    ]
-    for p in possible:
-        if p.exists():
-            return str(p)
-    return str(app_dir / "templates" / filename)
-
-
-TEMPLATE_PATH = _find_template()
+TEMPLATE_PATH = str(find_template_path("Template_Humedad.xlsx"))
 
 
 # ── XML helpers (misma lógica que xlsx_direct_v2) ──────────────────────────────

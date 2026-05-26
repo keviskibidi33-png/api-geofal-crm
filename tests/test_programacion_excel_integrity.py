@@ -19,7 +19,8 @@ from app.modules.programacion.excel import export_programacion_xlsx
 
 class TestProgramacionExcelIntegrity(unittest.TestCase):
     def test_lab_export_keeps_sheet_rows_unique_and_within_excel_limit(self):
-        template_path = PROJECT_ROOT / "app" / "templates" / "Template_Programacion.xlsx"
+        from app.modules.common.excel_xml import find_template_path
+        template_path = find_template_path("Template_Programacion.xlsx")
         items = [
             {
                 "item_numero": 1,
