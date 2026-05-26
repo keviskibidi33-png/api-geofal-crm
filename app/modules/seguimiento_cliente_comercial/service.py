@@ -46,6 +46,12 @@ PREDEFINED_SERVICIOS = [
     "EMS – ALCANTARILLADO",
     "Estudios Geotécnicos",
 ]
+PREDEFINED_ESTADOS_SEGUIMIENTO = [
+    "En Negociación",
+    "Se Genero una Versión",
+    "Cotización Rechazada",
+    "Se Genero Venta",
+]
 
 STATE_ALIASES = {
     "1 SOLICITUD INFORMACION": "SE SOLICITÓ INFORMACIÓN",
@@ -255,7 +261,7 @@ class SeguimientoClienteComercialService:
             fecha_ultimo_contacto=SeguimientoClienteComercialService._parse_date_value(values.get("fecha_ultimo_contacto")) or SeguimientoClienteComercialService._parse_text_date(values.get("fecha_ultimo_contacto")),
             observaciones=to_str(values.get("observaciones")),
             numero_cotizacion=to_str(values.get("numero_cotizacion")),
-            estado_seguimiento=to_str(values.get("estado_seguimiento")),
+            estado_seguimiento=SeguimientoClienteComercialService._normalize_catalog_value(values.get("estado_seguimiento"), PREDEFINED_ESTADOS_SEGUIMIENTO),
             creado_por=creado_por,
         )
 
@@ -381,6 +387,7 @@ class SeguimientoClienteComercialService:
         lista_sheet.cell(row=1, column=3).value = "RUBROS"
         lista_sheet.cell(row=1, column=4).value = "ESTADOS"
         lista_sheet.cell(row=1, column=5).value = "SERVICIOS"
+        lista_sheet.cell(row=1, column=6).value = "ESTADOS_SEGUIMIENTO"
 
         max_len = max(
             len(PREDEFINED_ASESORES),
@@ -388,6 +395,7 @@ class SeguimientoClienteComercialService:
             len(PREDEFINED_RUBROS),
             len(PREDEFINED_ESTADOS),
             len(PREDEFINED_SERVICIOS),
+            len(PREDEFINED_ESTADOS_SEGUIMIENTO),
         )
 
         for row_index in range(max_len):
@@ -401,6 +409,8 @@ class SeguimientoClienteComercialService:
                 lista_sheet.cell(row=row_index + 2, column=4).value = PREDEFINED_ESTADOS[row_index]
             if row_index < len(PREDEFINED_SERVICIOS):
                 lista_sheet.cell(row=row_index + 2, column=5).value = PREDEFINED_SERVICIOS[row_index]
+            if row_index < len(PREDEFINED_ESTADOS_SEGUIMIENTO):
+                lista_sheet.cell(row=row_index + 2, column=6).value = PREDEFINED_ESTADOS_SEGUIMIENTO[row_index]
 
         output = io.BytesIO()
         workbook.save(output)
@@ -578,6 +588,7 @@ class SeguimientoClienteComercialService:
         db_rubros = db.query(SeguimientoClienteComercial.rubro).distinct().all()
         db_estados = db.query(SeguimientoClienteComercial.estado_cliente).distinct().all()
         db_servicios = db.query(SeguimientoClienteComercial.servicio_solicitado).distinct().all()
+        db_estados_seguimiento = db.query(SeguimientoClienteComercial.estado_seguimiento).distinct().all()
 
         # Merge utility helper
         def merge_catalogs(predefined: list, db_results: list, aliases: Optional[dict[str, str]] = None) -> list[str]:
@@ -605,6 +616,7 @@ class SeguimientoClienteComercialService:
             "rubros": merge_catalogs(PREDEFINED_RUBROS, db_rubros),
             "estados": merge_catalogs(PREDEFINED_ESTADOS, db_estados, STATE_ALIASES),
             "servicios": merge_catalogs(PREDEFINED_SERVICIOS, db_servicios),
+            "estados_seguimiento": merge_catalogs(PREDEFINED_ESTADOS_SEGUIMIENTO, db_estados_seguimiento),
         }
 
     @staticmethod

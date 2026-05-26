@@ -59,3 +59,4 @@ class CatalogsResponse(BaseModel):
     rubros: List[str]
     estados: List[str]
     servicios: List[str]
+    estados_seguimiento: List[str]
