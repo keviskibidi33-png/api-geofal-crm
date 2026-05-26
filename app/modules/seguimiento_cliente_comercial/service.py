@@ -20,17 +20,31 @@ PREDEFINED_ASESORES = ["Silvia Peralta", "Juan Garcia"]
 ADVISOR_ALIASES = {
     "SILVIA": "Silvia Peralta",
 }
-PREDEFINED_CONTACTOS = ["WHATSAPP", "LLAMADA", "CORREO", "EN PROSPECTO"]
+PREDEFINED_CONTACTOS = ["WHATSAPP", "LLAMADA", "CORREO"]
 PREDEFINED_RUBROS = ["LABORATORIO", "INGENIERÍA", "ALQUILER", "EN ESPERA"]
 PREDEFINED_ESTADOS = [
     "EN ESPERA DE ATENCIÓN",
     "SE SOLICITÓ INFORMACIÓN",
     "EN ESPERA DE INFORMACIÓN",
+    "INFORMACIÓN RECIBIDA",
+    "COTIZACIÓN EN PROCESO",
+    "COTIZACIÓN REALIZADA",
+    "COTIZACIÓN ENVIADA",
     "NO ENVIÓ LA INFORMACIÓN",
     "DESCARTO EL SERVICIO",
-    "COTIZACIÓN REALIZADA",
-    "PROSPECTO",
-    "CONTACTADO",
+]
+PREDEFINED_SERVICIOS = [
+    "Ensayos de Laboratorio",
+    "Densidades",
+    "Probetas",
+    "Morteros",
+    "Extracción de Diamantina",
+    "Laboratorio en Obra",
+    "Estudios de Suelos",
+    "EMS – CIMENTACIÓN",
+    "EMS – PAVIMENTACIÓN",
+    "EMS – ALCANTARILLADO",
+    "Estudios Geotécnicos",
 ]
 
 STATE_ALIASES = {
@@ -39,7 +53,7 @@ STATE_ALIASES = {
     "SE SOLICITO INFORMACION": "SE SOLICITÓ INFORMACIÓN",
     "2 PROCESANDO INFORMACION": "EN ESPERA DE INFORMACIÓN",
     "2. PROCESANDO INFORMACION": "EN ESPERA DE INFORMACIÓN",
-    "INFORMACION RECIBIDA": "EN ESPERA DE INFORMACIÓN",
+    "INFORMACION RECIBIDA": "INFORMACIÓN RECIBIDA",
     "3 COTIZACION": "COTIZACIÓN REALIZADA",
     "3. COTIZACION": "COTIZACIÓN REALIZADA",
     "4 SEG COTIZACION": "COTIZACIÓN REALIZADA",
@@ -237,7 +251,7 @@ class SeguimientoClienteComercialService:
             contacto=SeguimientoClienteComercialService._normalize_catalog_value(values.get("contacto"), PREDEFINED_CONTACTOS),
             rubro=SeguimientoClienteComercialService._normalize_catalog_value(values.get("rubro"), PREDEFINED_RUBROS),
             estado_cliente=SeguimientoClienteComercialService._normalize_catalog_value(values.get("estado_cliente"), PREDEFINED_ESTADOS, STATE_ALIASES),
-            servicio_solicitado=to_str(values.get("servicio_solicitado")),
+            servicio_solicitado=SeguimientoClienteComercialService._normalize_catalog_value(values.get("servicio_solicitado"), PREDEFINED_SERVICIOS),
             fecha_ultimo_contacto=SeguimientoClienteComercialService._parse_date_value(values.get("fecha_ultimo_contacto")) or SeguimientoClienteComercialService._parse_text_date(values.get("fecha_ultimo_contacto")),
             observaciones=to_str(values.get("observaciones")),
             numero_cotizacion=to_str(values.get("numero_cotizacion")),
@@ -366,12 +380,14 @@ class SeguimientoClienteComercialService:
         lista_sheet.cell(row=1, column=2).value = "CONTACTOS"
         lista_sheet.cell(row=1, column=3).value = "RUBROS"
         lista_sheet.cell(row=1, column=4).value = "ESTADOS"
+        lista_sheet.cell(row=1, column=5).value = "SERVICIOS"
 
         max_len = max(
             len(PREDEFINED_ASESORES),
             len(PREDEFINED_CONTACTOS),
             len(PREDEFINED_RUBROS),
             len(PREDEFINED_ESTADOS),
+            len(PREDEFINED_SERVICIOS),
         )
 
         for row_index in range(max_len):
@@ -383,6 +399,8 @@ class SeguimientoClienteComercialService:
                 lista_sheet.cell(row=row_index + 2, column=3).value = PREDEFINED_RUBROS[row_index]
             if row_index < len(PREDEFINED_ESTADOS):
                 lista_sheet.cell(row=row_index + 2, column=4).value = PREDEFINED_ESTADOS[row_index]
+            if row_index < len(PREDEFINED_SERVICIOS):
+                lista_sheet.cell(row=row_index + 2, column=5).value = PREDEFINED_SERVICIOS[row_index]
 
         output = io.BytesIO()
         workbook.save(output)
@@ -559,6 +577,7 @@ class SeguimientoClienteComercialService:
         db_contactos = db.query(SeguimientoClienteComercial.contacto).distinct().all()
         db_rubros = db.query(SeguimientoClienteComercial.rubro).distinct().all()
         db_estados = db.query(SeguimientoClienteComercial.estado_cliente).distinct().all()
+        db_servicios = db.query(SeguimientoClienteComercial.servicio_solicitado).distinct().all()
 
         # Merge utility helper
         def merge_catalogs(predefined: list, db_results: list, aliases: Optional[dict[str, str]] = None) -> list[str]:
@@ -585,6 +604,7 @@ class SeguimientoClienteComercialService:
             "contactos": merge_catalogs(PREDEFINED_CONTACTOS, db_contactos),
             "rubros": merge_catalogs(PREDEFINED_RUBROS, db_rubros),
             "estados": merge_catalogs(PREDEFINED_ESTADOS, db_estados, STATE_ALIASES),
+            "servicios": merge_catalogs(PREDEFINED_SERVICIOS, db_servicios),
         }
 
     @staticmethod

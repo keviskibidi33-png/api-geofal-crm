@@ -58,3 +58,4 @@ class CatalogsResponse(BaseModel):
     contactos: List[str]
     rubros: List[str]
     estados: List[str]
+    servicios: List[str]
