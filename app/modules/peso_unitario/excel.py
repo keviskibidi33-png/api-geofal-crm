@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import logging
+from datetime import date, datetime
 from app.modules.common.excel_xml import find_template_path
 import zipfile
 from pathlib import Path
@@ -163,6 +164,43 @@ def _fill_sheet(sheet_xml: bytes, data: PesoUnitarioRequest) -> bytes:
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
+def _excel_date_serial(value: str | None) -> float | None:
+    text = (value or "").strip()
+    if not text:
+        return None
+    for fmt in ("%Y/%m/%d", "%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            parsed = datetime.strptime(text, fmt).date()
+            return float((parsed - date(1899, 12, 30)).days)
+        except ValueError:
+            continue
+    return None
+
+
+def _fill_incertidumbre_sheet(sheet_xml: bytes, data: PesoUnitarioRequest) -> bytes:
+    root = etree.fromstring(sheet_xml)
+    sd = root.find(f".//{{{NS_SHEET}}}sheetData")
+    if sd is None:
+        return sheet_xml
+
+    _set_cell(sd, "B81", data.revisado_por)
+    _set_cell(sd, "G81", data.aprobado_por)
+
+    revisado_serial = _excel_date_serial(data.revisado_fecha)
+    aprobado_serial = _excel_date_serial(data.aprobado_fecha)
+    if revisado_serial is not None:
+        _set_cell(sd, "B83", revisado_serial, is_number=True)
+    elif data.revisado_fecha:
+        _set_cell(sd, "B83", data.revisado_fecha)
+
+    if aprobado_serial is not None:
+        _set_cell(sd, "G83", aprobado_serial, is_number=True)
+    elif data.aprobado_fecha:
+        _set_cell(sd, "G83", data.aprobado_fecha)
+
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
 def _fill_drawing(drawing_xml: bytes, data: PesoUnitarioRequest) -> bytes:
     return fill_standard_footer_shapes(
         drawing_xml,
@@ -188,9 +226,17 @@ def generate_peso_unitario_excel(data: PesoUnitarioRequest) -> bytes:
         sheet_original = zin.read("xl/worksheets/sheet1.xml")
         sheet_xml = _fill_sheet(sheet_original, data)
 
+        incert_original = zin.read("xl/worksheets/sheet4.xml")
+        incert_xml = _fill_incertidumbre_sheet(incert_original, data)
+
         for item in zin.infolist():
+            if item.filename == "xl/calcChain.xml":
+                continue
+
             if item.filename == "xl/worksheets/sheet1.xml":
                 raw = sheet_xml
+            elif item.filename == "xl/worksheets/sheet4.xml":
+                raw = incert_xml
             else:
                 raw = zin.read(item.filename)
 
