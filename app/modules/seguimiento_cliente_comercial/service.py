@@ -260,6 +260,8 @@ class SeguimientoClienteComercialService:
             servicio_solicitado=SeguimientoClienteComercialService._normalize_catalog_value(values.get("servicio_solicitado"), PREDEFINED_SERVICIOS),
             fecha_ultimo_contacto=SeguimientoClienteComercialService._parse_date_value(values.get("fecha_ultimo_contacto")) or SeguimientoClienteComercialService._parse_text_date(values.get("fecha_ultimo_contacto")),
             observaciones=to_str(values.get("observaciones")),
+            comentarios_asistente=to_str(values.get("comentarios_asistente")),
+            comentarios_asesor=to_str(values.get("comentarios_asesor")),
             numero_cotizacion=to_str(values.get("numero_cotizacion")),
             estado_seguimiento=SeguimientoClienteComercialService._normalize_catalog_value(values.get("estado_seguimiento"), PREDEFINED_ESTADOS_SEGUIMIENTO),
             creado_por=creado_por,
@@ -352,6 +354,8 @@ class SeguimientoClienteComercialService:
                 "servicio_solicitado": get_value(row, "SERVICIO SOLICITADO"),
                 "fecha_ultimo_contacto": get_value(row, "F ULTIMO CONTACTO"),
                 "observaciones": get_value(row, "OBSERVACIONES"),
+                "comentarios_asistente": get_value(row, "COMENTARIOS ASISTENTE"),
+                "comentarios_asesor": get_value(row, "COMENTARIOS ASESOR"),
                 "numero_cotizacion": get_value(row, "N COTIZACION"),
                 "estado_seguimiento": get_value(row, "ESTADO SEGUIMIENTO"),
             }
@@ -499,6 +503,8 @@ class SeguimientoClienteComercialService:
             servicio_solicitado=data.servicio_solicitado,
             fecha_ultimo_contacto=data.fecha_ultimo_contacto,
             observaciones=data.observaciones,
+            comentarios_asistente=data.comentarios_asistente,
+            comentarios_asesor=data.comentarios_asesor,
             numero_cotizacion=data.numero_cotizacion,
             estado_seguimiento=data.estado_seguimiento,
             creado_por=creado_por
@@ -547,7 +553,8 @@ class SeguimientoClienteComercialService:
             "no", "fecha_contacto", "persona_contacto", "numero_celular",
             "email", "razon_social", "ruc", "asesor", "contacto", "rubro",
             "estado_cliente", "servicio_solicitado", "fecha_ultimo_contacto",
-            "observaciones", "numero_cotizacion", "estado_seguimiento"
+            "observaciones", "comentarios_asistente", "comentarios_asesor",
+            "numero_cotizacion", "estado_seguimiento"
         }
         
         for key, val in data.items():

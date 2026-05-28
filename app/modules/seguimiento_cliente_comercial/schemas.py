@@ -17,6 +17,8 @@ class SeguimientoClienteComercialBase(BaseModel):
     servicio_solicitado: Optional[str] = None
     fecha_ultimo_contacto: Optional[date] = None
     observaciones: Optional[str] = None
+    comentarios_asistente: Optional[str] = None
+    comentarios_asesor: Optional[str] = None
     numero_cotizacion: Optional[str] = None
     estado_seguimiento: Optional[str] = None
 
@@ -41,6 +43,8 @@ class SeguimientoClienteComercialPatch(BaseModel):
     servicio_solicitado: Optional[str] = None
     fecha_ultimo_contacto: Optional[date] = None
     observaciones: Optional[str] = None
+    comentarios_asistente: Optional[str] = None
+    comentarios_asesor: Optional[str] = None
     numero_cotizacion: Optional[str] = None
     estado_seguimiento: Optional[str] = None
 
