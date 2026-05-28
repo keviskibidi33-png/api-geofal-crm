@@ -82,7 +82,6 @@ SEG_CLIENTE_HEADERS = [
     "ESTADO CLIENTE",
     "SERVICIO SOLICITADO",
     "F. ÚLTIMO CONTACTO",
-    "OBSERVACIONES",
     "N° COTIZACIÓN",
     "ESTADO SEGUIMIENTO",
 ]
@@ -259,7 +258,6 @@ class SeguimientoClienteComercialService:
             estado_cliente=SeguimientoClienteComercialService._normalize_catalog_value(values.get("estado_cliente"), PREDEFINED_ESTADOS, STATE_ALIASES),
             servicio_solicitado=SeguimientoClienteComercialService._normalize_catalog_value(values.get("servicio_solicitado"), PREDEFINED_SERVICIOS),
             fecha_ultimo_contacto=SeguimientoClienteComercialService._parse_date_value(values.get("fecha_ultimo_contacto")) or SeguimientoClienteComercialService._parse_text_date(values.get("fecha_ultimo_contacto")),
-            observaciones=to_str(values.get("observaciones")),
             comentarios_asistente=to_str(values.get("comentarios_asistente")),
             comentarios_asesor=to_str(values.get("comentarios_asesor")),
             numero_cotizacion=to_str(values.get("numero_cotizacion")),
@@ -353,7 +351,6 @@ class SeguimientoClienteComercialService:
                 "estado_cliente": get_value(row, "ESTADO CLIENTE"),
                 "servicio_solicitado": get_value(row, "SERVICIO SOLICITADO"),
                 "fecha_ultimo_contacto": get_value(row, "F ULTIMO CONTACTO"),
-                "observaciones": get_value(row, "OBSERVACIONES"),
                 "comentarios_asistente": get_value(row, "COMENTARIOS ASISTENTE"),
                 "comentarios_asesor": get_value(row, "COMENTARIOS ASESOR"),
                 "numero_cotizacion": get_value(row, "N COTIZACION"),
@@ -502,7 +499,6 @@ class SeguimientoClienteComercialService:
             estado_cliente=data.estado_cliente,
             servicio_solicitado=data.servicio_solicitado,
             fecha_ultimo_contacto=data.fecha_ultimo_contacto,
-            observaciones=data.observaciones,
             comentarios_asistente=data.comentarios_asistente,
             comentarios_asesor=data.comentarios_asesor,
             numero_cotizacion=data.numero_cotizacion,
@@ -553,7 +549,7 @@ class SeguimientoClienteComercialService:
             "no", "fecha_contacto", "persona_contacto", "numero_celular",
             "email", "razon_social", "ruc", "asesor", "contacto", "rubro",
             "estado_cliente", "servicio_solicitado", "fecha_ultimo_contacto",
-            "observaciones", "comentarios_asistente", "comentarios_asesor",
+            "comentarios_asistente", "comentarios_asesor",
             "numero_cotizacion", "estado_seguimiento"
         }
         
@@ -711,7 +707,6 @@ class SeguimientoClienteComercialService:
                     "estado_cliente": estado_cliente_val,
                     "servicio_solicitado": servicio_val,
                     "fecha_ultimo_contacto": fecha_ultimo_val,
-                    "observaciones": observaciones_val,
                     "numero_cotizacion": cotizacion_val,
                     "estado_seguimiento": estado_seg_val,
                 },
@@ -756,7 +751,7 @@ class SeguimientoClienteComercialService:
         
         # Clean existing template data rows (from row 5 onwards, up to sheet.max_row)
         for r in range(5, max(sheet.max_row + 1, len(records) + 10)):
-            for col in range(1, 17):
+            for col in range(1, 16):
                 sheet.cell(row=r, column=col).value = None
 
         # Write data keeping styles
@@ -775,9 +770,8 @@ class SeguimientoClienteComercialService:
             sheet.cell(row=r, column=11).value = rec.estado_cliente
             sheet.cell(row=r, column=12).value = rec.servicio_solicitado
             sheet.cell(row=r, column=13).value = rec.fecha_ultimo_contacto
-            sheet.cell(row=r, column=14).value = rec.observaciones
-            sheet.cell(row=r, column=15).value = rec.numero_cotizacion
-            sheet.cell(row=r, column=16).value = rec.estado_seguimiento
+            sheet.cell(row=r, column=14).value = rec.numero_cotizacion
+            sheet.cell(row=r, column=15).value = rec.estado_seguimiento
 
         # Save workbook to BytesIO
         output = io.BytesIO()

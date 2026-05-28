@@ -22,7 +22,6 @@ class SeguimientoClienteComercial(Base):
     estado_cliente = Column(String(100), nullable=True, index=True)
     servicio_solicitado = Column(Text, nullable=True)
     fecha_ultimo_contacto = Column(Date, nullable=True)
-    observaciones = Column(Text, nullable=True)
     comentarios_asistente = Column(Text, nullable=True)
     comentarios_asesor = Column(Text, nullable=True)
     numero_cotizacion = Column(String(100), nullable=True, index=True)

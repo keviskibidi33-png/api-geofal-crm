@@ -78,7 +78,7 @@ class TestSeguimientoComercialEndpoints(unittest.TestCase):
             estado_cliente="SE SOLICITÓ INFORMACIÓN",
             servicio_solicitado="Ensayos de concreto",
             fecha_ultimo_contacto=date(2026, 5, 21),
-            observaciones="Test observations",
+            comentarios_asistente="Test comments",
             numero_cotizacion="COT-1234",
             estado_seguimiento="Enviado"
         )
@@ -155,7 +155,7 @@ class TestSeguimientoComercialEndpoints(unittest.TestCase):
             "rubro": "INGENIERÍA",
             "estado_cliente": "COTIZACIÓN REALIZADA",
             "servicio_solicitado": "Ensayos de suelos",
-            "observaciones": "New observations"
+            "comentarios_asistente": "New comments"
         }
         
         # Headers simulate an authenticated user
@@ -170,14 +170,14 @@ class TestSeguimientoComercialEndpoints(unittest.TestCase):
     def test_patch_record(self):
         payload = {
             "estado_cliente": "EN ESPERA DE INFORMACIÓN",
-            "observaciones": "Patched observations"
+            "comentarios_asistente": "Patched comments"
         }
         headers = {"x-dev-user-id": "dev-user"}
         response = self.client.patch(f"/api/seguimiento-comercial/{self.test_record.id}", json=payload, headers=headers)
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["estado_cliente"], "EN ESPERA DE INFORMACIÓN")
-        self.assertEqual(data["observaciones"], "Patched observations")
+        self.assertEqual(data["comentarios_asistente"], "Patched comments")
 
     def test_import_normalizes_catalog_values(self):
         workbook = Workbook()
@@ -187,7 +187,7 @@ class TestSeguimientoComercialEndpoints(unittest.TestCase):
         headers = [
             "N°", "FECHA CONTACTO", "PERSONA CONTACTO", "CELULAR", "EMAIL", "RAZÓN SOCIAL", "RUC",
             "ASESOR", "CONTACTO", "RUBRO", "ESTADO CLIENTE", "SERVICIO SOLICITADO",
-            "F. ÚLTIMO CONTACTO", "OBSERVACIONES", "N° COTIZACIÓN", "ESTADO SEGUIMIENTO",
+            "F. ÚLTIMO CONTACTO", "N° COTIZACIÓN", "ESTADO SEGUIMIENTO",
         ]
         for index, header in enumerate(headers, start=1):
             sheet.cell(row=4, column=index).value = header
@@ -205,9 +205,8 @@ class TestSeguimientoComercialEndpoints(unittest.TestCase):
         sheet.cell(row=5, column=11).value = "1. SOLICITUD INFORMACION"
         sheet.cell(row=5, column=12).value = "Ensayos de concreto"
         sheet.cell(row=5, column=13).value = "2026-05-22"
-        sheet.cell(row=5, column=14).value = "Observaciones importadas"
-        sheet.cell(row=5, column=15).value = "COT-999"
-        sheet.cell(row=5, column=16).value = "Enviado"
+        sheet.cell(row=5, column=14).value = "COT-999"
+        sheet.cell(row=5, column=15).value = "Enviado"
 
         payload_buffer = BytesIO()
         workbook.save(payload_buffer)
@@ -225,8 +224,8 @@ class TestSeguimientoComercialEndpoints(unittest.TestCase):
     def test_import_tsv_txt_normalizes_catalog_values(self):
         txt_content = "\n".join(
             [
-                "N°\tFECHA CONTACTO\tPERSONA CONTACTO\tCELULAR\tEMAIL\tRAZÓN SOCIAL\tRUC\tASESOR\tCONTACTO\tRUBRO\tESTADO CLIENTE\tSERVICIO SOLICITADO\tF. ÚLTIMO CONTACTO\tOBSERVACIONES\tN° COTIZACIÓN\tESTADO SEGUIMIENTO",
-                "1\t23-feb.-26\tImport Contact\t999999999\timport@example.com\tImport Company S.A.C.\t20111111111\tsilvia peralta\twhatsapp\tingenieria\t4. SEG. COTIZACION\tEnsayos de concreto\t24-feb.-26\tObservaciones importadas\tCOT-999\tEnviado",
+                "N°\tFECHA CONTACTO\tPERSONA CONTACTO\tCELULAR\tEMAIL\tRAZÓN SOCIAL\tRUC\tASESOR\tCONTACTO\tRUBRO\tESTADO CLIENTE\tSERVICIO SOLICITADO\tF. ÚLTIMO CONTACTO\tN° COTIZACIÓN\tESTADO SEGUIMIENTO",
+                "1\t23-feb.-26\tImport Contact\t999999999\timport@example.com\tImport Company S.A.C.\t20111111111\tsilvia peralta\twhatsapp\tingenieria\t4. SEG. COTIZACION\tEnsayos de concreto\t24-feb.-26\tCOT-999\tEnviado",
             ]
         )
 
@@ -247,8 +246,8 @@ class TestSeguimientoComercialEndpoints(unittest.TestCase):
         csv_content = "\n".join([
             ";;;;;;SEGUIMIENTO DE CLIENTES;;;;;;;;",
             "",
-            "No;FECHA CONTACTO;PERSONA CONTACTO;NMERO CELULAR;E-MAIL;RAZON SOCIAL;RUC;ASESOR;CONTACTO;RUBRO;ESTADO CLIENTE;SERVICIO SOLICITADO;FECHA LTIMO CONTACTO;OBSERVACIONES;N DE COTIZACIN;ESTADO DE SEGUIMIENTO",
-            "1;23-feb.-26;Import Contact;999999999;import@example.com;Import Company;20111111111;SILVIA;whatsapp;ingenieria;4. SEG. COTIZACION;Ensayos de concreto;24-feb.-26;Observaciones importadas;COT-999;Enviado"
+            "No;FECHA CONTACTO;PERSONA CONTACTO;NMERO CELULAR;E-MAIL;RAZON SOCIAL;RUC;ASESOR;CONTACTO;RUBRO;ESTADO CLIENTE;SERVICIO SOLICITADO;FECHA LTIMO CONTACTO;N DE COTIZACIN;ESTADO DE SEGUIMIENTO",
+            "1;23-feb.-26;Import Contact;999999999;import@example.com;Import Company;20111111111;SILVIA;whatsapp;ingenieria;4. SEG. COTIZACION;Ensayos de concreto;24-feb.-26;COT-999;Enviado"
         ])
 
         inserted = SeguimientoClienteComercialService.importar_excel(self.db, csv_content.encode("utf-8"), creado_por="Test Import CSV Semicolon")
