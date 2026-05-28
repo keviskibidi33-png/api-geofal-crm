@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from datetime import date, datetime
 from typing import Optional, List
 
@@ -21,6 +21,13 @@ class SeguimientoClienteComercialBase(BaseModel):
     comentarios_asesor: Optional[str] = None
     numero_cotizacion: Optional[str] = None
     estado_seguimiento: Optional[str] = None
+
+    @field_validator("fecha_contacto", "fecha_ultimo_contacto", mode="before")
+    @classmethod
+    def parse_empty_string_to_none(cls, v):
+        if v == "":
+            return None
+        return v
 
 class SeguimientoClienteComercialCreate(SeguimientoClienteComercialBase):
     pass
@@ -47,6 +54,13 @@ class SeguimientoClienteComercialPatch(BaseModel):
     comentarios_asesor: Optional[str] = None
     numero_cotizacion: Optional[str] = None
     estado_seguimiento: Optional[str] = None
+
+    @field_validator("fecha_contacto", "fecha_ultimo_contacto", mode="before")
+    @classmethod
+    def parse_empty_string_to_none(cls, v):
+        if v == "":
+            return None
+        return v
 
 class SeguimientoClienteComercialResponse(SeguimientoClienteComercialBase):
     id: int
