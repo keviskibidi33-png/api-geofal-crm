@@ -292,3 +292,49 @@ def notify_laboratory_essay_event(
         message=message,
         metadata=metadata,
     )
+
+
+def notify_commercial_tracking_event(
+    *,
+    record_id: int | str,
+    razon_social: str,
+    actor_name: str,
+    actor_user_id: str | None,
+    actor_role: str | None,
+    actor_avatar_url: str | None = None,
+    action: str,
+) -> None:
+    notification_type = f"comercial_tracking_{action}"
+    notification_key = f"{notification_type}:{record_id}"
+    resolved_avatar_url = actor_avatar_url or _resolve_profile_avatar_url(actor_user_id)
+
+    metadata = {
+        "module": "seguimiento_comercial",
+        "module_label": "Seguimiento Comercial",
+        "record_id": record_id,
+        "action": action,
+        "created_by": actor_name or "Usuario",
+        "created_by_user_id": actor_user_id,
+        "created_by_role": actor_role,
+        "created_by_avatar_url": resolved_avatar_url,
+        "audience_roles": ["admin"],
+        "razon_social": razon_social,
+    }
+
+    message = (
+        f"{actor_name or 'Usuario'} actualizó el seguimiento comercial para {razon_social}."
+        if action == "updated"
+        else f"{actor_name or 'Usuario'} eliminó el seguimiento comercial para {razon_social}."
+        if action == "deleted"
+        else f"{actor_name or 'Usuario'} creó un nuevo seguimiento comercial para {razon_social}."
+    )
+    title = f"Nuevo Seguimiento: {razon_social}" if action == "created" else f"Seguimiento: {razon_social}"
+
+    upsert_dashboard_notification(
+        notification_key=notification_key,
+        notification_type=notification_type,
+        severity="info",
+        title=title,
+        message=message,
+        metadata=metadata,
+    )

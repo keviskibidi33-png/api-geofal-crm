@@ -97,6 +97,8 @@ def obtener_catalogos(db: Session = Depends(get_db_session)):
         logger.error("Error loading customer catalogs: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail="No se pudieron cargar los catálogos")
 
+from app.modules.common.notifications import resolve_actor_identity, notify_commercial_tracking_event
+
 @router.post("", response_model=SeguimientoClienteComercialResponse, status_code=201)
 def crear_seguimiento(
     payload: SeguimientoClienteComercialCreate,
@@ -105,10 +107,26 @@ def crear_seguimiento(
 ):
     _, user_name = _require_current_user(request)
     try:
-        return SeguimientoClienteComercialService.crear_seguimiento(db, data=payload, creado_por=user_name)
+        new_item = SeguimientoClienteComercialService.crear_seguimiento(db, data=payload, creado_por=user_name)
+        try:
+            if request is not None:
+                actor = resolve_actor_identity(db, request)
+                notify_commercial_tracking_event(
+                    record_id=new_item.id,
+                    razon_social=str(new_item.razon_social or "").strip() or "Sin Razón Social",
+                    actor_name=actor["full_name"],
+                    actor_user_id=actor["user_id"] or None,
+                    actor_role=actor["role"] or None,
+                    actor_avatar_url=actor.get("avatar_url") or None,
+                    action="created"
+                )
+        except Exception as e:
+            logger.error("Error creating notification for commercial tracking: %s", e)
+        return new_item
     except Exception as exc:
         logger.error("Error creating customer tracking row: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=f"No se pudo registrar el seguimiento: {str(exc)}")
+
 
 @router.patch("/{id}", response_model=SeguimientoClienteComercialResponse)
 def patch_seguimiento(
