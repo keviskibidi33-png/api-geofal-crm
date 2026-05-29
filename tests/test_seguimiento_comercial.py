@@ -142,6 +142,37 @@ class TestSeguimientoComercialEndpoints(unittest.TestCase):
         self.assertNotIn("SILVIA", data["asesores"])
         self.assertEqual(len(data["asesores"]), 2)
 
+    def test_get_catalogs_excludes_removed_service_options(self):
+        legacy_services = [
+            "Morteros",
+            "Extracción de Diamantina",
+            "EMS – CIMENTACIÓN",
+            "EMS – PAVIMENTACIÓN",
+            "EMS – ALCANTARILLADO",
+            "Estudios Geotécnicos",
+        ]
+
+        for index, servicio in enumerate(legacy_services, start=20):
+            self.db.add(
+                SeguimientoClienteComercial(
+                    no=index,
+                    fecha_contacto=date(2026, 5, 20),
+                    persona_contacto=f"Legacy Service {index}",
+                    razon_social="Legacy Service S.A.C.",
+                    servicio_solicitado=servicio,
+                )
+            )
+
+        self.db.commit()
+
+        response = self.client.get("/api/seguimiento-comercial/catalogs")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        for servicio in legacy_services:
+            self.assertNotIn(servicio, data["servicios"])
+        self.assertIn("Ensayos de Laboratorio", data["servicios"])
+        self.assertIn("Estudios de Suelos", data["servicios"])
+
     def test_create_record(self):
         payload = {
             "fecha_contacto": "2026-05-21",

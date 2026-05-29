@@ -37,15 +37,17 @@ PREDEFINED_SERVICIOS = [
     "Ensayos de Laboratorio",
     "Densidades",
     "Probetas",
-    "Morteros",
-    "Extracción de Diamantina",
     "Laboratorio en Obra",
     "Estudios de Suelos",
-    "EMS – CIMENTACIÓN",
-    "EMS – PAVIMENTACIÓN",
-    "EMS – ALCANTARILLADO",
-    "Estudios Geotécnicos",
 ]
+REMOVED_SERVICIOS_CATALOG = {
+    "MORTEROS",
+    "EXTRACCION DE DIAMANTINA",
+    "EMS CIMENTACION",
+    "EMS PAVIMENTACION",
+    "EMS ALCANTARILLADO",
+    "ESTUDIOS GEOTECNICOS",
+}
 PREDEFINED_ESTADOS_SEGUIMIENTO = [
     "En Negociación",
     "Se Genero una Versión",
@@ -594,13 +596,29 @@ class SeguimientoClienteComercialService:
         db_estados_seguimiento = db.query(SeguimientoClienteComercial.estado_seguimiento).distinct().all()
 
         # Merge utility helper
-        def merge_catalogs(predefined: list, db_results: list, aliases: Optional[dict[str, str]] = None) -> list[str]:
+        def merge_catalogs(
+            predefined: list,
+            db_results: list,
+            aliases: Optional[dict[str, str]] = None,
+            excluded_values: Optional[set[str]] = None,
+        ) -> list[str]:
             merged: list[str] = []
             seen: set[str] = set()
+            excluded_normalized = {
+                SeguimientoClienteComercialService._normalize_catalog_key(value)
+                for value in (excluded_values or set())
+            }
 
             def add_value(raw_value: object) -> None:
                 value = SeguimientoClienteComercialService._normalize_catalog_value(raw_value, predefined, aliases)
-                if value and value not in seen:
+                if not value:
+                    return
+
+                normalized_value = SeguimientoClienteComercialService._normalize_catalog_key(value)
+                if normalized_value in excluded_normalized:
+                    return
+
+                if value not in seen:
                     seen.add(value)
                     merged.append(value)
 
@@ -618,7 +636,11 @@ class SeguimientoClienteComercialService:
             "contactos": merge_catalogs(PREDEFINED_CONTACTOS, db_contactos),
             "rubros": merge_catalogs(PREDEFINED_RUBROS, db_rubros),
             "estados": merge_catalogs(PREDEFINED_ESTADOS, db_estados, STATE_ALIASES),
-            "servicios": merge_catalogs(PREDEFINED_SERVICIOS, db_servicios),
+            "servicios": merge_catalogs(
+                PREDEFINED_SERVICIOS,
+                db_servicios,
+                excluded_values=REMOVED_SERVICIOS_CATALOG,
+            ),
             "estados_seguimiento": merge_catalogs(PREDEFINED_ESTADOS_SEGUIMIENTO, db_estados_seguimiento),
         }
 
