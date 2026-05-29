@@ -26,8 +26,10 @@ class SeguimientoClienteComercial(Base):
     comentarios_asesor = Column(Text, nullable=True)
     numero_cotizacion = Column(String(100), nullable=True, index=True)
     estado_seguimiento = Column(Text, nullable=True)
+    publicidad_id = Column(Integer, nullable=True, index=True)
     
     # Auditoría
     creado_por = Column(String(100), nullable=True)
     fecha_creacion = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     fecha_actualizacion = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+

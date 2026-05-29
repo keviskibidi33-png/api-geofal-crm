@@ -20,6 +20,7 @@ class SeguimientoClienteComercialBase(BaseModel):
     comentarios_asesor: Optional[str] = None
     numero_cotizacion: Optional[str] = None
     estado_seguimiento: Optional[str] = None
+    publicidad_id: Optional[int] = None
 
     @field_validator("fecha_contacto", "fecha_ultimo_contacto", mode="before")
     @classmethod
@@ -52,6 +53,8 @@ class SeguimientoClienteComercialPatch(BaseModel):
     comentarios_asesor: Optional[str] = None
     numero_cotizacion: Optional[str] = None
     estado_seguimiento: Optional[str] = None
+    publicidad_id: Optional[int] = None
+
 
     @field_validator("fecha_contacto", "fecha_ultimo_contacto", mode="before")
     @classmethod
