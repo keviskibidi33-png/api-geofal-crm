@@ -17,7 +17,7 @@ from .service import VerificacionService
 from .excel import ExcelLogic
 from app.modules.common.notifications import notify_laboratory_essay_event, resolve_actor_identity, get_request_actor_context
 
-DELETE_ALLOWED_ROLES = {"admin", "tecnico"}
+DELETE_ALLOWED_ROLES = {"admin", "tecnico", "oficina_tecnica"}
 
 def require_delete_permission(request: Request, db: Session = Depends(get_db_session)):
     actor = get_request_actor_context(request)
