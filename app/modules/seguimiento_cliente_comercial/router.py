@@ -168,21 +168,24 @@ def patch_seguimiento(
                 }
 
         if campos_modificados:
-            actor = resolve_actor_identity(db, request)
-            notify_commercial_tracking_event(
-                record_id=updated.id,
-                razon_social=str(updated.razon_social or "").strip() or "Sin Razón Social",
-                actor_name=actor["full_name"],
-                actor_user_id=actor["user_id"] or None,
-                actor_role=actor["role"] or None,
-                actor_avatar_url=actor.get("avatar_url") or None,
-                action="updated",
-                extra_metadata={
-                    "campos_modificados": campos_modificados,
-                    "cambios": cambios,
-                    "ruc": updated.ruc,
-                }
-            )
+            try:
+                actor = resolve_actor_identity(db, request)
+                notify_commercial_tracking_event(
+                    record_id=updated.id,
+                    razon_social=str(updated.razon_social or "").strip() or "Sin Razón Social",
+                    actor_name=actor["full_name"],
+                    actor_user_id=actor["user_id"] or None,
+                    actor_role=actor["role"] or None,
+                    actor_avatar_url=actor.get("avatar_url") or None,
+                    action="updated",
+                    extra_metadata={
+                        "campos_modificados": campos_modificados,
+                        "cambios": cambios,
+                        "ruc": updated.ruc,
+                    }
+                )
+            except Exception as e:
+                logger.error("Error creating notification/audit log for commercial tracking update: %s", e)
 
         return updated
     except HTTPException:
@@ -209,16 +212,20 @@ def eliminar_seguimiento(
         if not success:
             raise HTTPException(status_code=404, detail="Registro de seguimiento no encontrado")
 
-        actor = resolve_actor_identity(db, request)
-        notify_commercial_tracking_event(
-            record_id=id,
-            razon_social=razon_social,
-            actor_name=actor["full_name"],
-            actor_user_id=actor["user_id"] or None,
-            actor_role=actor["role"] or None,
-            actor_avatar_url=actor.get("avatar_url") or None,
-            action="deleted"
-        )
+        try:
+            actor = resolve_actor_identity(db, request)
+            notify_commercial_tracking_event(
+                record_id=id,
+                razon_social=razon_social,
+                actor_name=actor["full_name"],
+                actor_user_id=actor["user_id"] or None,
+                actor_role=actor["role"] or None,
+                actor_avatar_url=actor.get("avatar_url") or None,
+                action="deleted"
+            )
+        except Exception as e:
+            logger.error("Error creating notification/audit log for commercial tracking deletion: %s", e)
+
         return {"success": True, "message": "Registro eliminado con éxito"}
     except HTTPException:
         raise
