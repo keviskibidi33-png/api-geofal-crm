@@ -11,6 +11,59 @@ from app.xlsx_direct_v2 import (
 )
 
 
+def calculate_dias_atraso_com(solicitud: Any, entrega: Any) -> int | None:
+    if not solicitud or not entrega:
+        return None
+    try:
+        from datetime import date, datetime
+        
+        def to_date(val: Any) -> date | None:
+            if isinstance(val, date):
+                return val
+            if isinstance(val, datetime):
+                return val.date()
+            if isinstance(val, str):
+                cleaned = val.strip().split('T')[0]
+                return datetime.strptime(cleaned, "%Y-%m-%d").date()
+            return None
+            
+        d_sol = to_date(solicitud)
+        d_ent = to_date(entrega)
+        if d_sol and d_ent:
+            return (d_ent - d_sol).days
+    except Exception:
+        pass
+    return None
+
+
+def calculate_dias_atraso_lab(estimated: Any, real: Any) -> int | None:
+    if not estimated:
+        return None
+    try:
+        from datetime import date, datetime
+        
+        def to_date(val: Any) -> date | None:
+            if isinstance(val, date):
+                return val
+            if isinstance(val, datetime):
+                return val.date()
+            if isinstance(val, str):
+                cleaned = val.strip().split('T')[0]
+                return datetime.strptime(cleaned, "%Y-%m-%d").date()
+            return None
+            
+        d_est = to_date(estimated)
+        d_real = to_date(real) if real else date.today()
+        if d_est and d_real:
+            diff_days = (d_real - d_est).days
+            if not real and diff_days <= 0:
+                return 0
+            return diff_days
+    except Exception:
+        pass
+    return None
+
+
 def _normalize_header_text(value: Any) -> str:
     """Normalize header labels for resilient matching."""
     if value is None:
@@ -384,7 +437,12 @@ def export_programacion_xlsx(template_path: str, items: list[dict]) -> io.BytesI
             # P: NOTA (O skipped?) User said "NOTA: P8". O is missing? Maybe hidden or empty.
             _set_cell_value(sheet_data, f'P{row}', item.get('nota_lab', ''), ns, get_string_idx=string_idx_getter)
             # Q: DIAS ATE
-            _set_cell_value(sheet_data, f'Q{row}', item.get('dias_atraso_lab', ''), ns, is_number=True)
+            d_atraso_lab = item.get('dias_atraso_lab')
+            if d_atraso_lab is None or d_atraso_lab == '' or d_atraso_lab == 0:
+                calculated_lab = calculate_dias_atraso_lab(item.get('fecha_entrega_estimada'), item.get('entrega_real'))
+                if calculated_lab is not None:
+                    d_atraso_lab = calculated_lab
+            _set_cell_value(sheet_data, f'Q{row}', d_atraso_lab, ns, is_number=True)
             # R: MOTIVO
             _set_cell_value(sheet_data, f'R{row}', item.get('motivo_dias_atraso_lab', ''), ns, get_string_idx=string_idx_getter)
             # S: EVIDENCIA REC
@@ -528,7 +586,12 @@ def export_programacion_comercial_xlsx(template_path: str, items: list[dict]) ->
             # I: EVIDENCIA
             _set_cell_value(sheet_data, f'I{row}', item.get('evidencia_solicitud_envio', ''), ns, get_string_idx=string_idx_getter)
             # J: DIAS ATRASO
-            _set_cell_value(sheet_data, f'J{row}', item.get('dias_atraso_envio_coti', ''), ns, is_number=True)
+            d_atraso = item.get('dias_atraso_envio_coti')
+            if d_atraso is None or d_atraso == '' or d_atraso == 0:
+                calculated = calculate_dias_atraso_com(item.get('fecha_solicitud_com'), item.get('fecha_entrega_com'))
+                if calculated is not None:
+                    d_atraso = calculated
+            _set_cell_value(sheet_data, f'J{row}', d_atraso, ns, is_number=True)
             # K: MOTIVO
             _set_cell_value(sheet_data, f'K{row}', item.get('motivo_dias_atraso_com', ''), ns, get_string_idx=string_idx_getter)
 
