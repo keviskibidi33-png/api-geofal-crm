@@ -9,12 +9,27 @@ from typing import Any, Callable, Sequence
 
 from app.database import get_db_session
 from app.utils.http_client import http_delete, http_get, http_post
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 from sqlalchemy import desc, text
 from sqlalchemy.orm import Session
+from app.modules.common.notifications import log_audit_action
 
 logger = logging.getLogger(__name__)
+
+
+def _current_user(request: Request) -> tuple[str | None, str | None]:
+    payload = getattr(request.state, "user", {}) or {}
+    user_id = str(payload.get("sub") or payload.get("id") or payload.get("user_id") or "").strip() or None
+    header_name = str(request.headers.get("x-dev-user-name") or request.headers.get("x-user-name") or "").strip()
+    user_name = header_name or str(payload.get("name") or payload.get("email") or "").strip() or None
+    if not user_id:
+        header_id = str(request.headers.get("x-dev-user-id") or request.headers.get("x-user-id") or "").strip()
+        if header_id:
+            user_id = header_id
+    if not user_name:
+        user_name = user_id
+    return user_id, user_name
 
 
 def safe_filename(base_name: str, extension: str = "xlsx") -> str:
@@ -264,7 +279,7 @@ def create_lab_router(
         return serialize_ensayo(ensayo)
 
     @router.delete("/{ensayo_id}")
-    async def delete_ensayo(ensayo_id: int, db: Session = Depends(get_db_session)):
+    async def delete_ensayo(ensayo_id: int, request: Request, db: Session = Depends(get_db_session)):
         ensure_payload_columns(db)
         ensayo = db.query(model).filter(model.id == ensayo_id, model.deleted_at.is_(None)).first()
         if not ensayo:
@@ -281,6 +296,21 @@ def create_lab_router(
                 ensayo.object_key = trash_object_key
             db.commit()
             db.refresh(ensayo)
+
+            # Log audit trail
+            user_id, user_name = _current_user(request)
+            log_audit_action(
+                user_id=user_id,
+                user_name=user_name,
+                action=f"Eliminó ensayo de {display_name} {ensayo.numero_ensayo}",
+                module="LABORATORIO",
+                details={
+                    "numero_ot": ensayo.numero_ot,
+                    "muestra": ensayo.muestra,
+                    "numero_ensayo": ensayo.numero_ensayo,
+                    "ensayo_id": ensayo.id
+                }
+            )
         except Exception:
             db.rollback()
             logger.exception("Error moving %s ensayo to trash id=%s", display_name, ensayo_id)
@@ -295,6 +325,7 @@ def create_lab_router(
     @router.post("/excel")
     def export_excel(
         payload: request_model,
+        request: Request,
         download: bool = Query(default=False, description="true=save+download, false=save only"),
         ensayo_id: int | None = Query(default=None, ge=1, description="ID to edit (optional)"),
         db: Session = Depends(get_db_session),
@@ -325,6 +356,23 @@ def create_lab_router(
                 storage_object_key=storage_object_key,
                 ensayo_id=ensayo_id,
                 estado="COMPLETO" if is_payload_complete(payload) else "EN PROCESO",
+            )
+
+            # Log audit trail
+            user_id, user_name = _current_user(request)
+            action_type = "Actualizó" if ensayo_id else "Creó"
+            log_audit_action(
+                user_id=user_id,
+                user_name=user_name,
+                action=f"{action_type} ensayo de {display_name} {ensayo.numero_ensayo}",
+                module="LABORATORIO",
+                details={
+                    "numero_ot": ensayo.numero_ot,
+                    "muestra": ensayo.muestra,
+                    "numero_ensayo": ensayo.numero_ensayo,
+                    "ensayo_id": ensayo.id,
+                    "estado": ensayo.estado
+                }
             )
 
             if not download:

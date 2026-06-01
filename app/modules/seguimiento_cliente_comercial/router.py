@@ -137,9 +137,53 @@ def patch_seguimiento(
 ):
     _require_current_user(request)
     try:
+        # Get state before update for audit logs
+        record = SeguimientoClienteComercialService.obtener_seguimiento(db, id)
+        if not record:
+            raise HTTPException(status_code=404, detail="Registro de seguimiento no encontrado")
+
+        antes_dict = {}
+        for key in payload.keys():
+            if hasattr(record, key):
+                antes_dict[key] = getattr(record, key)
+
         updated = SeguimientoClienteComercialService.patch_seguimiento(db, id=id, data=payload)
         if not updated:
             raise HTTPException(status_code=404, detail="Registro de seguimiento no encontrado")
+
+        # Compare changes
+        cambios = {}
+        campos_modificados = []
+        for key, val in payload.items():
+            if key not in antes_dict:
+                continue
+            antes = antes_dict[key]
+            despues = getattr(updated, key)
+            # Date vs string normalized comparison
+            if str(antes if antes is not None else "") != str(despues if despues is not None else ""):
+                campos_modificados.append(key)
+                cambios[key] = {
+                    "antes": str(antes) if antes is not None else "",
+                    "despues": str(despues) if despues is not None else ""
+                }
+
+        if campos_modificados:
+            actor = resolve_actor_identity(db, request)
+            notify_commercial_tracking_event(
+                record_id=updated.id,
+                razon_social=str(updated.razon_social or "").strip() or "Sin Razón Social",
+                actor_name=actor["full_name"],
+                actor_user_id=actor["user_id"] or None,
+                actor_role=actor["role"] or None,
+                actor_avatar_url=actor.get("avatar_url") or None,
+                action="updated",
+                extra_metadata={
+                    "campos_modificados": campos_modificados,
+                    "cambios": cambios,
+                    "ruc": updated.ruc,
+                }
+            )
+
         return updated
     except HTTPException:
         raise
@@ -155,9 +199,26 @@ def eliminar_seguimiento(
 ):
     _require_current_user(request)
     try:
+        record = SeguimientoClienteComercialService.obtener_seguimiento(db, id)
+        if not record:
+            raise HTTPException(status_code=404, detail="Registro de seguimiento no encontrado")
+        
+        razon_social = str(record.razon_social or "").strip() or "Sin Razón Social"
+
         success = SeguimientoClienteComercialService.eliminar_seguimiento(db, id=id)
         if not success:
             raise HTTPException(status_code=404, detail="Registro de seguimiento no encontrado")
+
+        actor = resolve_actor_identity(db, request)
+        notify_commercial_tracking_event(
+            record_id=id,
+            razon_social=razon_social,
+            actor_name=actor["full_name"],
+            actor_user_id=actor["user_id"] or None,
+            actor_role=actor["role"] or None,
+            actor_avatar_url=actor.get("avatar_url") or None,
+            action="deleted"
+        )
         return {"success": True, "message": "Registro eliminado con éxito"}
     except HTTPException:
         raise

@@ -706,9 +706,8 @@ class SeguimientoClienteComercialService:
             estado_cliente_val = sheet.cell(row=r, column=11).value
             servicio_val = sheet.cell(row=r, column=12).value
             fecha_ultimo_val = sheet.cell(row=r, column=13).value
-            observaciones_val = sheet.cell(row=r, column=14).value
-            cotizacion_val = sheet.cell(row=r, column=15).value
-            estado_seg_val = sheet.cell(row=r, column=16).value
+            cotizacion_val = sheet.cell(row=r, column=14).value
+            estado_seg_val = sheet.cell(row=r, column=15).value
             
             # If the row is entirely empty, skip it. Specifically check if crucial fields are missing
             if not any([no_val, fecha_contacto_val, persona_contacto_val, razon_social_val, ruc_val]):

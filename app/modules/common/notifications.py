@@ -293,6 +293,14 @@ def notify_laboratory_essay_event(
         metadata=metadata,
     )
 
+    log_audit_action(
+        user_id=actor_user_id,
+        user_name=actor_name,
+        action=message,
+        module=module_label.upper(),
+        details=metadata,
+    )
+
 
 def notify_commercial_tracking_event(
     *,
@@ -303,6 +311,7 @@ def notify_commercial_tracking_event(
     actor_role: str | None,
     actor_avatar_url: str | None = None,
     action: str,
+    extra_metadata: Mapping[str, Any] | None = None,
 ) -> None:
     notification_type = f"comercial_tracking_{action}"
     notification_key = f"{notification_type}:{record_id}"
@@ -320,6 +329,8 @@ def notify_commercial_tracking_event(
         "audience_roles": ["admin"],
         "razon_social": razon_social,
     }
+    if extra_metadata:
+        metadata.update({key: value for key, value in extra_metadata.items() if value is not None})
 
     message = (
         f"{actor_name or 'Usuario'} actualizó el seguimiento comercial para {razon_social}."
@@ -338,3 +349,60 @@ def notify_commercial_tracking_event(
         message=message,
         metadata=metadata,
     )
+
+    log_audit_action(
+        user_id=actor_user_id,
+        user_name=actor_name,
+        action=message,
+        module="SEGUIMIENTO",
+        details=metadata,
+    )
+
+
+def log_audit_action(
+    *,
+    user_id: str | None,
+    user_name: str | None,
+    action: str,
+    module: str,
+    details: dict | None = None,
+    severity: str = "info"
+) -> None:
+    """Inserts a structured audit log entry directly into the 'auditoria' database table."""
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO auditoria (
+                        user_id,
+                        user_name,
+                        action,
+                        module,
+                        details,
+                        severity,
+                        created_at
+                    )
+                    VALUES (
+                        :user_id,
+                        :user_name,
+                        :action,
+                        :module,
+                        CAST(:details AS jsonb),
+                        :severity,
+                        NOW()
+                    )
+                    """
+                ),
+                {
+                    "user_id": user_id,
+                    "user_name": user_name or "Sistema",
+                    "action": action,
+                    "module": module,
+                    "details": json.dumps(details or {}, ensure_ascii=False),
+                    "severity": severity,
+                }
+            )
+    except Exception as exc:
+        logger.warning("Could not persist audit log to DB: %s", exc)
+
