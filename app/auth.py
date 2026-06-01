@@ -17,11 +17,14 @@ import os
 import logging
 from typing import Optional
 
+from contextvars import ContextVar
 import jwt
 from fastapi import Request, HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
+
+current_actor: ContextVar[Optional[dict]] = ContextVar("current_actor", default=None)
 
 
 # ── Config ──────────────────────────────────────────────────────────
@@ -120,6 +123,12 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         if _allow_insecure_dev_auth():
             dev_user = (request.headers.get("x-dev-user-id") or request.headers.get("x-user-id") or "local-dev-user").strip()
             request.state.user = {"sub": dev_user, "role": "dev"}
+            dev_name = (request.headers.get("x-dev-user-name") or request.headers.get("x-user-name") or "Local Dev User").strip()
+            current_actor.set({
+                "user_id": dev_user,
+                "user_name": dev_name,
+                "email": "dev@local"
+            })
             return await call_next(request)
 
         # Always allow CORS preflight
@@ -161,6 +170,12 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             )
             # Attach user info to request state for downstream use
             request.state.user = payload
+            user_metadata = payload.get("user_metadata", {}) or {}
+            current_actor.set({
+                "user_id": payload.get("sub") or payload.get("id"),
+                "user_name": user_metadata.get("full_name") or payload.get("name") or payload.get("email") or "Usuario",
+                "email": payload.get("email")
+            })
         except jwt.ExpiredSignatureError:
             return JSONResponse(
                 status_code=401,

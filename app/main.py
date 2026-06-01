@@ -2841,3 +2841,98 @@ if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
 
 
+# --- Centralized SQLAlchemy Event Listeners for Lab Essay Audit Logs ---
+from sqlalchemy import event, text
+from sqlalchemy.orm import Mapper
+
+IGNORED_AUDIT_TABLES = {
+    "cont_mat_organica_ensayos",
+    "terrones_fino_grueso_ensayos",
+    "azul_metileno_ensayos",
+    "part_livianas_ensayos",
+    "imp_organicas_ensayos",
+    "sul_magnesio_ensayos",
+    "angularidad_ensayos",
+}
+
+@event.listens_for(Mapper, "after_insert")
+def audit_after_insert(mapper, connection, target):
+    tablename = getattr(target, "__tablename__", "")
+    if tablename and tablename != "auditoria" and tablename not in IGNORED_AUDIT_TABLES:
+        if hasattr(target, "numero_ensayo") and hasattr(target, "numero_ot"):
+            from app.auth import current_actor
+            actor = current_actor.get() or {}
+            user_id = actor.get("user_id")
+            user_name = actor.get("user_name") or "Sistema"
+            
+            display_name = tablename.replace("_ensayos", "").replace("_", " ").title()
+            
+            try:
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO auditoria (user_id, user_name, action, module, details, severity, created_at)
+                        VALUES (:user_id, :user_name, :action, :module, CAST(:details AS jsonb), 'info', NOW())
+                        """
+                    ),
+                    {
+                        "user_id": user_id,
+                        "user_name": user_name,
+                        "action": f"Creó ensayo de {display_name} {target.numero_ensayo}",
+                        "module": "LABORATORIO",
+                        "details": json.dumps({
+                            "numero_ot": getattr(target, "numero_ot", None),
+                            "muestra": getattr(target, "muestra", None),
+                            "numero_ensayo": getattr(target, "numero_ensayo", None),
+                            "id": getattr(target, "id", None)
+                        }, ensure_ascii=False)
+                    }
+                )
+            except Exception as e:
+                logger.warning("SQLAlchemy audit insert log failed: %s", e)
+
+
+@event.listens_for(Mapper, "after_update")
+def audit_after_update(mapper, connection, target):
+    tablename = getattr(target, "__tablename__", "")
+    if tablename and tablename != "auditoria" and tablename not in IGNORED_AUDIT_TABLES:
+        if hasattr(target, "numero_ensayo") and hasattr(target, "numero_ot"):
+            from app.auth import current_actor
+            actor = current_actor.get() or {}
+            user_id = actor.get("user_id")
+            user_name = actor.get("user_name") or "Sistema"
+            
+            display_name = tablename.replace("_ensayos", "").replace("_", " ").title()
+            
+            is_deleted = False
+            deleted_at = getattr(target, "deleted_at", None)
+            if deleted_at:
+                is_deleted = True
+                
+            action_desc = "Eliminó" if is_deleted else "Actualizó"
+            
+            try:
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO auditoria (user_id, user_name, action, module, details, severity, created_at)
+                        VALUES (:user_id, :user_name, :action, :module, CAST(:details AS jsonb), 'info', NOW())
+                        """
+                    ),
+                    {
+                        "user_id": user_id,
+                        "user_name": user_name,
+                        "action": f"{action_desc} ensayo de {display_name} {target.numero_ensayo}",
+                        "module": "LABORATORIO",
+                        "details": json.dumps({
+                            "numero_ot": getattr(target, "numero_ot", None),
+                            "muestra": getattr(target, "muestra", None),
+                            "numero_ensayo": getattr(target, "numero_ensayo", None),
+                            "id": getattr(target, "id", None)
+                        }, ensure_ascii=False)
+                    }
+                )
+            except Exception as e:
+                logger.warning("SQLAlchemy audit update log failed: %s", e)
+
+
