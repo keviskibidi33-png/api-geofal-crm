@@ -16,9 +16,13 @@ from .models import SeguimientoClienteComercial
 from .schemas import SeguimientoClienteComercialCreate, SeguimientoClienteComercialUpdate, SeguimientoClienteComercialPatch
 
 # Predefined catalogs from the LISTA sheet to merge with dynamic values
-PREDEFINED_ASESORES = ["Silvia Peralta", "Juan Garcia"]
+PREDEFINED_ASESORES = ["Silvia Peralta", "Juan Garcia", "Yerly Yanela Infante"]
 ADVISOR_ALIASES = {
     "SILVIA": "Silvia Peralta",
+    "YERLY": "Yerly Yanela Infante",
+    "YERLY YANELA": "Yerly Yanela Infante",
+    "YERLY YANELA INFANTE": "Yerly Yanela Infante",
+    "YERLY INFANTE": "Yerly Yanela Infante",
 }
 PREDEFINED_CONTACTOS = ["WHATSAPP", "LLAMADA", "CORREO"]
 PREDEFINED_RUBROS = ["LABORATORIO", "INGENIERÍA", "ALQUILER", "EN ESPERA"]
