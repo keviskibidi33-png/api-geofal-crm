@@ -53,7 +53,6 @@ REMOVED_SERVICIOS_CATALOG = {
     "ESTUDIOS GEOTECNICOS",
 }
 PREDEFINED_ESTADOS_SEGUIMIENTO = [
-    "Pendiente",
     "En Negociación",
     "Se Genero una Versión",
     "Cotización Rechazada",
