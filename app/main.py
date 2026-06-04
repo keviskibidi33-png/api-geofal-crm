@@ -260,6 +260,8 @@ def _db_disabled() -> bool:
 
 def _get_cors_origins() -> list[str]:
     origins = [
+        "http://localhost:8474",
+        "http://127.0.0.1:8474",
         "http://localhost:3000", 
         "http://localhost:3001", 
         "http://localhost:3002",
