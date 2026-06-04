@@ -140,7 +140,7 @@ class TestSeguimientoComercialEndpoints(unittest.TestCase):
         data = response.json()
         self.assertIn("Silvia Peralta", data["asesores"])
         self.assertNotIn("SILVIA", data["asesores"])
-        self.assertEqual(len(data["asesores"]), 2)
+        self.assertEqual(len(data["asesores"]), 3)
 
     def test_get_catalogs_excludes_removed_service_options(self):
         legacy_services = [

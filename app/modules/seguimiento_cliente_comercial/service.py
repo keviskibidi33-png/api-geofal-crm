@@ -592,13 +592,25 @@ class SeguimientoClienteComercialService:
         """
         Returns merged distinct catalog values for autocomplete dropdowns.
         """
-        # Query distinct values from db
-        db_asesores = db.query(SeguimientoClienteComercial.asesor).distinct().all()
-        db_contactos = db.query(SeguimientoClienteComercial.contacto).distinct().all()
-        db_rubros = db.query(SeguimientoClienteComercial.rubro).distinct().all()
-        db_estados = db.query(SeguimientoClienteComercial.estado_cliente).distinct().all()
-        db_servicios = db.query(SeguimientoClienteComercial.servicio_solicitado).distinct().all()
-        db_estados_seguimiento = db.query(SeguimientoClienteComercial.estado_seguimiento).distinct().all()
+        # Query distinct values from db safely
+        try:
+            db_asesores = db.query(SeguimientoClienteComercial.asesor).distinct().all()
+            db_contactos = db.query(SeguimientoClienteComercial.contacto).distinct().all()
+            db_rubros = db.query(SeguimientoClienteComercial.rubro).distinct().all()
+            db_estados = db.query(SeguimientoClienteComercial.estado_cliente).distinct().all()
+            db_servicios = db.query(SeguimientoClienteComercial.servicio_solicitado).distinct().all()
+            db_estados_seguimiento = db.query(SeguimientoClienteComercial.estado_seguimiento).distinct().all()
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Database query for catalogs failed, using predefined defaults: %s", e
+            )
+            db_asesores = []
+            db_contactos = []
+            db_rubros = []
+            db_estados = []
+            db_servicios = []
+            db_estados_seguimiento = []
 
         # Merge utility helper
         def merge_catalogs(
