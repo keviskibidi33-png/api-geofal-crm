@@ -119,12 +119,15 @@ from app.utils.http_client import http_get, http_patch
 
 logger = logging.getLogger(__name__)
 
-# Ensure tables are created
-RecepcionBase.metadata.create_all(bind=engine)
-VerificacionBase.metadata.create_all(bind=engine)
-# Compression tables will be created via migration or explicitly:
-from app.database import Base as MainBase
-MainBase.metadata.create_all(bind=engine)
+# Ensure tables are created safely
+try:
+    RecepcionBase.metadata.create_all(bind=engine)
+    VerificacionBase.metadata.create_all(bind=engine)
+    # Compression tables will be created via migration or explicitly:
+    from app.database import Base as MainBase
+    MainBase.metadata.create_all(bind=engine)
+except Exception as e:
+    logger.warning("Could not create database tables on startup (DB might be offline): %s", e)
 
 # --- Pydantic Models for Roles & Permissions ---
 
