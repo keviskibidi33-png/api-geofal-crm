@@ -452,14 +452,47 @@ async def value_error_handler(request, exc):
 
 @app.exception_handler(RequestValidationError)
 async def request_validation_error_handler(request: Request, exc: RequestValidationError):
-    """Log validation errors to identify malformed payloads without changing response shape."""
-    logger.warning(
-        "Validation error on %s %s: %s",
-        request.method,
-        request.url.path,
-        exc.errors(),
+    """Manejador de validación de Pydantic para devolver respuestas limpias en español."""
+    errors = exc.errors()
+    logger.warning("Validation error on %s %s: %s", request.method, request.url.path, errors)
+    
+    friendly_messages = []
+    for err in errors:
+        loc = err.get("loc", [])
+        msg = err.get("msg", "")
+        err_type = err.get("type", "")
+        
+        field_name = str(loc[-1]) if loc else "campo"
+        
+        # Traducir los tipos de errores comunes de Pydantic
+        if err_type == "string_too_long":
+            max_len = err.get("ctx", {}).get("max_length", 50)
+            msg_es = f"no debe superar los {max_len} caracteres"
+        elif err_type == "missing":
+            msg_es = "es un campo obligatorio"
+        elif err_type == "value_error":
+            msg_es = msg.replace("Value error,", "").strip()
+        else:
+            msg_es = msg
+            
+        # Identificar si el error pertenece a una muestra específica
+        if len(loc) >= 4 and loc[1] == "muestras_verificadas":
+            muestra_idx = loc[2]
+            friendly_field = "Código LEM" if field_name == "codigo_lem" else ("Tipo de Testigo" if field_name == "tipo_testigo" else field_name)
+            friendly_messages.append(f"Muestra #{muestra_idx + 1}: El '{friendly_field}' {msg_es}.")
+        else:
+            friendly_messages.append(f"El campo '{field_name}' {msg_es}.")
+            
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": "ValidationError",
+            "message": " | ".join(friendly_messages),
+            "code": 422,
+            "detail": errors
+        }
     )
-    return await request_validation_exception_handler(request, exc)
+
 
  
 @app.get("/")
