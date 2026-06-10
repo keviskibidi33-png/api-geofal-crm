@@ -68,8 +68,14 @@ def _coerce_float(value: object | None) -> float | None:
     text = str(value).strip()
     if not text or text == "-":
         return None
+    normalized = text.replace(" ", "")
+    if "," in normalized:
+        if "." in normalized and normalized.rfind(",") > normalized.rfind("."):
+            normalized = normalized.replace(".", "").replace(",", ".")
+        else:
+            normalized = normalized.replace(",", ".")
     try:
-        return float(text)
+        return float(normalized)
     except (TypeError, ValueError):
         return None
 

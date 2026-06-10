@@ -62,6 +62,32 @@ def _normalize_text(value: object | None) -> str | None:
     return text or None
 
 
+def _coerce_float(value: object | None) -> float | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text or text == "-":
+        return None
+    normalized = text.replace(" ", "")
+    if "," in normalized:
+        if "." in normalized and normalized.rfind(",") > normalized.rfind("."):
+            normalized = normalized.replace(".", "").replace(",", ".")
+        else:
+            normalized = normalized.replace(",", ".")
+    try:
+        return float(normalized)
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_float_list(value: object | None) -> list[float | None]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        return []
+    return [_coerce_float(item) for item in value]
+
+
 class CompresionNoConfinadaRequest(BaseModel):
     """Payload para generar reporte Compresion No Confinada."""
 
@@ -126,6 +152,36 @@ class CompresionNoConfinadaRequest(BaseModel):
     @classmethod
     def normalize_text_fields(cls, value):
         return _normalize_text(value)
+
+    @field_validator(
+        "tara_suelo_humedo_g",
+        "tara_suelo_seco_g",
+        "peso_agua_g",
+        "peso_tara_g",
+        "peso_suelo_seco_g",
+        "humedad_pct",
+        mode="before",
+    )
+    @classmethod
+    def normalize_single_numbers(cls, value):
+        return _coerce_float(value)
+
+    @field_validator(
+        "diametro_cm",
+        "altura_cm",
+        "area_cm2",
+        "volumen_cm3",
+        "peso_gr",
+        "p_unitario_humedo",
+        "p_unitario_seco",
+        "lectura_carga_kg",
+        "deformacion_pulg_001",
+        "deformacion_mm",
+        mode="before",
+    )
+    @classmethod
+    def normalize_number_lists(cls, value):
+        return _coerce_float_list(value)
 
 
 class CompresionNoConfinadaEnsayoResponse(BaseModel):

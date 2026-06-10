@@ -240,6 +240,60 @@ class TestCDExcelMapping(unittest.TestCase):
         self.assertEqual(sheet["D62"].value, "FABIAN LA ROSA")
         self.assertEqual(sheet["F62"].value, "IRMA COAQUIRA")
 
+    def test_generate_cd_excel_accepts_comma_decimal_values(self):
+        payload = CDRequest.model_validate(
+            {
+                "muestra": "2684-26",
+                "numero_ot": "869-26",
+                "fecha_ensayo": "25/04/26",
+                "peso_kg": ["2,5", "3,75", "4,0"],
+                "esf_normal": ["0,5", "1,5", "2,5"],
+                "def_horizontal": DEF_VALUES,
+                "carga_kg_1": ["10,25" if idx == 0 else 11.5 + idx for idx in range(len(DEF_VALUES))],
+                "carga_kg_2": ["20,25" if idx == 0 else 21.5 + idx for idx in range(len(DEF_VALUES))],
+                "carga_kg_3": ["30,25" if idx == 0 else 31.5 + idx for idx in range(len(DEF_VALUES))],
+                "humedad_puntos": [
+                    {
+                        "recipiente_numero": "E-3",
+                        "peso_recipiente_g": "93,45",
+                        "peso_recipiente_suelo_humedo_g": "247,51",
+                        "peso_recipiente_suelo_seco_g": "225,35",
+                        "peso_agua_g": "22,16",
+                        "peso_suelo_g": "131,9",
+                        "contenido_humedad_pct": "16,801",
+                    },
+                    {},
+                    {},
+                ],
+                "hora_1": ["10:02 am", "", "", "", ""],
+                "deform_1": ["3,102", None, None, None, None],
+                "hora_2": ["", "", "", "", ""],
+                "deform_2": [None, None, None, None, None],
+                "hora_3": ["", "", "", "", ""],
+                "deform_3": [None, None, None, None, None],
+                "realizado_por": "BEATRIZ",
+                "revisado_por": "FABIAN LA ROSA",
+                "aprobado_por": "IRMA COAQUIRA",
+            }
+        )
+
+        _, workbook = self._workbook_from_payload(payload)
+        sheet = workbook[workbook.sheetnames[0]]
+
+        self.assertEqual(sheet["B16"].value, 2.5)
+        self.assertEqual(sheet["D16"].value, 3.75)
+        self.assertEqual(sheet["F16"].value, 4.0)
+        self.assertEqual(sheet["B17"].value, 0.5)
+        self.assertEqual(sheet["D17"].value, 1.5)
+        self.assertEqual(sheet["F17"].value, 2.5)
+        self.assertEqual(sheet["C20"].value, 10.25)
+        self.assertEqual(sheet["E20"].value, 20.25)
+        self.assertEqual(sheet["G20"].value, 30.25)
+        self.assertEqual(sheet["E46"].value, "E-3")
+        self.assertEqual(sheet["E47"].value, 93.45)
+        self.assertEqual(sheet["E52"].value, 16.801)
+        self.assertEqual(sheet["C55"].value, 3.102)
+
 
 if __name__ == "__main__":
     unittest.main()

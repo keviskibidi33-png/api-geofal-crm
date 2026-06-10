@@ -23,7 +23,8 @@ NS_SHEET = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 NS_DRAW = "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"
 NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
-SHEET_NAME = "CNC (2)"
+PRIMARY_SHEET_NAME = "CNC"
+SECONDARY_SHEET_NAME = "CNC (2)"
 
 SIG_REVISADO_BOUNDS = (1, 53, 3, 56)  # col,row,col,row (0-based) from drawing2.xml
 SIG_APROBADO_BOUNDS = (3, 53, 5, 56)
@@ -541,6 +542,15 @@ def _fill_drawing(drawing_xml: bytes, payload: CompresionNoConfinadaRequest) -> 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
+def _set_workbook_sheets_visible(workbook_xml: bytes) -> bytes:
+    root = etree.fromstring(workbook_xml)
+    ns = {"main": NS_SHEET}
+    for sheet in root.findall(".//main:sheet", ns):
+        if "state" in sheet.attrib:
+            sheet.attrib.pop("state", None)
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
 def generate_compresion_no_confinada_excel(payload: CompresionNoConfinadaRequest) -> bytes:
     """
     Generate Excel from template preserving shapes and merged cells.
@@ -551,10 +561,14 @@ def generate_compresion_no_confinada_excel(payload: CompresionNoConfinadaRequest
     with zipfile.ZipFile(io.BytesIO(template_bytes), "r") as zin, \
         zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zout:
 
-        sheet_path, drawing_path = _resolve_sheet_and_drawing_paths(zin, SHEET_NAME)
-        if sheet_path is None:
-            logger.warning("Sheet %s not found in template, falling back to sheet2.xml", SHEET_NAME)
-            sheet_path = "xl/worksheets/sheet2.xml"
+        sheet_targets = [PRIMARY_SHEET_NAME, SECONDARY_SHEET_NAME]
+        resolved_targets: dict[str, tuple[str, str | None]] = {}
+        for sheet_name in sheet_targets:
+            sheet_path, drawing_path = _resolve_sheet_and_drawing_paths(zin, sheet_name)
+            if sheet_path is None:
+                logger.warning("Sheet %s not found in template, falling back to sheet2.xml", sheet_name)
+                sheet_path = "xl/worksheets/sheet1.xml" if sheet_name == "CNC" else "xl/worksheets/sheet2.xml"
+            resolved_targets[sheet_path] = (sheet_name, drawing_path)
 
         try:
             styles_xml = zin.read("xl/styles.xml")
@@ -562,20 +576,32 @@ def generate_compresion_no_confinada_excel(payload: CompresionNoConfinadaRequest
         except KeyError:
             modified_styles_xml, style_overrides = None, {}
 
+        modified_sheets: dict[str, bytes] = {}
+        modified_drawings: dict[str, bytes] = {}
+
+        for sheet_path, (_sheet_name, drawing_path) in resolved_targets.items():
+            raw_sheet = zin.read(sheet_path)
+            modified_sheets[sheet_path] = _fill_sheet(raw_sheet, payload, style_overrides=style_overrides)
+            if drawing_path and drawing_path not in modified_drawings:
+                modified_drawings[drawing_path] = _fill_drawing(zin.read(drawing_path), payload)
+
         for item in zin.infolist():
             if item.filename == "xl/calcChain.xml":
                 continue
 
             raw = zin.read(item.filename)
 
-            if item.filename == sheet_path:
-                raw = _fill_sheet(raw, payload, style_overrides=style_overrides)
+            if item.filename in modified_sheets:
+                raw = modified_sheets[item.filename]
 
             if modified_styles_xml is not None and item.filename == "xl/styles.xml":
                 raw = modified_styles_xml
 
-            if drawing_path and item.filename == drawing_path:
-                raw = _fill_drawing(raw, payload)
+            if item.filename in modified_drawings:
+                raw = modified_drawings[item.filename]
+
+            if item.filename == "xl/workbook.xml":
+                raw = _set_workbook_sheets_visible(raw)
 
             zout.writestr(item, raw)
 

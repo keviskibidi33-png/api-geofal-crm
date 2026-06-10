@@ -109,3 +109,13 @@ def test_humedad_template_replaced_and_generation_forces_recalc():
         overrides = [override.get("PartName", "") for override in content_types_root]
         assert "/xl/calcChain.xml" not in overrides
         assert all(not part_name.startswith("/xl/externalLinks/") for part_name in overrides)
+
+
+def test_humedad_forma_particula_accepts_hyphenated_values():
+    payload = _build_humedad_payload()
+    payload.forma_particula = "SUB-REDONDEADA"
+
+    generated = load_workbook(io.BytesIO(generate_humedad_excel(payload)), data_only=False)
+
+    assert generated["informe NTP"]["E28"].value == "SUB-REDONDEADA"
+    assert generated["Resumen"]["E28"].value == "SUB-REDONDEADA"

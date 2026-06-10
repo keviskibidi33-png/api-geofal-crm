@@ -55,6 +55,30 @@ def _set_cell_value_fast(row, ref, value, ns, is_number=False, get_string_idx=No
         return c
 
     if is_number:
+        text_value = str(value).strip()
+        if text_value:
+            normalized = text_value.replace(" ", "")
+            if "," in normalized:
+                if "." in normalized and normalized.rfind(",") > normalized.rfind("."):
+                    normalized = normalized.replace(".", "").replace(",", ".")
+                else:
+                    normalized = normalized.replace(",", ".")
+            try:
+                numeric_value = float(normalized)
+            except (TypeError, ValueError):
+                value = None
+            else:
+                if not (numeric_value == numeric_value and numeric_value not in (float("inf"), float("-inf"))):
+                    value = None
+                else:
+                    value = numeric_value
+
+    if value is None or value == '':
+        if 't' in c.attrib: del c.attrib['t']
+        if style: c.set('s', style)
+        return c
+
+    if is_number:
         if 't' in c.attrib: del c.attrib['t']
         v = etree.SubElement(c, f'{{{ns}}}v')
         v.text = str(value)

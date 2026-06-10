@@ -513,55 +513,61 @@ class ExcelLogic:
         }
 
         # Extraction Helpers
-        def extract_right(anchor_name, offset_col=1, search_limit=5):
-            # 1. Try Dynamic Anchor
-            val_found = ""
-            if anchor_name in anchors:
-                col, row = anchors[anchor_name]
-                print(f"[DEBUG] Extracting right for {anchor_name} at ({row}, {col})")
-                
-                # Search next few columns for non-empty
+        def extract_right_candidates(anchor_name, offset_col=1, search_limit=5):
+            candidates = []
+
+            def capture_candidate(row: int, start_col: int) -> str:
                 for i in range(search_limit):
-                    current_col = col + offset_col + i
+                    current_col = start_col + i
                     val = get_val(row, current_col)
                     s_val = safe_str(val)
-                    
+
                     print(f"  -> Check ({row}, {current_col}): '{s_val}' (Raw: {val})")
-                    
+
                     if val:
                         # Skip if it's purely punctuation or very short non-alphanumeric
                         if re.match(r'^[\W_]+$', s_val) or (s_val.strip().startswith(":") and len(s_val) < 5):
-                           print("     [SKIP] Punctuation-only")
-                           continue
-                        
+                            print("     [SKIP] Punctuation-only")
+                            continue
+
                         # NUCLEAR OPTION: If extraction is short and contains colon, KILL IT.
                         if ":" in s_val and len(s_val) < 5:
                             print(f"     [SKIP-NUCLEAR] Value '{s_val}' contains colon and is short.")
                             continue
-                        
+
                         # Fallback for short stuff that might sneak through
                         if len(s_val) < 2 and not s_val.isalnum():
-                           print("     [SKIP] Short non-alnum")
-                           continue
+                            print("     [SKIP] Short non-alnum")
+                            continue
 
                         print(f"     [MATCH] '{s_val}'")
-                        val_found = s_val
-                        break # Found it
+                        return s_val
+                return ""
+
+            if anchor_name in anchors_list:
+                for col, row in anchors_list[anchor_name]:
+                    print(f"[DEBUG] Extracting right for {anchor_name} at ({row}, {col})")
+                    candidate = capture_candidate(row, col + offset_col)
+                    if candidate:
+                        candidates.append(candidate)
             else:
                 print(f"[DEBUG] Anchor {anchor_name} NOT FOUND")
-            
-            # 2. Hybrid Fallback: If dynamic failed, try absolute coordinate
-            if not val_found and anchor_name in FALLBACK_COORDS:
+
+            # Hybrid Fallback: If dynamic failed, try absolute coordinate
+            if not candidates and anchor_name in FALLBACK_COORDS:
                 f_col, f_row = FALLBACK_COORDS[anchor_name]
                 print(f"[DEBUG] Fallback used for {anchor_name} -> ({f_row}, {f_col})")
                 val = get_val(f_row, f_col)
                 s_val = safe_str(val)
-                # Apply same cleaning rules?
                 if s_val and not re.match(r'^[\W_]+$', s_val):
                     print(f"     [FALLBACK MATCH] '{s_val}'")
-                    val_found = s_val
+                    candidates.append(s_val)
 
-            return val_found
+            return candidates
+
+        def extract_right(anchor_name, offset_col=1, search_limit=5):
+            candidates = extract_right_candidates(anchor_name, offset_col, search_limit)
+            return candidates[0] if candidates else ""
 
         def extract_below(anchor_name, offset_row=1):
              if anchor_name in anchors:
@@ -571,11 +577,43 @@ class ExcelLogic:
              return ""
 
         # Map fields
-        data['numero_recepcion'] = extract_right("RECEPCIÓN N°", 1)
-        data['numero_cotizacion'] = extract_right("COTIZACIÓN N°", 1) # Sometimes col offset is 2 depending on merge
-        if not data['numero_cotizacion']: data['numero_cotizacion'] = extract_right("COTIZACIÓN N°", 2)
-        
-        data['numero_ot'] = extract_right("OT N°", 1)
+        numero_recepcion_candidates = extract_right_candidates("RECEPCIÓN N°", 1)
+        numero_cotizacion_candidates = extract_right_candidates("COTIZACIÓN N°", 1) # Sometimes col offset is 2 depending on merge
+        if not numero_cotizacion_candidates:
+            numero_cotizacion_candidates = extract_right_candidates("COTIZACIÓN N°", 2)
+
+        numero_ot_candidates = extract_right_candidates("OT N°", 1)
+
+        def validate_consistent_document_number(label: str, candidates: list[str]) -> str:
+            normalized = []
+            for raw_value in candidates:
+                value = safe_str(raw_value)
+                if not value:
+                    continue
+                normalized_value = re.sub(r"\s+", "", value).upper()
+                normalized.append((normalized_value, value))
+
+            unique_values = []
+            seen = set()
+            for normalized_value, original_value in normalized:
+                if normalized_value not in seen:
+                    seen.add(normalized_value)
+                    unique_values.append(original_value)
+
+            if not unique_values:
+                return ""
+
+            if len(unique_values) > 1:
+                raise ValueError(
+                    f"Inconsistencia en {label}: se encontraron valores distintos "
+                    f"({', '.join(unique_values)})."
+                )
+
+            return unique_values[0]
+
+        data['numero_recepcion'] = validate_consistent_document_number("RECEPCIÓN N°", numero_recepcion_candidates)
+        data['numero_cotizacion'] = validate_consistent_document_number("COTIZACIÓN N°", numero_cotizacion_candidates)
+        data['numero_ot'] = validate_consistent_document_number("OT N°", numero_ot_candidates)
         # Fix: Handle float OT numbers like 340.26 → "340-26"
         ot_val = data.get('numero_ot', '')
         if ot_val and '.' in ot_val:

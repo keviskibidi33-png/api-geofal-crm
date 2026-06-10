@@ -54,11 +54,11 @@ def _normalize_numero_ot(raw: str) -> str:
 
 
 def _normalize_alnum_text(raw: str) -> str:
-    """Permite solo letras, números y espacios (incluye caracteres en español)."""
+    """Permite letras, números, espacios y guiones (incluye caracteres en español)."""
     value = raw.strip()
     if not value:
         return value
-    cleaned = re.sub(r"[^0-9A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s]", "", value)
+    cleaned = re.sub(r"[^0-9A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s-]", "", value)
     return re.sub(r"\s+", " ", cleaned).strip()
 
 

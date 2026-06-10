@@ -27,6 +27,12 @@ class TestRecepcionExcelRuc(unittest.TestCase):
         workbook = Workbook()
         sheet = workbook.active
 
+        sheet["B5"] = "RECEPCIÓN N°"
+        sheet["D5"] = "REC-100-26"
+        sheet["B6"] = "COTIZACIÓN N°"
+        sheet["D6"] = "COT-100"
+        sheet["B7"] = "OT N°"
+        sheet["D7"] = "OT-100"
         sheet["B10"] = "CLIENTE:"
         sheet["D10"] = "CLIENTE TEST"
         sheet["B11"] = "DOMICILIO LEGAL:"
@@ -42,6 +48,12 @@ class TestRecepcionExcelRuc(unittest.TestCase):
         workbook = Workbook()
         sheet = workbook.active
 
+        sheet["B5"] = "RECEPCIÓN N°"
+        sheet["D5"] = "REC-101-26"
+        sheet["B6"] = "COTIZACIÓN N°"
+        sheet["D6"] = "COT-101"
+        sheet["B7"] = "OT N°"
+        sheet["D7"] = "OT-101"
         sheet["B10"] = "CLIENTE:"
         sheet["D10"] = "CLIENTE TEST"
         sheet["B11"] = "DOMICILIO LEGAL:"
@@ -51,6 +63,63 @@ class TestRecepcionExcelRuc(unittest.TestCase):
         parsed = self._parse_workbook(workbook)
 
         self.assertEqual(parsed["ruc"], "20505212739")
+
+    def test_repeated_document_numbers_must_match(self):
+        workbook = Workbook()
+        sheet = workbook.active
+
+        sheet["B5"] = "RECEPCIÓN N°"
+        sheet["D5"] = "REC-123-26"
+        sheet["B6"] = "COTIZACIÓN N°"
+        sheet["D6"] = "COT-555"
+        sheet["B7"] = "OT N°"
+        sheet["D7"] = "OT-777"
+
+        # Repeat the same numbers elsewhere in the document body
+        sheet["B20"] = "RECEPCIÓN N°"
+        sheet["D20"] = "REC-123-26"
+        sheet["B21"] = "COTIZACIÓN N°"
+        sheet["D21"] = "COT-555"
+        sheet["B22"] = "OT N°"
+        sheet["D22"] = "OT-777"
+
+        parsed = self._parse_workbook(workbook)
+
+        self.assertEqual(parsed["numero_recepcion"], "REC-123-26")
+        self.assertEqual(parsed["numero_cotizacion"], "COT-555")
+        self.assertEqual(parsed["numero_ot"], "OT-777")
+
+    def test_repeated_document_numbers_raise_when_values_differ(self):
+        workbook = Workbook()
+        sheet = workbook.active
+
+        sheet["B5"] = "RECEPCIÓN N°"
+        sheet["D5"] = "REC-123-26"
+        sheet["B6"] = "COTIZACIÓN N°"
+        sheet["D6"] = "COT-555"
+        sheet["B7"] = "OT N°"
+        sheet["D7"] = "OT-777"
+
+        sheet["B20"] = "OT N°"
+        sheet["D20"] = "OT-778"
+
+        with self.assertRaisesRegex(ValueError, "Inconsistencia en OT N°"):
+            self._parse_workbook(workbook)
+
+    def test_missing_cotizacion_is_allowed_but_recepcion_and_ot_parse(self):
+        workbook = Workbook()
+        sheet = workbook.active
+
+        sheet["B5"] = "RECEPCIÓN N°"
+        sheet["D5"] = "REC-200-26"
+        sheet["B7"] = "OT N°"
+        sheet["D7"] = "OT-200"
+
+        parsed = self._parse_workbook(workbook)
+
+        self.assertEqual(parsed["numero_recepcion"], "REC-200-26")
+        self.assertEqual(parsed["numero_cotizacion"], "")
+        self.assertEqual(parsed["numero_ot"], "OT-200")
 
 
 if __name__ == "__main__":

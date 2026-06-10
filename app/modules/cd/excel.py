@@ -106,6 +106,33 @@ def _col_letter_to_num(col: str) -> int:
     return num
 
 
+def _coerce_numeric_value(value: Any) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        numeric_value = float(value)
+        return numeric_value if math.isfinite(numeric_value) else None
+
+    text = str(value).strip()
+    if not text or text == "-":
+        return None
+
+    normalized = text.replace(" ", "")
+    if "," in normalized:
+        if "." in normalized and normalized.rfind(",") > normalized.rfind("."):
+            normalized = normalized.replace(".", "").replace(",", ".")
+        else:
+            normalized = normalized.replace(",", ".")
+
+    try:
+        numeric_value = float(normalized)
+    except (TypeError, ValueError):
+        return None
+    return numeric_value if math.isfinite(numeric_value) else None
+
+
 def _find_or_create_row(sheet_data: etree._Element, row_num: int) -> etree._Element:
     for row in sheet_data.findall(f"{{{NS_SHEET}}}row"):
         if row.get("r") == str(row_num):
@@ -141,16 +168,8 @@ def _find_or_create_cell(row: etree._Element, cell_ref: str) -> etree._Element:
 
 
 def _set_cell(sheet_data: etree._Element, ref: str, value: Any, is_number: bool = False) -> None:
-    if is_number and value is not None:
-        try:
-            numeric_value = float(value)
-        except (TypeError, ValueError):
-            value = None
-        else:
-            if not math.isfinite(numeric_value):
-                value = None
-            else:
-                value = numeric_value
+    if is_number:
+        value = _coerce_numeric_value(value)
 
     if value is None or value == "":
         _, row_num = _parse_cell_ref(ref)
