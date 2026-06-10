@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import List, Optional
+from datetime import datetime
 from app.database import get_db_session
 from app.modules.common.recepcion_codes import resolve_codigo_muestra_lem
 from .schemas import (
@@ -231,7 +232,6 @@ async def importar_verificacion_excel(
 ):
     from fastapi import UploadFile, File
     from .excel_import import ExcelImportParser
-    from .schemas import VerificacionMuestrasCreate
     
     # We parse from form file
     form = await request.form()
@@ -255,40 +255,14 @@ async def importar_verificacion_excel(
         parsed_data["pagina"] = "1 de 1"
         parsed_data["codigo_documento"] = "F-LEM-P-01.12"
         parsed_data["version"] = "03"
-        
-        # Build the creation schema
-        create_schema = VerificacionMuestrasCreate(**parsed_data)
-        
-        service = VerificacionService(db)
-        new_ver = service.crear_verificacion(create_schema)
-        
-        # Update trazabilidad and logs
-        try:
-            from app.modules.tracing.service import TracingService
-            TracingService.actualizar_trazabilidad(db, new_ver.numero_verificacion)
-        except Exception as tr_e:
-            print(f"Error syncing trazabilidad during import: {tr_e}")
+        if recepcion_id_str:
+            parsed_data["recepcion_id"] = int(recepcion_id_str)
             
-        actor = resolve_actor_identity(db, request)
-        notify_laboratory_essay_event(
-            module_key="verificacion_muestras",
-            record_id=new_ver.id,
-            record_code=str(new_ver.numero_verificacion or "").strip(),
-            actor_name=actor["full_name"],
-            actor_user_id=actor["user_id"] or None,
-            actor_role=actor["role"] or None,
-            actor_avatar_url=actor.get("avatar_url") or None,
-            action="created",
-            extra_metadata={
-                "codigo_documento": new_ver.codigo_documento,
-                "detail_route": "verificacion_muestras",
-                "imported": True
-            },
-        )
-        
-        return {"message": "Importación exitosa", "id": new_ver.id, "numero_verificacion": new_ver.numero_verificacion}
+        return parsed_data
         
     except ValueError as val_err:
         raise HTTPException(status_code=400, detail=str(val_err))
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error procesando Excel: {str(e)}")
