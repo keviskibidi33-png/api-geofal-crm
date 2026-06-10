@@ -70,6 +70,7 @@ from app.modules.correlativos.router import router as correlativos_router
 from app.modules.control_informes.router import router as control_informes_router
 from app.modules.seguimiento_cliente_comercial.router import router as seguimiento_comercial_router
 from app.modules.publicidad_geofal.router import router as publicidad_geofal_router
+from app.modules.control_probetas.router import router as control_probetas_router
 from app.modules.recepcion.models import Base as RecepcionBase
 from app.modules.verificacion.models import Base as VerificacionBase
 from app.modules.tracing.models import Trazabilidad
@@ -145,6 +146,7 @@ class RolePermissions(BaseModel):
     verificacion_muestras: ModulePermission | None = None
     compresion: ModulePermission | None = None
     tracing: ModulePermission | None = None
+    control_probetas: ModulePermission | None = None
     humedad: ModulePermission | None = None
     cont_humedad: ModulePermission | None = None
     planas: ModulePermission | None = None
@@ -420,6 +422,7 @@ app.add_middleware(
         "X-SMAG-Id",
         "X-ANG-Id",
         "X-Storage-Object-Key",
+        "X-Control-Probetas-Id",
     ],
     max_age=3600,
 )
@@ -573,6 +576,7 @@ app.include_router(correlativos_router)
 app.include_router(control_informes_router)
 app.include_router(seguimiento_comercial_router)
 app.include_router(publicidad_geofal_router)
+app.include_router(control_probetas_router)
 
 # Note: All legacy endpoints for Quotes and Programacion have been moved to their respective modules.
 # Check app/modules/cotizacion and app/modules/programacion.
