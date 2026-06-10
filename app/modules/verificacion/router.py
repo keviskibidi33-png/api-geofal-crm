@@ -181,6 +181,7 @@ def eliminar_verificacion(
 def actualizar_verificacion(verificacion_id: int, verificacion: VerificacionMuestrasUpdate, request: Request, db: Session = Depends(get_db_session)):
     service = VerificacionService(db)
     ver = service.actualizar_verificacion(verificacion_id, verificacion)
+
     if not ver:
         raise HTTPException(status_code=404, detail="Verificación no encontrada")
     if request is not None:
@@ -221,3 +222,73 @@ def exportar_verificacion(verificacion_id: int, db: Session = Depends(get_db_ses
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/importar")
+async def importar_verificacion_excel(
+    request: Request,
+    file: bytes = Depends(lambda: None), # Will be handled by Form
+    db: Session = Depends(get_db_session)
+):
+    from fastapi import UploadFile, File
+    from .excel_import import ExcelImportParser
+    from .schemas import VerificacionMuestrasCreate
+    
+    # We parse from form file
+    form = await request.form()
+    uploaded_file: UploadFile = form.get("file")
+    numero_verificacion: str = form.get("numero_verificacion")
+    recepcion_id_str: str = form.get("recepcion_id")
+    
+    if not uploaded_file:
+        raise HTTPException(status_code=400, detail="Archivo Excel no provisto")
+    if not numero_verificacion:
+        raise HTTPException(status_code=400, detail="Número de verificación es obligatorio")
+        
+    try:
+        content = await uploaded_file.read()
+        parser = ExcelImportParser()
+        parsed_data = parser.parse_excel(content)
+        
+        # Override header details with explicit ones requested by UI if available
+        parsed_data["numero_verificacion"] = numero_verificacion
+        parsed_data["fecha_documento"] = datetime.now().strftime("%Y-%m-%d")
+        parsed_data["pagina"] = "1 de 1"
+        parsed_data["codigo_documento"] = "F-LEM-P-01.12"
+        parsed_data["version"] = "03"
+        
+        # Build the creation schema
+        create_schema = VerificacionMuestrasCreate(**parsed_data)
+        
+        service = VerificacionService(db)
+        new_ver = service.crear_verificacion(create_schema)
+        
+        # Update trazabilidad and logs
+        try:
+            from app.modules.tracing.service import TracingService
+            TracingService.actualizar_trazabilidad(db, new_ver.numero_verificacion)
+        except Exception as tr_e:
+            print(f"Error syncing trazabilidad during import: {tr_e}")
+            
+        actor = resolve_actor_identity(db, request)
+        notify_laboratory_essay_event(
+            module_key="verificacion_muestras",
+            record_id=new_ver.id,
+            record_code=str(new_ver.numero_verificacion or "").strip(),
+            actor_name=actor["full_name"],
+            actor_user_id=actor["user_id"] or None,
+            actor_role=actor["role"] or None,
+            actor_avatar_url=actor.get("avatar_url") or None,
+            action="created",
+            extra_metadata={
+                "codigo_documento": new_ver.codigo_documento,
+                "detail_route": "verificacion_muestras",
+                "imported": True
+            },
+        )
+        
+        return {"message": "Importación exitosa", "id": new_ver.id, "numero_verificacion": new_ver.numero_verificacion}
+        
+    except ValueError as val_err:
+        raise HTTPException(status_code=400, detail=str(val_err))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error procesando Excel: {str(e)}")
