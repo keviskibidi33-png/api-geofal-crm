@@ -584,6 +584,7 @@ class CompresionService:
             return None
         
         # Build export request from DB data
+        from .schemas import CompressionExportRequest, CompressionItem
         items = []
         for item in ensayo.items:
             items.append(CompressionItem(
@@ -613,3 +614,93 @@ class CompresionService:
         )
         
         return generate_compression_excel(export_request)
+
+    @classmethod
+    def sync_with_reception(cls, db: Session, recepcion: Any, old_numero_recepcion: str) -> None:
+        """
+        Sincroniza los ensayos de compresión correspondientes cuando una recepción es actualizada.
+        Actualiza el número de recepción, número de OT y los códigos LEM de los items.
+        Además regenera y re-sube el Excel a Supabase si aplica.
+        """
+        from sqlalchemy import or_
+        from .models import EnsayoCompresion, ItemCompresion
+        
+        # Buscar todos los ensayos vinculados
+        ensayos = db.query(EnsayoCompresion).filter(
+            or_(
+                EnsayoCompresion.recepcion_id == recepcion.id,
+                EnsayoCompresion.numero_recepcion == old_numero_recepcion,
+                EnsayoCompresion.numero_recepcion == recepcion.numero_recepcion
+            )
+        ).all()
+
+        if not ensayos:
+            return
+
+        # Mapear muestras de la recepción por número de item
+        muestras_map = {
+            int(m.item_numero): m
+            for m in recepcion.muestras
+            if m.item_numero is not None
+        }
+
+        service_instance = cls()
+
+        for ensayo in ensayos:
+            # Sincronizar cabeceras
+            ensayo.recepcion_id = recepcion.id
+            ensayo.numero_recepcion = recepcion.numero_recepcion
+            ensayo.numero_ot = recepcion.numero_ot
+
+            # Sincronizar códigos LEM de los items
+            for item in ensayo.items:
+                item_num = item.item
+                muestra_recepcion = muestras_map.get(item_num)
+                if muestra_recepcion and muestra_recepcion.codigo_muestra_lem:
+                    item.codigo_lem = muestra_recepcion.codigo_muestra_lem.strip().upper()
+
+            # Regenerar y subir Excel a Supabase si tenía uno
+            if ensayo.object_key:
+                try:
+                    from .schemas import CompressionExportRequest, CompressionItem
+                    
+                    items_export = []
+                    for item in ensayo.items:
+                        items_export.append(CompressionItem(
+                            item=item.item,
+                            codigo_lem=item.codigo_lem,
+                            fecha_ensayo_programado=item.fecha_ensayo_programado.date() if item.fecha_ensayo_programado else None,
+                            fecha_ensayo=item.fecha_ensayo.date() if item.fecha_ensayo else None,
+                            hora_ensayo=item.hora_ensayo,
+                            carga_maxima=item.carga_maxima,
+                            tipo_fractura=item.tipo_fractura,
+                            defectos=item.defectos,
+                            realizado=item.realizado,
+                            revisado=item.revisado,
+                            fecha_revisado=item.fecha_revisado.date() if item.fecha_revisado else None,
+                            aprobado=item.aprobado,
+                            fecha_aprobado=item.fecha_aprobado.date() if item.fecha_aprobado else None
+                        ))
+
+                    export_request = CompressionExportRequest(
+                        recepcion_numero=ensayo.numero_recepcion,
+                        ot_numero=ensayo.numero_ot,
+                        items=items_export,
+                        codigo_equipo=ensayo.codigo_equipo,
+                        nombre_equipo=EQUIPO_NOMBRES.get(ensayo.codigo_equipo or '') if ensayo.codigo_equipo else None,
+                        otros=ensayo.otros,
+                        nota=ensayo.nota
+                    )
+
+                    excel_buffer = generate_compression_excel(export_request)
+                    excel_content = excel_buffer.getvalue()
+
+                    filename = _get_safe_filename(f"Compresion_{ensayo.numero_ot.replace('/', '_')}")
+                    new_key = service_instance._upload_to_supabase(excel_content, filename)
+                    if new_key:
+                        ensayo.object_key = new_key
+                        ensayo.bucket = "informe"
+                except Exception as e:
+                    logger.error(f"Error regenerando excel de compresión en sincronización: {e}")
+
+        db.commit()

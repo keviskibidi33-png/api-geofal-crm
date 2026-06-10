@@ -245,8 +245,12 @@ async def actualizar_recepcion(
             # Limpia trazabilidad fantasma del número anterior si quedó huérfana tras el cambio.
             TracingService.actualizar_trazabilidad(db, old_numero_recepcion)
         TracingService.actualizar_trazabilidad(db, updated_recepcion.numero_recepcion)
-    except Exception:
-        pass # No bloquear respuesta por error en traza
+        
+        # Sincronizar ensayos de compresión vinculados
+        from app.modules.compresion.service import CompresionService
+        CompresionService.sync_with_reception(db, updated_recepcion, old_numero_recepcion)
+    except Exception as e:
+        print(f"Error sincronizando trazabilidad o compresión: {e}")
 
     if request is not None:
         actor = resolve_actor_identity(db, request)
