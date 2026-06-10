@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc, func, Integer
 from .models import VerificacionMuestras, MuestraVerificada
 from .schemas import (
+    MuestraVerificadaBase,
     VerificacionMuestrasCreate, 
     CalculoFormulaRequest,
     CalculoFormulaResponse,
@@ -177,6 +178,68 @@ class VerificacionService:
         except Exception as e:
             logger.error(f"Error calculando patrón de acción: {str(e)}")
             raise ValueError(f"Error en el cálculo del patrón: {str(e)}")
+
+    @staticmethod
+    def _to_bool_value(value: object) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.strip().lower() in {"cumple", "true", "1", "si", "sí", "v", "x"}
+        return False
+
+    @staticmethod
+    def _to_float_value(value: object) -> Optional[float]:
+        if value in (None, "", "-"):
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def calcular_datos_derivados_muestra(
+        self,
+        muestra_data: MuestraVerificadaBase,
+    ) -> tuple[Optional[float], Optional[bool], Optional[str], Optional[str]]:
+        tolerancia_porcentaje = None
+        cumple_tolerancia = None
+        if muestra_data.diametro_1_mm and muestra_data.diametro_2_mm:
+            formula_res = self.calcular_formula_diametros(CalculoFormulaRequest(
+                diametro_1_mm=muestra_data.diametro_1_mm,
+                diametro_2_mm=muestra_data.diametro_2_mm,
+                tipo_testigo=muestra_data.tipo_testigo or "20x10",
+            ))
+            tolerancia_porcentaje = formula_res.tolerancia_porcentaje
+            cumple_tolerancia = formula_res.cumple_tolerancia
+
+        accion_realizar = None
+        manual_action = (muestra_data.accion_realizar or "").strip()
+        if manual_action and manual_action != '-':
+            accion_realizar = manual_action
+        else:
+            ps = self._to_bool_value(muestra_data.planitud_superior_aceptacion or muestra_data.planitud_superior)
+            pi = self._to_bool_value(muestra_data.planitud_inferior_aceptacion or muestra_data.planitud_inferior)
+            pd = self._to_bool_value(muestra_data.planitud_depresiones_aceptacion or muestra_data.planitud_depresiones)
+            patron_res = self.calcular_patron_accion(CalculoPatronRequest(
+                planitud_superior=ps,
+                planitud_inferior=pi,
+                planitud_depresiones=pd,
+            ))
+            accion_realizar = patron_res.accion_realizar
+
+        pesar = None
+        d1 = self._to_float_value(muestra_data.diametro_1_mm)
+        d2 = self._to_float_value(muestra_data.diametro_2_mm)
+        l1 = self._to_float_value(muestra_data.longitud_1_mm)
+        l2 = self._to_float_value(muestra_data.longitud_2_mm)
+        l3 = self._to_float_value(muestra_data.longitud_3_mm)
+        if d1 and d2 and l1 and l2:
+            avg_d = (d1 + d2) / 2
+            ls = [v for v in (l1, l2, l3) if v and v > 0]
+            if ls:
+                avg_l = sum(ls) / len(ls)
+                pesar = "PESAR" if (avg_l / avg_d) < 1.75 else "NO PESAR"
+
+        return tolerancia_porcentaje, cumple_tolerancia, accion_realizar, pesar
     
     def crear_verificacion(self, verificacion_data: VerificacionMuestrasCreate) -> VerificacionMuestras:
         """Crea una nueva verificación de muestras"""
@@ -202,42 +265,7 @@ class VerificacionService:
             self.db.flush()
             
             for idx, muestra_data in enumerate(verificacion_data.muestras_verificadas, start=1):
-                # Lógica de cálculo integrada
-                tolerancia_porcentaje = None
-                cumple_tolerancia = None
-                
-                if muestra_data.diametro_1_mm and muestra_data.diametro_2_mm:
-                    formula_res = self.calcular_formula_diametros(CalculoFormulaRequest(
-                        diametro_1_mm=muestra_data.diametro_1_mm,
-                        diametro_2_mm=muestra_data.diametro_2_mm,
-                        tipo_testigo=muestra_data.tipo_testigo or "20x10"
-                    ))
-                    tolerancia_porcentaje = formula_res.tolerancia_porcentaje
-                    cumple_tolerancia = formula_res.cumple_tolerancia
-                
-                accion_realizar = None
-                # Si viene una acción manual no vacía y que no sea solo un guion, la respetamos.
-                # Pero si es '-' o está vacía, calculamos.
-                manual_action = (muestra_data.accion_realizar or "").strip()
-                if manual_action and manual_action != '-':
-                    accion_realizar = manual_action
-                else:
-                    # Determinar booleanos de planitud para el cálculo de patrón
-                    def to_bool(v):
-                        if isinstance(v, bool): return v
-                        if isinstance(v, str): return v.lower() in ['cumple', 'true', '1', 'si', 'sí', 'v']
-                        return False
-
-                    ps = to_bool(muestra_data.planitud_superior_aceptacion or muestra_data.planitud_superior)
-                    pi = to_bool(muestra_data.planitud_inferior_aceptacion or muestra_data.planitud_inferior)
-                    pd = to_bool(muestra_data.planitud_depresiones_aceptacion or muestra_data.planitud_depresiones)
-                    
-                    patron_res = self.calcular_patron_accion(CalculoPatronRequest(
-                        planitud_superior=ps,
-                        planitud_inferior=pi,
-                        planitud_depresiones=pd
-                    ))
-                    accion_realizar = patron_res.accion_realizar
+                tolerancia_porcentaje, cumple_tolerancia, accion_realizar, pesar = self.calcular_datos_derivados_muestra(muestra_data)
 
                 db_muestra = MuestraVerificada(
                     verificacion_id=db_verificacion.id,
@@ -263,7 +291,7 @@ class VerificacionService:
                     longitud_2_mm=muestra_data.longitud_2_mm,
                     longitud_3_mm=muestra_data.longitud_3_mm,
                     masa_muestra_aire_g=muestra_data.masa_muestra_aire_g,
-                    pesar=muestra_data.pesar
+                    pesar=pesar or muestra_data.pesar
                 )
                 self.db.add(db_muestra)
             

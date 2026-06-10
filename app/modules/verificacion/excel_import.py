@@ -159,6 +159,8 @@ class ExcelImportParser:
                     equipos["nota"] = sheet.cell(row=r, column=col+1).value
 
         # Construir y retornar el payload estructurado
+        # Nota: los cálculos derivados se replican aquí para que la UI de importación
+        # reciba los mismos valores automáticos que el flujo "nuevo".
         return {
             "verificado_por": cabecera.get("verificado_por") or "",
             "fecha_verificacion": cabecera.get("fecha_verificacion") or datetime.now().strftime("%Y-%m-%d"),
@@ -169,8 +171,72 @@ class ExcelImportParser:
             "equipo_escuadra": equipos.get("equipo_escuadra") or "-",
             "equipo_balanza": equipos.get("equipo_balanza") or "-",
             "nota": equipos.get("nota") or "",
-            "muestras_verificadas": muestras
+            "muestras_verificadas": self._apply_derived_calculations(muestras)
         }
+
+    def _apply_derived_calculations(self, muestras: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        def to_bool(v: Any) -> bool:
+            if isinstance(v, bool):
+                return v
+            if isinstance(v, str):
+                return v.strip().lower() in ("cumple", "true", "1", "si", "sí", "v", "x")
+            return False
+
+        def calc_formula(d1: float, d2: float, tipo: str) -> tuple[float, bool]:
+            if d1 == 0:
+                raise ValueError("El diámetro 1 no puede ser 0")
+            tol = abs(d1 - d2) / d1 * 100
+            return round(tol, 2), tol <= 2.0
+
+        def calc_patron(ps: bool, pi: bool, pd: bool) -> str:
+            clave = f"{'C' if ps else 'N'}{'C' if pi else 'N'}{'C' if pd else 'N'}"
+            return {
+                'CCC': '-',
+                'NCC': 'NEOPRENO SUPERIOR',
+                'CNC': 'NEOPRENO INFERIOR',
+                'NNC': 'NEOPRENO SUPERIOR E INFERIOR',
+                'CCN': 'CAPEO SUPERIOR E INFERIOR',
+                'NCN': 'CAPEO SUPERIOR',
+                'CNN': 'CAPEO INFERIOR',
+                'NNN': 'CAPEO SUPERIOR E INFERIOR',
+            }.get(clave, '-')
+
+        def calc_pesar(d1: Optional[float], d2: Optional[float], l1: Optional[float], l2: Optional[float], l3: Optional[float]) -> str:
+            if not d1 or not d2 or not l1 or not l2:
+                return ""
+            avg_d = (d1 + d2) / 2
+            longitudes = [v for v in (l1, l2, l3) if v and v > 0]
+            if not longitudes or avg_d <= 0:
+                return ""
+            avg_l = sum(longitudes) / len(longitudes)
+            return "PESAR" if (avg_l / avg_d) < 1.75 else "NO PESAR"
+
+        enriched: List[Dict[str, Any]] = []
+        for m in muestras:
+            item = dict(m)
+            d1 = item.get("diametro_1_mm")
+            d2 = item.get("diametro_2_mm")
+            if d1 is not None and d2 is not None:
+                tol, cumple = calc_formula(float(d1), float(d2), str(item.get("tipo_testigo") or "20x10"))
+                item["tolerancia_porcentaje"] = tol
+                item["aceptacion_diametro"] = "Cumple" if cumple else "No cumple"
+
+            item["pesar"] = calc_pesar(
+                item.get("diametro_1_mm"),
+                item.get("diametro_2_mm"),
+                item.get("longitud_1_mm"),
+                item.get("longitud_2_mm"),
+                item.get("longitud_3_mm"),
+            ) or item.get("pesar", "")
+
+            manual_action = str(item.get("accion_realizar") or "").strip()
+            if not manual_action or manual_action == "-":
+                ps = to_bool(item.get("planitud_superior_aceptacion") or item.get("planitud_superior"))
+                pi = to_bool(item.get("planitud_inferior_aceptacion") or item.get("planitud_inferior"))
+                pd = to_bool(item.get("planitud_depresiones_aceptacion") or item.get("planitud_depresiones"))
+                item["accion_realizar"] = calc_patron(ps, pi, pd)
+            enriched.append(item)
+        return enriched
 
     def _format_date(self, val: Any) -> Optional[str]:
         if not val:
