@@ -652,12 +652,21 @@ class CompresionService:
             ensayo.numero_recepcion = recepcion.numero_recepcion
             ensayo.numero_ot = recepcion.numero_ot
 
-            # Sincronizar códigos LEM de los items
+            # Sincronizar códigos LEM y fechas de los items
             for item in ensayo.items:
                 item_num = item.item
                 muestra_recepcion = muestras_map.get(item_num)
-                if muestra_recepcion and muestra_recepcion.codigo_muestra_lem:
-                    item.codigo_lem = muestra_recepcion.codigo_muestra_lem.strip().upper()
+                if muestra_recepcion:
+                    if muestra_recepcion.codigo_muestra_lem:
+                        item.codigo_lem = muestra_recepcion.codigo_muestra_lem.strip().upper()
+                    if muestra_recepcion.fecha_rotura:
+                        from app.utils.date_format import parse_flexible_date
+                        parsed_date = parse_flexible_date(muestra_recepcion.fecha_rotura)
+                        if parsed_date:
+                            item.fecha_ensayo_programado = parsed_date
+                            # Si no se ha ensayado aún (sin carga ni fractura), actualizar también fecha_ensayo
+                            if not item.carga_maxima and not item.tipo_fractura:
+                                item.fecha_ensayo = parsed_date
 
             # Regenerar y subir Excel a Supabase si tenía uno
             if ensayo.object_key:
