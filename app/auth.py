@@ -56,6 +56,11 @@ PUBLIC_PREFIXES = (
     "/openapi",
     "/api/cotizacion/by-token",
     "/by-token",
+    # Tracing read-only endpoints used for autocomplete/validation in micro-frontend forms
+    # that may not have the JWT token available (cross-domain localStorage isolation)
+    "/api/tracing/suggest",
+    "/api/tracing/validate",
+    "/api/tracing/flujo",
 )
 
 
