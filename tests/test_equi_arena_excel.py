@@ -68,12 +68,19 @@ def test_generate_equi_arena_excel_escribe_resultados():
     payload = _build_payload()
 
     workbook = load_workbook(io.BytesIO(generate_equi_arena_excel(payload)), data_only=False)
-    sheet = workbook.active
+    sheet = workbook["FORMATO"]
 
+    # Encabezado
+    assert sheet["B10"].value == "1234-SU-26"
+    assert sheet["D10"].value == "4567-26"
+    assert sheet["H10"].value == "OPERADOR"
+
+    # Condiciones
     assert sheet["B17"].value == "SUELO"
     assert sheet["F17"].value == "MANUAL"
     assert sheet["F21"].value == "PROCEDIMIENTO A"
 
+    # Cronometros
     assert sheet["H26"].value == "08:00:00"
     assert sheet["I26"].value == "08:10:15"
     assert sheet["J26"].value == "08:20:30"
@@ -87,6 +94,7 @@ def test_generate_equi_arena_excel_escribe_resultados():
     assert sheet["I31"].value == "08:45:10"
     assert sheet["J31"].value == "08:55:20"
 
+    # Equivalente
     assert sheet["H35"].value == 50
     assert sheet["I35"].value == 50
     assert sheet["J35"].value == 50
@@ -95,8 +103,25 @@ def test_generate_equi_arena_excel_escribe_resultados():
     assert sheet["I35"].protection.locked is True
     assert sheet["J35"].protection.locked is True
     assert sheet["H36"].protection.locked is True
-    assert sheet["B11"].protection.locked is False
+    assert sheet["B10"].protection.locked is False
     assert sheet["F17"].protection.locked is False
+
+    # Datos sheet - operador y lecturas
+    datos = workbook["Datos"]
+    assert datos["L1"].value == "OPERADOR"
+    assert datos["G13"].value == 10.0
+    assert datos["G14"].value == 5.0
+    assert datos["G15"].value == 50.0
+    assert datos["G16"].value == 50.0
+
+    # Balanza sheet - lecturas arcilla y arena
+    balanza = workbook["Balanza"]
+    assert balanza["C4"].value == 10.0
+    assert balanza["D4"].value == 10.0
+    assert balanza["E4"].value == 10.0
+    assert balanza["C5"].value == 5.0
+    assert balanza["D5"].value == 5.0
+    assert balanza["E5"].value == 5.0
 
     with zipfile.ZipFile(io.BytesIO(generate_equi_arena_excel(payload)), "r") as workbook_zip:
         sheet_root = etree.fromstring(workbook_zip.read("xl/worksheets/sheet1.xml"))

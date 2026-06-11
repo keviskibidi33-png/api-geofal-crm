@@ -136,11 +136,11 @@ def _fill_sheet(sheet_xml: bytes, data: EquiArenaRequest) -> bytes:
     if sd is None:
         return sheet_xml
 
-    # Encabezado
-    _set_cell(sd, "B11", data.muestra)
-    _set_cell(sd, "D11", data.numero_ot)
-    _set_cell(sd, "F11", data.fecha_ensayo)
-    _set_cell(sd, "H11", data.realizado_por)
+    # Encabezado (row 10 en FORMATO)
+    _set_cell(sd, "B10", data.muestra)
+    _set_cell(sd, "D10", data.numero_ot)
+    _set_cell(sd, "F10", data.fecha_ensayo)
+    _set_cell(sd, "H10", data.realizado_por)
 
     # Condiciones
     if data.tipo_muestra != "-":
@@ -155,7 +155,7 @@ def _fill_sheet(sheet_xml: bytes, data: EquiArenaRequest) -> bytes:
     _set_cell(sd, "J16", data.temperatura_solucion_c, is_number=True)
     _set_cell(sd, "D20", data.masa_4_medidas_g, is_number=True)
 
-    # Pruebas
+    # Pruebas (columnas H, I, J)
     _set_trial_row(sd, 26, data.cronometro_entrada_saturacion_hmin, is_number=False)
     _set_trial_row(sd, 27, data.cronometro_salida_saturacion_hmin, is_number=False)
     _set_trial_row(sd, 28, data.tiempo_saturacion_min)
@@ -189,6 +189,85 @@ def _fill_drawing(drawing_xml: bytes, data: EquiArenaRequest) -> bytes:
         aprobado_por=data.aprobado_por,
         aprobado_fecha=data.aprobado_fecha,
     )
+
+
+def _fill_datos_sheet(sheet_xml: bytes, data: EquiArenaRequest) -> bytes:
+    """Llena la hoja 'Datos' con las lecturas y el operador."""
+    root = etree.fromstring(sheet_xml)
+    sd = root.find(f".//{{{NS_SHEET}}}sheetData")
+    if sd is None:
+        return sheet_xml
+
+    # Operador en L1 (columna de OPERADORES)
+    _set_cell(sd, "L1", data.realizado_por)
+
+    # Pruebas (columnas G, H, I)
+    # Row 6-12: Cronómetros y tiempos
+    _set_cell(sd, "G6", data.cronometro_entrada_saturacion_hmin[0], is_number=False)
+    _set_cell(sd, "H6", data.cronometro_entrada_saturacion_hmin[1], is_number=False)
+    _set_cell(sd, "I6", data.cronometro_entrada_saturacion_hmin[2], is_number=False)
+
+    _set_cell(sd, "G7", data.cronometro_salida_saturacion_hmin[0], is_number=False)
+    _set_cell(sd, "H7", data.cronometro_salida_saturacion_hmin[1], is_number=False)
+    _set_cell(sd, "I7", data.cronometro_salida_saturacion_hmin[2], is_number=False)
+
+    _set_cell(sd, "G8", data.tiempo_saturacion_min[0], is_number=True)
+    _set_cell(sd, "H8", data.tiempo_saturacion_min[1], is_number=True)
+    _set_cell(sd, "I8", data.tiempo_saturacion_min[2], is_number=True)
+
+    _set_cell(sd, "G9", data.tiempo_agitacion_seg[0], is_number=True)
+    _set_cell(sd, "H9", data.tiempo_agitacion_seg[1], is_number=True)
+    _set_cell(sd, "I9", data.tiempo_agitacion_seg[2], is_number=True)
+
+    _set_cell(sd, "G10", data.cronometro_entrada_decantacion_hmin[0], is_number=False)
+    _set_cell(sd, "H10", data.cronometro_entrada_decantacion_hmin[1], is_number=False)
+    _set_cell(sd, "I10", data.cronometro_entrada_decantacion_hmin[2], is_number=False)
+
+    _set_cell(sd, "G11", data.cronometro_salida_decantacion_hmin[0], is_number=False)
+    _set_cell(sd, "H11", data.cronometro_salida_decantacion_hmin[1], is_number=False)
+    _set_cell(sd, "I11", data.cronometro_salida_decantacion_hmin[2], is_number=False)
+
+    _set_cell(sd, "G12", data.tiempo_decantacion_min[0], is_number=True)
+    _set_cell(sd, "H12", data.tiempo_decantacion_min[1], is_number=True)
+    _set_cell(sd, "I12", data.tiempo_decantacion_min[2], is_number=True)
+
+    # Row 13-16: Lecturas y equivalente (valores numéricos)
+    _set_cell(sd, "G13", data.lectura_arcilla_in[0], is_number=True)
+    _set_cell(sd, "H13", data.lectura_arcilla_in[1], is_number=True)
+    _set_cell(sd, "I13", data.lectura_arcilla_in[2], is_number=True)
+
+    _set_cell(sd, "G14", data.lectura_arena_in[0], is_number=True)
+    _set_cell(sd, "H14", data.lectura_arena_in[1], is_number=True)
+    _set_cell(sd, "I14", data.lectura_arena_in[2], is_number=True)
+
+    equivalente = _compute_equivalente_por_prueba(data.lectura_arcilla_in, data.lectura_arena_in)
+    _set_cell(sd, "G15", equivalente[0], is_number=True)
+    _set_cell(sd, "H15", equivalente[1], is_number=True)
+    _set_cell(sd, "I15", equivalente[2], is_number=True)
+
+    _set_cell(sd, "G16", data.equivalente_arena_promedio_pct, is_number=True)
+
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
+def _fill_balanza_sheet(sheet_xml: bytes, data: EquiArenaRequest) -> bytes:
+    """Llena la hoja 'Balanza' con las lecturas de arcilla y arena."""
+    root = etree.fromstring(sheet_xml)
+    sd = root.find(f".//{{{NS_SHEET}}}sheetData")
+    if sd is None:
+        return sheet_xml
+
+    # Row 4: Lectura de la arcilla (columnas C, D, E)
+    _set_cell(sd, "C4", data.lectura_arcilla_in[0], is_number=True)
+    _set_cell(sd, "D4", data.lectura_arcilla_in[1], is_number=True)
+    _set_cell(sd, "E4", data.lectura_arcilla_in[2], is_number=True)
+
+    # Row 5: Lectura de la arena (columnas C, D, E)
+    _set_cell(sd, "C5", data.lectura_arena_in[0], is_number=True)
+    _set_cell(sd, "D5", data.lectura_arena_in[1], is_number=True)
+    _set_cell(sd, "E5", data.lectura_arena_in[2], is_number=True)
+
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
 def _fill_incertidumbre(sheet_xml: bytes, data: EquiArenaRequest) -> bytes:
@@ -243,10 +322,24 @@ def generate_equi_arena_excel(data: EquiArenaRequest) -> bytes:
 
     output = io.BytesIO()
     with zipfile.ZipFile(io.BytesIO(template_bytes), "r") as zin, zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zout:
+        # Pre-fill sheets
         sheet_original = zin.read("xl/worksheets/sheet1.xml")
         sheet_xml = _fill_sheet(sheet_original, data)
 
-        # prepare Incertidumbre sheet (sheet4.xml) if present
+        datos_xml = None
+        try:
+            raw_datos = zin.read("xl/worksheets/sheet3.xml")
+            datos_xml = _fill_datos_sheet(raw_datos, data)
+        except KeyError:
+            datos_xml = None
+
+        balanza_xml = None
+        try:
+            raw_balanza = zin.read("xl/worksheets/sheet5.xml")
+            balanza_xml = _fill_balanza_sheet(raw_balanza, data)
+        except KeyError:
+            balanza_xml = None
+
         incert_xml = None
         try:
             raw_incert = zin.read("xl/worksheets/sheet4.xml")
@@ -260,8 +353,12 @@ def generate_equi_arena_excel(data: EquiArenaRequest) -> bytes:
 
             if item.filename == "xl/worksheets/sheet1.xml":
                 raw = sheet_xml
+            elif item.filename == "xl/worksheets/sheet3.xml" and datos_xml is not None:
+                raw = datos_xml
             elif item.filename == "xl/worksheets/sheet4.xml" and incert_xml is not None:
                 raw = incert_xml
+            elif item.filename == "xl/worksheets/sheet5.xml" and balanza_xml is not None:
+                raw = balanza_xml
             elif item.filename == "xl/_rels/workbook.xml.rels":
                 raw = _remove_calc_chain_relationships(zin.read(item.filename))
             elif item.filename == "[Content_Types].xml":
