@@ -379,6 +379,14 @@ _origin_regex = r"https://.*\.geofal\.com\.pe"
 
 logger.info("CORS configured: origins=%s allow_credentials=%s", _origins, _allow_creds)
 
+# Force HTTPS behind reverse proxies using X-Forwarded-Proto header
+@app.middleware("http")
+async def force_https_behind_proxy(request: Request, call_next):
+    if request.headers.get("x-forwarded-proto") == "https":
+        request.scope["scheme"] = "https"
+    response = await call_next(request)
+    return response
+
 # JWT Auth Middleware
 app.add_middleware(JWTAuthMiddleware)
 
