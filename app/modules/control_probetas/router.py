@@ -1,5 +1,4 @@
 import logging
-import json
 from datetime import datetime, date
 from typing import List, Optional
 from zoneinfo import ZoneInfo
@@ -83,6 +82,11 @@ class ProbetasKpis(BaseModel):
     vencido: int
 
 
+ALLOWED_ELEMENTOS = {"-", "PEQUEÑA", "GRANDE", "DIAMANTINA", "CUBO Y VIGA"}
+ALLOWED_STATUS_ENSAYO = {"-", "ENSAYADO", "PENDIENTE", "FALTA", "ANULADO"}
+ALLOWED_STATUS_ENTREGA = {"-", "ENTREGADO", "INFORME LISTO"}
+
+
 def normalize_date_string(d_str: Optional[str]) -> Optional[date]:
     """Helper to parse slash/dash dates robustly."""
     if not d_str:
@@ -95,6 +99,61 @@ def normalize_date_string(d_str: Optional[str]) -> Optional[date]:
         except ValueError:
             continue
     return None
+
+
+def normalize_option(value: Optional[str], allowed: set[str], default: str = "-") -> str:
+    normalized = (value or default).strip().upper()
+    return normalized if normalized in allowed else default
+
+
+def normalize_date_payload(value: Optional[str]) -> str:
+    if value is None:
+        return ""
+    raw = str(value).strip()
+    if raw in {"", "-"}:
+        return ""
+    normalized_date = normalize_date_string(raw)
+    if normalized_date:
+        return normalized_date.strftime("%Y/%m/%d")
+    return raw
+
+
+def build_probeta_response(
+    muestra: MuestraConcreto,
+    recep: RecepcionMuestra,
+    item_comp: Optional[ItemCompresion],
+    ensayo: Optional[EnsayoCompresion],
+) -> ProbetaListItem:
+    est_prob = calculate_status(muestra, item_comp)
+    fecha_ensayo_str = item_comp.fecha_ensayo.strftime("%Y/%m/%d") if (item_comp and item_comp.fecha_ensayo) else None
+    return ProbetaListItem(
+        muestra_id=muestra.id,
+        item_numero=muestra.item_numero,
+        codigo_muestra=muestra.codigo_muestra or "",
+        codigo_muestra_lem=muestra.codigo_muestra_lem or "",
+        identificacion_muestra=muestra.identificacion_muestra or "",
+        estructura=muestra.estructura or "",
+        fc_kg_cm2=muestra.fc_kg_cm2,
+        fecha_moldeo=muestra.fecha_moldeo or "",
+        edad=muestra.edad,
+        fecha_rotura=muestra.fecha_rotura or "",
+        requiere_densidad=muestra.requiere_densidad,
+        elemento=muestra.elemento or "-",
+        densidad=muestra.densidad or "-",
+        status_ensayo=muestra.status_ensayo or "-",
+        status_entrega=muestra.status_entrega or "-",
+        fecha_entrega=muestra.fecha_entrega or "-",
+        recepcion_id=recep.id,
+        numero_recepcion=recep.numero_recepcion,
+        numero_ot=recep.numero_ot,
+        cliente=recep.cliente,
+        proyecto=recep.proyecto,
+        compresion_id=ensayo.id if ensayo else None,
+        fecha_ensayo=fecha_ensayo_str,
+        carga_maxima=item_comp.carga_maxima if item_comp else None,
+        tipo_fractura=item_comp.tipo_fractura if item_comp else None,
+        estado_probeta=est_prob,
+    )
 
 
 def calculate_status(muestra: MuestraConcreto, item_comp: Optional[ItemCompresion]) -> str:
@@ -170,8 +229,12 @@ def get_control_probetas(
                 RecepcionMuestra.proyecto.ilike(search_filter),
                 RecepcionMuestra.numero_recepcion.ilike(search_filter),
                 RecepcionMuestra.numero_ot.ilike(search_filter),
+                RecepcionMuestra.numero_cotizacion.ilike(search_filter),
                 MuestraConcreto.codigo_muestra_lem.ilike(search_filter),
-                MuestraConcreto.identificacion_muestra.ilike(search_filter)
+                MuestraConcreto.identificacion_muestra.ilike(search_filter),
+                MuestraConcreto.elemento.ilike(search_filter),
+                MuestraConcreto.status_ensayo.ilike(search_filter),
+                MuestraConcreto.status_entrega.ilike(search_filter),
             )
         )
 
@@ -190,45 +253,7 @@ def get_control_probetas(
     # 4. Fetch all candidates to process status in-memory (highly safe and correct)
     results = query.all()
     
-    mapped_items = []
-    for muestra, recep, item_comp, ensayo in results:
-        # Calculate dynamic status
-        est_prob = calculate_status(muestra, item_comp)
-        
-        # Format dates for response
-        fecha_ensayo_str = None
-        if item_comp and item_comp.fecha_ensayo:
-            fecha_ensayo_str = item_comp.fecha_ensayo.strftime("%Y/%m/%d")
-            
-        item = ProbetaListItem(
-            muestra_id=muestra.id,
-            item_numero=muestra.item_numero,
-            codigo_muestra=muestra.codigo_muestra or "",
-            codigo_muestra_lem=muestra.codigo_muestra_lem or "",
-            identificacion_muestra=muestra.identificacion_muestra or "",
-            estructura=muestra.estructura or "",
-            fc_kg_cm2=muestra.fc_kg_cm2,
-            fecha_moldeo=muestra.fecha_moldeo or "",
-            edad=muestra.edad,
-            fecha_rotura=muestra.fecha_rotura or "",
-            requiere_densidad=muestra.requiere_densidad,
-            elemento=muestra.elemento or "-",
-            densidad=muestra.densidad or "-",
-            status_ensayo=muestra.status_ensayo or "-",
-            status_entrega=muestra.status_entrega or "-",
-            fecha_entrega=muestra.fecha_entrega or "-",
-            recepcion_id=recep.id,
-            numero_recepcion=recep.numero_recepcion,
-            numero_ot=recep.numero_ot,
-            cliente=recep.cliente,
-            proyecto=recep.proyecto,
-            compresion_id=ensayo.id if ensayo else None,
-            fecha_ensayo=fecha_ensayo_str,
-            carga_maxima=item_comp.carga_maxima if item_comp else None,
-            tipo_fractura=item_comp.tipo_fractura if item_comp else None,
-            estado_probeta=est_prob
-        )
-        mapped_items.append(item)
+    mapped_items = [build_probeta_response(muestra, recep, item_comp, ensayo) for muestra, recep, item_comp, ensayo in results]
         
     # 5. Apply Status Filter in memory
     if estado:
@@ -344,8 +369,8 @@ def create_probeta(
     max_item = db.query(func.max(MuestraConcreto.item_numero)).filter(MuestraConcreto.recepcion_id == payload.recepcion_id).scalar()
     next_item = (max_item or 0) + 1
     
-    fecha_moldeo = payload.fecha_moldeo
-    fecha_rotura = payload.fecha_rotura
+    fecha_moldeo = normalize_date_payload(payload.fecha_moldeo)
+    fecha_rotura = normalize_date_payload(payload.fecha_rotura)
     if not fecha_rotura and fecha_moldeo:
         try:
             clean_moldeo = fecha_moldeo.replace("/", "-")
@@ -356,7 +381,7 @@ def create_probeta(
         except Exception:
             pass
             
-    lem = payload.codigo_muestra_lem
+    lem = (payload.codigo_muestra_lem or "").strip()
     if lem:
         from app.modules.recepcion.service import _normalize_lem_code
         lem = _normalize_lem_code(lem)
@@ -373,11 +398,11 @@ def create_probeta(
         edad=payload.edad,
         fecha_rotura=fecha_rotura or "",
         requiere_densidad=payload.requiere_densidad,
-        elemento=payload.elemento or "-",
-        densidad=payload.densidad or "-",
-        status_ensayo=payload.status_ensayo or "-",
-        status_entrega=payload.status_entrega or "-",
-        fecha_entrega=payload.fecha_entrega or "-"
+        elemento=normalize_option(payload.elemento, ALLOWED_ELEMENTOS),
+        densidad=(payload.densidad or "-").strip() or "-",
+        status_ensayo=normalize_option(payload.status_ensayo, ALLOWED_STATUS_ENSAYO),
+        status_entrega=normalize_option(payload.status_entrega, ALLOWED_STATUS_ENTREGA),
+        fecha_entrega=normalize_date_payload(payload.fecha_entrega) or "-"
     )
     
     db.add(new_muestra)
@@ -400,12 +425,7 @@ def create_probeta(
     except Exception as e:
         logger.error("Error creating audit log for probeta creation: %s", e)
         
-    q = db.query(
-        MuestraConcreto,
-        RecepcionMuestra,
-        ItemCompresion,
-        EnsayoCompresion
-    ).join(
+    q = db.query(MuestraConcreto, RecepcionMuestra, ItemCompresion, EnsayoCompresion).join(
         RecepcionMuestra, MuestraConcreto.recepcion_id == RecepcionMuestra.id
     ).outerjoin(
         EnsayoCompresion, RecepcionMuestra.id == EnsayoCompresion.recepcion_id
@@ -415,39 +435,9 @@ def create_probeta(
             MuestraConcreto.item_numero == ItemCompresion.item
         )
     ).filter(MuestraConcreto.id == new_muestra.id).first()
-    
+
     m, recep, item_comp, ensayo = q
-    est_prob = calculate_status(m, item_comp)
-    fecha_ensayo_str = item_comp.fecha_ensayo.strftime("%Y/%m/%d") if (item_comp and item_comp.fecha_ensayo) else None
-    
-    return ProbetaListItem(
-        muestra_id=m.id,
-        item_numero=m.item_numero,
-        codigo_muestra=m.codigo_muestra or "",
-        codigo_muestra_lem=m.codigo_muestra_lem or "",
-        identificacion_muestra=m.identificacion_muestra or "",
-        estructura=m.estructura or "",
-        fc_kg_cm2=m.fc_kg_cm2,
-        fecha_moldeo=m.fecha_moldeo or "",
-        edad=m.edad,
-        fecha_rotura=m.fecha_rotura or "",
-        requiere_densidad=m.requiere_densidad,
-        elemento=m.elemento or "-",
-        densidad=m.densidad or "-",
-        status_ensayo=m.status_ensayo or "-",
-        status_entrega=m.status_entrega or "-",
-        fecha_entrega=m.fecha_entrega or "-",
-        recepcion_id=recep.id,
-        numero_recepcion=recep.numero_recepcion,
-        numero_ot=recep.numero_ot,
-        cliente=recep.cliente,
-        proyecto=recep.proyecto,
-        compresion_id=ensayo.id if ensayo else None,
-        fecha_ensayo=fecha_ensayo_str,
-        carga_maxima=item_comp.carga_maxima if item_comp else None,
-        tipo_fractura=item_comp.tipo_fractura if item_comp else None,
-        estado_probeta=est_prob
-    )
+    return build_probeta_response(m, recep, item_comp, ensayo)
 
 @router.patch("/{muestra_id}", response_model=ProbetaListItem)
 def update_probeta(
@@ -467,7 +457,16 @@ def update_probeta(
             
     for key, val in payload.items():
         if hasattr(muestra, key):
-            setattr(muestra, key, val)
+            if key == "elemento":
+                setattr(muestra, key, normalize_option(val, ALLOWED_ELEMENTOS))
+            elif key == "status_ensayo":
+                setattr(muestra, key, normalize_option(val, ALLOWED_STATUS_ENSAYO))
+            elif key == "status_entrega":
+                setattr(muestra, key, normalize_option(val, ALLOWED_STATUS_ENTREGA))
+            elif key in {"fecha_rotura", "fecha_entrega", "fecha_moldeo"}:
+                setattr(muestra, key, normalize_date_payload(val) or ("-" if key == "fecha_entrega" else ""))
+            else:
+                setattr(muestra, key, val)
             
     if "fecha_moldeo" in payload or "edad" in payload:
         moldeo = muestra.fecha_moldeo
@@ -516,12 +515,7 @@ def update_probeta(
         except Exception as e:
             logger.error("Error creating audit log for probeta update: %s", e)
             
-    q = db.query(
-        MuestraConcreto,
-        RecepcionMuestra,
-        ItemCompresion,
-        EnsayoCompresion
-    ).join(
+    q = db.query(MuestraConcreto, RecepcionMuestra, ItemCompresion, EnsayoCompresion).join(
         RecepcionMuestra, MuestraConcreto.recepcion_id == RecepcionMuestra.id
     ).outerjoin(
         EnsayoCompresion, RecepcionMuestra.id == EnsayoCompresion.recepcion_id
@@ -531,39 +525,9 @@ def update_probeta(
             MuestraConcreto.item_numero == ItemCompresion.item
         )
     ).filter(MuestraConcreto.id == muestra_id).first()
-    
+
     m, recep, item_comp, ensayo = q
-    est_prob = calculate_status(m, item_comp)
-    fecha_ensayo_str = item_comp.fecha_ensayo.strftime("%Y/%m/%d") if (item_comp and item_comp.fecha_ensayo) else None
-    
-    return ProbetaListItem(
-        muestra_id=m.id,
-        item_numero=m.item_numero,
-        codigo_muestra=m.codigo_muestra or "",
-        codigo_muestra_lem=m.codigo_muestra_lem or "",
-        identificacion_muestra=m.identificacion_muestra or "",
-        estructura=m.estructura or "",
-        fc_kg_cm2=m.fc_kg_cm2,
-        fecha_moldeo=m.fecha_moldeo or "",
-        edad=m.edad,
-        fecha_rotura=m.fecha_rotura or "",
-        requiere_densidad=m.requiere_densidad,
-        elemento=m.elemento or "-",
-        densidad=m.densidad or "-",
-        status_ensayo=m.status_ensayo or "-",
-        status_entrega=m.status_entrega or "-",
-        fecha_entrega=m.fecha_entrega or "-",
-        recepcion_id=recep.id,
-        numero_recepcion=recep.numero_recepcion,
-        numero_ot=recep.numero_ot,
-        cliente=recep.cliente,
-        proyecto=recep.proyecto,
-        compresion_id=ensayo.id if ensayo else None,
-        fecha_ensayo=fecha_ensayo_str,
-        carga_maxima=item_comp.carga_maxima if item_comp else None,
-        tipo_fractura=item_comp.tipo_fractura if item_comp else None,
-        estado_probeta=est_prob
-    )
+    return build_probeta_response(m, recep, item_comp, ensayo)
 
 @router.delete("/{muestra_id}")
 def delete_probeta(
