@@ -151,6 +151,7 @@ try:
             conn.execute(text("ALTER TABLE public.muestras_concreto ADD COLUMN IF NOT EXISTS status_ensayo VARCHAR(50) DEFAULT '-';"))
             conn.execute(text("ALTER TABLE public.muestras_concreto ADD COLUMN IF NOT EXISTS status_entrega VARCHAR(50) DEFAULT '-';"))
             conn.execute(text("ALTER TABLE public.muestras_concreto ADD COLUMN IF NOT EXISTS fecha_entrega VARCHAR(50) DEFAULT '-';"))
+            conn.execute(text("ALTER TABLE public.muestras_concreto ADD COLUMN IF NOT EXISTS es_control_probetas BOOLEAN DEFAULT FALSE;"))
             conn.execute(text("NOTIFY pgrst, 'reload schema';"))
             logger.info("Programmatic migration 045 applied successfully (or was already applied).")
     except Exception as col_err:

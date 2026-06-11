@@ -211,6 +211,8 @@ def get_control_probetas(
         EnsayoCompresion
     ).join(
         RecepcionMuestra, MuestraConcreto.recepcion_id == RecepcionMuestra.id
+    ).filter(
+        MuestraConcreto.es_control_probetas == True
     ).outerjoin(
         EnsayoCompresion, RecepcionMuestra.id == EnsayoCompresion.recepcion_id
     ).outerjoin(
@@ -293,6 +295,8 @@ def get_control_probetas_kpis(
         ItemCompresion
     ).join(
         RecepcionMuestra, MuestraConcreto.recepcion_id == RecepcionMuestra.id
+    ).filter(
+        MuestraConcreto.es_control_probetas == True
     ).outerjoin(
         EnsayoCompresion, RecepcionMuestra.id == EnsayoCompresion.recepcion_id
     ).outerjoin(
@@ -402,7 +406,8 @@ def create_probeta(
         densidad=(payload.densidad or "-").strip() or "-",
         status_ensayo=normalize_option(payload.status_ensayo, ALLOWED_STATUS_ENSAYO),
         status_entrega=normalize_option(payload.status_entrega, ALLOWED_STATUS_ENTREGA),
-        fecha_entrega=normalize_date_payload(payload.fecha_entrega) or "-"
+        fecha_entrega=normalize_date_payload(payload.fecha_entrega) or "-",
+        es_control_probetas=True
     )
     
     db.add(new_muestra)

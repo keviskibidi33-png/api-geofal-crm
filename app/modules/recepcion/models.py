@@ -111,6 +111,7 @@ class MuestraConcreto(Base):
     status_ensayo = Column(String(50), nullable=True, default="-", comment="Estado del ensayo")
     status_entrega = Column(String(50), nullable=True, default="-", comment="Estado de entrega de informe")
     fecha_entrega = Column(String(50), nullable=True, default="-", comment="Fecha de entrega de informe")
+    es_control_probetas = Column(Boolean, nullable=False, default=False, comment="Pertenece a control de probetas")
     
     # Relación inversa
     recepcion_parent = relationship("RecepcionMuestra", back_populates="muestras")
