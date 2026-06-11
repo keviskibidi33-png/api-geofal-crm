@@ -127,6 +127,35 @@ try:
     # Compression tables will be created via migration or explicitly:
     from app.database import Base as MainBase
     MainBase.metadata.create_all(bind=engine)
+    
+    # Programmatic migrations to ensure database schema alignment in all environments
+    try:
+        from sqlalchemy import text
+        with engine.begin() as conn:
+            # Migration 044: Add control_probetas permissions to admin roles
+            conn.execute(text("""
+                UPDATE role_definitions
+                SET permissions = jsonb_set(permissions, '{control_probetas}', '{"read": true, "write": true, "delete": true}'::jsonb, true)
+                WHERE role_id IN ('admin', 'admin_general');
+            """))
+            logger.info("Programmatic migration 044 applied successfully (or was already applied).")
+    except Exception as perm_err:
+        logger.warning("Could not apply migration 044 permissions: %s", perm_err)
+
+    try:
+        from sqlalchemy import text
+        with engine.begin() as conn:
+            # Migration 045: Add control probetas columns to muestras_concreto table
+            conn.execute(text("ALTER TABLE public.muestras_concreto ADD COLUMN IF NOT EXISTS elemento VARCHAR(50) DEFAULT '-';"))
+            conn.execute(text("ALTER TABLE public.muestras_concreto ADD COLUMN IF NOT EXISTS densidad VARCHAR(50) DEFAULT '-';"))
+            conn.execute(text("ALTER TABLE public.muestras_concreto ADD COLUMN IF NOT EXISTS status_ensayo VARCHAR(50) DEFAULT '-';"))
+            conn.execute(text("ALTER TABLE public.muestras_concreto ADD COLUMN IF NOT EXISTS status_entrega VARCHAR(50) DEFAULT '-';"))
+            conn.execute(text("ALTER TABLE public.muestras_concreto ADD COLUMN IF NOT EXISTS fecha_entrega VARCHAR(50) DEFAULT '-';"))
+            conn.execute(text("NOTIFY pgrst, 'reload schema';"))
+            logger.info("Programmatic migration 045 applied successfully (or was already applied).")
+    except Exception as col_err:
+        logger.warning("Could not apply migration 045 columns: %s", col_err)
+
 except Exception as e:
     logger.warning("Could not create database tables on startup (DB might be offline): %s", e)
 
