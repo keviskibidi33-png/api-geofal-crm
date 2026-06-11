@@ -24,7 +24,7 @@ class TestGeGruesoSchemaNormalization(unittest.TestCase):
 
         self.assertEqual(payload.muestra, "123-AG-26")
 
-    def test_muestra_accepts_ag_and_does_not_downgrade_to_su(self):
+    def test_muestra_accepts_ag_and_preserves_it(self):
         payload = GeGruesoRequest.model_validate(
             {
                 "muestra": "909222-AG-26",
@@ -35,6 +35,30 @@ class TestGeGruesoSchemaNormalization(unittest.TestCase):
         )
 
         self.assertEqual(payload.muestra, "909222-AG-26")
+
+    def test_muestra_preserves_su_type(self):
+        payload = GeGruesoRequest.model_validate(
+            {
+                "muestra": "2919-SU-26",
+                "numero_ot": "456",
+                "fecha_ensayo": "2026/06/08",
+                "realizado_por": "ANA",
+            }
+        )
+
+        self.assertEqual(payload.muestra, "2919-SU-26")
+
+    def test_muestra_without_type_defaults_to_ag(self):
+        payload = GeGruesoRequest.model_validate(
+            {
+                "muestra": "2919-26",
+                "numero_ot": "456",
+                "fecha_ensayo": "2026/06/08",
+                "realizado_por": "ANA",
+            }
+        )
+
+        self.assertEqual(payload.muestra, "2919-AG-26")
 
 
 if __name__ == "__main__":

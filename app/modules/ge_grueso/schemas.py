@@ -37,9 +37,10 @@ def _normalize_muestra(raw: str) -> str:
         return value
 
     compact = re.sub(r"\s+", "", value)
-    match = re.match(r"^(\d+)(?:-(?:SU|AG))?(?:-(\d{2}))?$", compact)
+    match = re.match(r"^(\d+)(?:-(SU|AG))?(?:-(\d{2}))?$", compact)
     if match:
-        return f"{match.group(1)}-AG-{match.group(2) or _year_short()}"
+        tipo = match.group(2) or "AG"
+        return f"{match.group(1)}-{tipo}-{match.group(3) or _year_short()}"
     return value
 
 

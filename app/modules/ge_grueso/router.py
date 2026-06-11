@@ -209,6 +209,14 @@ def _build_numero_ensayo(payload: GeGruesoRequest) -> str:
     return f"{payload.numero_ot}-GE-GRUESO"
 
 
+def _extract_muestra_tipo(muestra: str | None) -> str:
+    """Extract SU/AG type from normalized muestra string, defaulting to AG."""
+    if not muestra:
+        return "AG"
+    match = re.search(r"-(SU|AG)-", muestra)
+    return match.group(1) if match else "AG"
+
+
 def _normalize_footer_text(value: str | None, fallback: str) -> str:
     text_value = (value or "").replace("\t", "\n").strip()
     return text_value or fallback
@@ -404,7 +412,8 @@ def generar_excel_ge_grueso(
         excel_bytes = generate_ge_grueso_excel(payload)
 
         today = date.today()
-        filename = build_formato_filename(payload.muestra, "AG", "GE GRUESO")
+        tipo_muestra = _extract_muestra_tipo(payload.muestra)
+        filename = build_formato_filename(payload.muestra, tipo_muestra, "GE GRUESO")
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")
