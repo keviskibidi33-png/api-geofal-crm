@@ -1,8 +1,9 @@
 import logging
+import json
 from datetime import datetime, date
 from typing import List, Optional
 from zoneinfo import ZoneInfo
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_, desc, asc, func
 from pydantic import BaseModel
@@ -10,6 +11,7 @@ from pydantic import BaseModel
 from app.database import get_db_session
 from app.modules.recepcion.models import RecepcionMuestra, MuestraConcreto
 from app.modules.compresion.models import EnsayoCompresion, ItemCompresion
+from app.modules.common.notifications import resolve_actor_identity, log_audit_action
 
 router = APIRouter(prefix="/api/control-probetas", tags=["Control Probetas"])
 logger = logging.getLogger(__name__)
@@ -28,6 +30,11 @@ class ProbetaListItem(BaseModel):
     edad: int
     fecha_rotura: Optional[str] = ""
     requiere_densidad: bool
+    elemento: Optional[str] = "-"
+    densidad: Optional[str] = "-"
+    status_ensayo: Optional[str] = "-"
+    status_entrega: Optional[str] = "-"
+    fecha_entrega: Optional[str] = "-"
     
     # Recepcion Info
     recepcion_id: int
@@ -44,6 +51,22 @@ class ProbetaListItem(BaseModel):
     
     # Calculated Status: "curado", "pendiente", "ensayado", "vencido"
     estado_probeta: str
+
+class ProbetaCreatePayload(BaseModel):
+    recepcion_id: int
+    codigo_muestra_lem: Optional[str] = ""
+    identificacion_muestra: Optional[str] = ""
+    estructura: Optional[str] = ""
+    fc_kg_cm2: float = 280.0
+    fecha_moldeo: Optional[str] = ""
+    edad: int = 28
+    fecha_rotura: Optional[str] = ""
+    requiere_densidad: bool = False
+    elemento: Optional[str] = "-"
+    densidad: Optional[str] = "-"
+    status_ensayo: Optional[str] = "-"
+    status_entrega: Optional[str] = "-"
+    fecha_entrega: Optional[str] = "-"
 
 class ProbetaPaginatedResponse(BaseModel):
     items: List[ProbetaListItem]
@@ -189,6 +212,11 @@ def get_control_probetas(
             edad=muestra.edad,
             fecha_rotura=muestra.fecha_rotura or "",
             requiere_densidad=muestra.requiere_densidad,
+            elemento=muestra.elemento or "-",
+            densidad=muestra.densidad or "-",
+            status_ensayo=muestra.status_ensayo or "-",
+            status_entrega=muestra.status_entrega or "-",
+            fecha_entrega=muestra.fecha_entrega or "-",
             recepcion_id=recep.id,
             numero_recepcion=recep.numero_recepcion,
             numero_ot=recep.numero_ot,
@@ -295,3 +323,278 @@ def get_control_probetas_kpis(
         ensayado=ensayado_count,
         vencido=vencido_count
     )
+
+def _current_user(request: Request) -> tuple[str | None, str | None]:
+    payload = getattr(request.state, "user", {}) or {}
+    user_id = str(payload.get("sub") or payload.get("user_id") or "").strip() or None
+    header_name = str(request.headers.get("x-dev-user-name") or request.headers.get("x-user-name") or "").strip()
+    user_name = header_name or str(payload.get("name") or payload.get("email") or "").strip() or None
+    return user_id, user_name
+
+@router.post("/", response_model=ProbetaListItem)
+def create_probeta(
+    payload: ProbetaCreatePayload,
+    request: Request,
+    db: Session = Depends(get_db_session)
+):
+    recep = db.query(RecepcionMuestra).filter(RecepcionMuestra.id == payload.recepcion_id).first()
+    if not recep:
+        raise HTTPException(status_code=404, detail="Recepción no encontrada")
+        
+    max_item = db.query(func.max(MuestraConcreto.item_numero)).filter(MuestraConcreto.recepcion_id == payload.recepcion_id).scalar()
+    next_item = (max_item or 0) + 1
+    
+    fecha_moldeo = payload.fecha_moldeo
+    fecha_rotura = payload.fecha_rotura
+    if not fecha_rotura and fecha_moldeo:
+        try:
+            clean_moldeo = fecha_moldeo.replace("/", "-")
+            dt = datetime.strptime(clean_moldeo.split("T")[0], "%Y-%m-%d")
+            from datetime import timedelta
+            rotura_dt = dt + timedelta(days=int(payload.edad))
+            fecha_rotura = rotura_dt.strftime("%Y/%m/%d")
+        except Exception:
+            pass
+            
+    lem = payload.codigo_muestra_lem
+    if lem:
+        from app.modules.recepcion.service import _normalize_lem_code
+        lem = _normalize_lem_code(lem)
+        
+    new_muestra = MuestraConcreto(
+        recepcion_id=payload.recepcion_id,
+        item_numero=next_item,
+        codigo_muestra_lem=lem or "",
+        identificacion_muestra=payload.identificacion_muestra or f"Muestra {next_item}",
+        estructura=payload.estructura or "Sin especificar",
+        fc_kg_cm2=payload.fc_kg_cm2,
+        fecha_moldeo=fecha_moldeo or "",
+        hora_moldeo="09:00",
+        edad=payload.edad,
+        fecha_rotura=fecha_rotura or "",
+        requiere_densidad=payload.requiere_densidad,
+        elemento=payload.elemento or "-",
+        densidad=payload.densidad or "-",
+        status_ensayo=payload.status_ensayo or "-",
+        status_entrega=payload.status_entrega or "-",
+        fecha_entrega=payload.fecha_entrega or "-"
+    )
+    
+    db.add(new_muestra)
+    db.commit()
+    db.refresh(new_muestra)
+    
+    try:
+        actor = resolve_actor_identity(db, request)
+        log_audit_action(
+            user_id=actor.get("user_id"),
+            user_name=actor.get("full_name"),
+            action=f"Creó nueva probeta {new_muestra.identificacion_muestra} para la Recepción OT {recep.numero_ot}",
+            module="LABORATORIO",
+            details={
+                "muestra_id": new_muestra.id,
+                "recepcion_id": recep.id,
+                "numero_ot": recep.numero_ot,
+            }
+        )
+    except Exception as e:
+        logger.error("Error creating audit log for probeta creation: %s", e)
+        
+    q = db.query(
+        MuestraConcreto,
+        RecepcionMuestra,
+        ItemCompresion,
+        EnsayoCompresion
+    ).join(
+        RecepcionMuestra, MuestraConcreto.recepcion_id == RecepcionMuestra.id
+    ).outerjoin(
+        EnsayoCompresion, RecepcionMuestra.id == EnsayoCompresion.recepcion_id
+    ).outerjoin(
+        ItemCompresion, and_(
+            EnsayoCompresion.id == ItemCompresion.ensayo_id,
+            MuestraConcreto.item_numero == ItemCompresion.item
+        )
+    ).filter(MuestraConcreto.id == new_muestra.id).first()
+    
+    m, recep, item_comp, ensayo = q
+    est_prob = calculate_status(m, item_comp)
+    fecha_ensayo_str = item_comp.fecha_ensayo.strftime("%Y/%m/%d") if (item_comp and item_comp.fecha_ensayo) else None
+    
+    return ProbetaListItem(
+        muestra_id=m.id,
+        item_numero=m.item_numero,
+        codigo_muestra=m.codigo_muestra or "",
+        codigo_muestra_lem=m.codigo_muestra_lem or "",
+        identificacion_muestra=m.identificacion_muestra or "",
+        estructura=m.estructura or "",
+        fc_kg_cm2=m.fc_kg_cm2,
+        fecha_moldeo=m.fecha_moldeo or "",
+        edad=m.edad,
+        fecha_rotura=m.fecha_rotura or "",
+        requiere_densidad=m.requiere_densidad,
+        elemento=m.elemento or "-",
+        densidad=m.densidad or "-",
+        status_ensayo=m.status_ensayo or "-",
+        status_entrega=m.status_entrega or "-",
+        fecha_entrega=m.fecha_entrega or "-",
+        recepcion_id=recep.id,
+        numero_recepcion=recep.numero_recepcion,
+        numero_ot=recep.numero_ot,
+        cliente=recep.cliente,
+        proyecto=recep.proyecto,
+        compresion_id=ensayo.id if ensayo else None,
+        fecha_ensayo=fecha_ensayo_str,
+        carga_maxima=item_comp.carga_maxima if item_comp else None,
+        tipo_fractura=item_comp.tipo_fractura if item_comp else None,
+        estado_probeta=est_prob
+    )
+
+@router.patch("/{muestra_id}", response_model=ProbetaListItem)
+def update_probeta(
+    muestra_id: int,
+    payload: dict,
+    request: Request,
+    db: Session = Depends(get_db_session)
+):
+    muestra = db.query(MuestraConcreto).filter(MuestraConcreto.id == muestra_id).first()
+    if not muestra:
+        raise HTTPException(status_code=404, detail="Probeta no encontrada")
+        
+    antes_dict = {}
+    for key in payload.keys():
+        if hasattr(muestra, key):
+            antes_dict[key] = getattr(muestra, key)
+            
+    for key, val in payload.items():
+        if hasattr(muestra, key):
+            setattr(muestra, key, val)
+            
+    if "fecha_moldeo" in payload or "edad" in payload:
+        moldeo = muestra.fecha_moldeo
+        edad = muestra.edad
+        if moldeo and edad is not None:
+            try:
+                clean_moldeo = moldeo.replace("/", "-")
+                dt = datetime.strptime(clean_moldeo.split("T")[0], "%Y-%m-%d")
+                from datetime import timedelta
+                rotura_dt = dt + timedelta(days=int(edad))
+                muestra.fecha_rotura = rotura_dt.strftime("%Y/%m/%d")
+            except Exception:
+                pass
+                
+    db.commit()
+    db.refresh(muestra)
+    
+    cambios = {}
+    campos_modificados = []
+    for key, val in payload.items():
+        if key not in antes_dict:
+            continue
+        antes = antes_dict[key]
+        despues = getattr(muestra, key)
+        if str(antes if antes is not None else "") != str(despues if despues is not None else ""):
+            campos_modificados.append(key)
+            cambios[key] = {
+                "antes": str(antes) if antes is not None else "",
+                "despues": str(despues) if despues is not None else ""
+            }
+            
+    if campos_modificados:
+        try:
+            actor = resolve_actor_identity(db, request)
+            log_audit_action(
+                user_id=actor.get("user_id"),
+                user_name=actor.get("full_name"),
+                action=f"Actualizó probeta {muestra.identificacion_muestra or muestra.id}: {', '.join(campos_modificados)}",
+                module="LABORATORIO",
+                details={
+                    "muestra_id": muestra.id,
+                    "campos_modificados": campos_modificados,
+                    "cambios": cambios,
+                }
+            )
+        except Exception as e:
+            logger.error("Error creating audit log for probeta update: %s", e)
+            
+    q = db.query(
+        MuestraConcreto,
+        RecepcionMuestra,
+        ItemCompresion,
+        EnsayoCompresion
+    ).join(
+        RecepcionMuestra, MuestraConcreto.recepcion_id == RecepcionMuestra.id
+    ).outerjoin(
+        EnsayoCompresion, RecepcionMuestra.id == EnsayoCompresion.recepcion_id
+    ).outerjoin(
+        ItemCompresion, and_(
+            EnsayoCompresion.id == ItemCompresion.ensayo_id,
+            MuestraConcreto.item_numero == ItemCompresion.item
+        )
+    ).filter(MuestraConcreto.id == muestra_id).first()
+    
+    m, recep, item_comp, ensayo = q
+    est_prob = calculate_status(m, item_comp)
+    fecha_ensayo_str = item_comp.fecha_ensayo.strftime("%Y/%m/%d") if (item_comp and item_comp.fecha_ensayo) else None
+    
+    return ProbetaListItem(
+        muestra_id=m.id,
+        item_numero=m.item_numero,
+        codigo_muestra=m.codigo_muestra or "",
+        codigo_muestra_lem=m.codigo_muestra_lem or "",
+        identificacion_muestra=m.identificacion_muestra or "",
+        estructura=m.estructura or "",
+        fc_kg_cm2=m.fc_kg_cm2,
+        fecha_moldeo=m.fecha_moldeo or "",
+        edad=m.edad,
+        fecha_rotura=m.fecha_rotura or "",
+        requiere_densidad=m.requiere_densidad,
+        elemento=m.elemento or "-",
+        densidad=m.densidad or "-",
+        status_ensayo=m.status_ensayo or "-",
+        status_entrega=m.status_entrega or "-",
+        fecha_entrega=m.fecha_entrega or "-",
+        recepcion_id=recep.id,
+        numero_recepcion=recep.numero_recepcion,
+        numero_ot=recep.numero_ot,
+        cliente=recep.cliente,
+        proyecto=recep.proyecto,
+        compresion_id=ensayo.id if ensayo else None,
+        fecha_ensayo=fecha_ensayo_str,
+        carga_maxima=item_comp.carga_maxima if item_comp else None,
+        tipo_fractura=item_comp.tipo_fractura if item_comp else None,
+        estado_probeta=est_prob
+    )
+
+@router.delete("/{muestra_id}")
+def delete_probeta(
+    muestra_id: int,
+    request: Request,
+    db: Session = Depends(get_db_session)
+):
+    muestra = db.query(MuestraConcreto).filter(MuestraConcreto.id == muestra_id).first()
+    if not muestra:
+        raise HTTPException(status_code=404, detail="Probeta no encontrada")
+        
+    identificacion = muestra.identificacion_muestra
+    recepcion_id = muestra.recepcion_id
+    
+    db.delete(muestra)
+    db.commit()
+    
+    try:
+        actor = resolve_actor_identity(db, request)
+        log_audit_action(
+            user_id=actor.get("user_id"),
+            user_name=actor.get("full_name"),
+            action=f"Eliminó la probeta {identificacion} (ID: {muestra_id})",
+            module="LABORATORIO",
+            details={
+                "muestra_id": muestra_id,
+                "identificacion": identificacion,
+                "recepcion_id": recepcion_id
+            }
+        )
+    except Exception as e:
+        logger.error("Error creating audit log for probeta deletion: %s", e)
+        
+    return {"success": True, "message": "Probeta eliminada con éxito"}
