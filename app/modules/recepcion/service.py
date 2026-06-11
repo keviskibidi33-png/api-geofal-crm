@@ -78,6 +78,11 @@ class RecepcionService:
         cleaned["edad"] = cleaned.get("edad") if cleaned.get("edad") not in [None, ""] else 10
         cleaned["fecha_rotura"] = str(cleaned.get("fecha_rotura") or "").strip()
         cleaned["requiere_densidad"] = cleaned.get("requiere_densidad") in [True, "true", "True", "SI", "si"]
+        cleaned["elemento"] = str(cleaned.get("elemento") or "").strip() or "-"
+        cleaned["densidad"] = str(cleaned.get("densidad") or "").strip() or "-"
+        cleaned["status_ensayo"] = str(cleaned.get("status_ensayo") or "").strip() or "-"
+        cleaned["status_entrega"] = str(cleaned.get("status_entrega") or "").strip() or "-"
+        cleaned["fecha_entrega"] = str(cleaned.get("fecha_entrega") or "").strip() or "-"
         return cleaned
 
     @staticmethod

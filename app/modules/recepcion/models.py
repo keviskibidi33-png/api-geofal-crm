@@ -105,6 +105,13 @@ class MuestraConcreto(Base):
     fecha_rotura = Column(String(20), nullable=False, comment="Fecha programada de rotura")
     requiere_densidad = Column(Boolean, nullable=False, default=False, comment="Requiere ensayo de densidad")
     
+    # Nuevos campos para Control de Probetas
+    elemento = Column(String(50), nullable=True, default="-", comment="Elemento/Tamaño de probeta")
+    densidad = Column(String(50), nullable=True, default="-", comment="Densidad de la probeta")
+    status_ensayo = Column(String(50), nullable=True, default="-", comment="Estado del ensayo")
+    status_entrega = Column(String(50), nullable=True, default="-", comment="Estado de entrega de informe")
+    fecha_entrega = Column(String(50), nullable=True, default="-", comment="Fecha de entrega de informe")
+    
     # Relación inversa
     recepcion_parent = relationship("RecepcionMuestra", back_populates="muestras")
     

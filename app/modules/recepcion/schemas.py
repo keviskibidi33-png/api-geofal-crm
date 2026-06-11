@@ -18,6 +18,11 @@ class MuestraConcretoBase(BaseModel):
     edad: int = Field(10, ge=1, le=365, description="Edad de la muestra en días")
     fecha_rotura: Optional[str] = Field("", description="Fecha programada de rotura (YYYY/MM/DD)")
     requiere_densidad: bool = Field(False, description="Requiere ensayo de densidad")
+    elemento: Optional[str] = Field("-", description="Elemento o tipo de probeta")
+    densidad: Optional[str] = Field("-", description="Densidad en gramos")
+    status_ensayo: Optional[str] = Field("-", description="Estado del ensayo")
+    status_entrega: Optional[str] = Field("-", description="Estado de la entrega de informe")
+    fecha_entrega: Optional[str] = Field("-", description="Fecha de entrega de informe")
 
     @validator('fecha_moldeo', 'fecha_rotura')
     def validate_date_format(cls, v):
@@ -167,6 +172,11 @@ class MuestraConcretoUpdate(BaseModel):
     edad: Optional[int] = None
     fecha_rotura: Optional[str] = None
     requiere_densidad: Optional[bool] = None
+    elemento: Optional[str] = None
+    densidad: Optional[str] = None
+    status_ensayo: Optional[str] = None
+    status_entrega: Optional[str] = None
+    fecha_entrega: Optional[str] = None
 
     @validator('fecha_moldeo', 'fecha_rotura')
     def validate_date_format(cls, v):
