@@ -108,20 +108,24 @@ def test_generate_equi_arena_excel_escribe_resultados():
 
     # Datos sheet - operador y lecturas
     datos = workbook["Datos"]
-    assert datos["L1"].value == "OPERADOR"
+    assert datos["L2"].value == "OPERADOR"
     assert datos["G13"].value == 10.0
     assert datos["G14"].value == 5.0
     assert datos["G15"].value == 50.0
     assert datos["G16"].value == 50.0
 
-    # Balanza sheet - lecturas arcilla y arena
-    balanza = workbook["Balanza"]
-    assert balanza["C4"].value == 10.0
-    assert balanza["D4"].value == 10.0
-    assert balanza["E4"].value == 10.0
-    assert balanza["C5"].value == 5.0
-    assert balanza["D5"].value == 5.0
-    assert balanza["E5"].value == 5.0
+    # INFORME sheet - lecturas de arcilla, arena y equivalente
+    informe = workbook["INFORME"]
+    assert informe["I21"].value == 10.0
+    assert informe["J21"].value == 10.0
+    assert informe["K21"].value == 10.0
+    assert informe["I22"].value == 5.0
+    assert informe["J22"].value == 5.0
+    assert informe["K22"].value == 5.0
+    assert informe["I23"].value == 50.0
+    assert informe["J23"].value == 50.0
+    assert informe["K23"].value == 50.0
+    assert informe["I24"].value == 50.0
 
     with zipfile.ZipFile(io.BytesIO(generate_equi_arena_excel(payload)), "r") as workbook_zip:
         sheet_root = etree.fromstring(workbook_zip.read("xl/worksheets/sheet1.xml"))

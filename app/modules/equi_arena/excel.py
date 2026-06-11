@@ -198,8 +198,8 @@ def _fill_datos_sheet(sheet_xml: bytes, data: EquiArenaRequest) -> bytes:
     if sd is None:
         return sheet_xml
 
-    # Operador en L1 (columna de OPERADORES)
-    _set_cell(sd, "L1", data.realizado_por)
+    # Operador en L2 (columna de OPERADORES)
+    _set_cell(sd, "L2", data.realizado_por)
 
     # Pruebas (columnas G, H, I)
     # Row 6-12: Cronómetros y tiempos
@@ -250,24 +250,39 @@ def _fill_datos_sheet(sheet_xml: bytes, data: EquiArenaRequest) -> bytes:
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
-def _fill_balanza_sheet(sheet_xml: bytes, data: EquiArenaRequest) -> bytes:
-    """Llena la hoja 'Balanza' con las lecturas de arcilla y arena."""
+def _fill_informe_sheet(sheet_xml: bytes, data: EquiArenaRequest) -> bytes:
+    """Llena la hoja 'INFORME' con las lecturas de arcilla, arena y equivalente."""
     root = etree.fromstring(sheet_xml)
     sd = root.find(f".//{{{NS_SHEET}}}sheetData")
     if sd is None:
         return sheet_xml
 
-    # Row 4: Lectura de la arcilla (columnas C, D, E)
-    _set_cell(sd, "C4", data.lectura_arcilla_in[0], is_number=True)
-    _set_cell(sd, "D4", data.lectura_arcilla_in[1], is_number=True)
-    _set_cell(sd, "E4", data.lectura_arcilla_in[2], is_number=True)
+    equivalente = _compute_equivalente_por_prueba(data.lectura_arcilla_in, data.lectura_arena_in)
 
-    # Row 5: Lectura de la arena (columnas C, D, E)
-    _set_cell(sd, "C5", data.lectura_arena_in[0], is_number=True)
-    _set_cell(sd, "D5", data.lectura_arena_in[1], is_number=True)
-    _set_cell(sd, "E5", data.lectura_arena_in[2], is_number=True)
+    # Row 21: Lectura de la arcilla (I21, J21, K21)
+    _set_cell(sd, "I21", data.lectura_arcilla_in[0], is_number=True)
+    _set_cell(sd, "J21", data.lectura_arcilla_in[1], is_number=True)
+    _set_cell(sd, "K21", data.lectura_arcilla_in[2], is_number=True)
+
+    # Row 22: Lectura de la arena (I22, J22, K22)
+    _set_cell(sd, "I22", data.lectura_arena_in[0], is_number=True)
+    _set_cell(sd, "J22", data.lectura_arena_in[1], is_number=True)
+    _set_cell(sd, "K22", data.lectura_arena_in[2], is_number=True)
+
+    # Row 23: Equivalente arena % (I23, J23, K23)
+    _set_cell(sd, "I23", equivalente[0], is_number=True)
+    _set_cell(sd, "J23", equivalente[1], is_number=True)
+    _set_cell(sd, "K23", equivalente[2], is_number=True)
+
+    # Row 24: Equivalente de Arena promedio % (I24-K24 fusionado)
+    _set_cell(sd, "I24", data.equivalente_arena_promedio_pct, is_number=True)
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
+def _fill_balanza_sheet(sheet_xml: bytes, data: EquiArenaRequest) -> bytes:
+    """Preserva la hoja 'Balanza' sin modificar datos (las fórmulas calculan desde DATOS)."""
+    return sheet_xml
 
 
 def _fill_incertidumbre(sheet_xml: bytes, data: EquiArenaRequest) -> bytes:
@@ -326,6 +341,13 @@ def generate_equi_arena_excel(data: EquiArenaRequest) -> bytes:
         sheet_original = zin.read("xl/worksheets/sheet1.xml")
         sheet_xml = _fill_sheet(sheet_original, data)
 
+        informe_xml = None
+        try:
+            raw_informe = zin.read("xl/worksheets/sheet2.xml")
+            informe_xml = _fill_informe_sheet(raw_informe, data)
+        except KeyError:
+            informe_xml = None
+
         datos_xml = None
         try:
             raw_datos = zin.read("xl/worksheets/sheet3.xml")
@@ -353,6 +375,8 @@ def generate_equi_arena_excel(data: EquiArenaRequest) -> bytes:
 
             if item.filename == "xl/worksheets/sheet1.xml":
                 raw = sheet_xml
+            elif item.filename == "xl/worksheets/sheet2.xml" and informe_xml is not None:
+                raw = informe_xml
             elif item.filename == "xl/worksheets/sheet3.xml" and datos_xml is not None:
                 raw = datos_xml
             elif item.filename == "xl/worksheets/sheet4.xml" and incert_xml is not None:
