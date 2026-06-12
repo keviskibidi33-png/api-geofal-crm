@@ -33,7 +33,7 @@ NS_DRAW = "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"
 NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
 
-TEMPLATE_PATH = str(find_template_path("Template_ContHumedad.xlsx"))
+TEMPLATE_PATH = str(find_template_path("Template_ContHumedad_C566.xlsx"))
 
 
 def _parse_cell_ref(ref: str) -> tuple[str, int]:

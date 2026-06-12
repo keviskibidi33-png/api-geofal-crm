@@ -37,7 +37,7 @@ NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
 # ── Template path ──────────────────────────────────────────────────────────────
 
-TEMPLATE_PATH = str(find_template_path("Template_Humedad.xlsx"))
+TEMPLATE_PATH = str(find_template_path("Template_Humedad_D2216.xlsx"))
 
 
 # ── XML helpers (misma lógica que xlsx_direct_v2) ──────────────────────────────
