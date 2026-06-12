@@ -189,6 +189,38 @@ def calculate_status(muestra: MuestraConcreto, item_comp: Optional[ItemCompresio
         return "curado"
 
 
+@router.get("/by-recepcion/{recepcion_id}", response_model=List[ProbetaListItem])
+def get_probetas_by_recepcion(
+    recepcion_id: int,
+    db: Session = Depends(get_db_session)
+):
+    """
+    Retrieve all concrete specimens belonging to a specific reception
+    for the Control Probetas module.
+    """
+    query = db.query(
+        MuestraConcreto,
+        RecepcionMuestra,
+        ItemCompresion,
+        EnsayoCompresion
+    ).join(
+        RecepcionMuestra, MuestraConcreto.recepcion_id == RecepcionMuestra.id
+    ).filter(
+        MuestraConcreto.recepcion_id == recepcion_id,
+        MuestraConcreto.es_control_probetas == True
+    ).outerjoin(
+        EnsayoCompresion, RecepcionMuestra.id == EnsayoCompresion.recepcion_id
+    ).outerjoin(
+        ItemCompresion, and_(
+            EnsayoCompresion.id == ItemCompresion.ensayo_id,
+            MuestraConcreto.item_numero == ItemCompresion.item
+        )
+    ).order_by(asc(MuestraConcreto.item_numero))
+
+    results = query.all()
+    return [build_probeta_response(m, r, ic, e) for m, r, ic, e in results]
+
+
 @router.get("/", response_model=ProbetaPaginatedResponse)
 def get_control_probetas(
     page: int = Query(1, ge=1),
