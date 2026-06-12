@@ -206,6 +206,76 @@ def get_probetas_by_recepcion(
     ).join(
         RecepcionMuestra, MuestraConcreto.recepcion_id == RecepcionMuestra.id
     ).filter(
+        MuestraConcreto.recepcion_id == recepcion_id
+    ).outerjoin(
+        EnsayoCompresion, RecepcionMuestra.id == EnsayoCompresion.recepcion_id
+    ).outerjoin(
+        ItemCompresion, and_(
+            EnsayoCompresion.id == ItemCompresion.ensayo_id,
+            MuestraConcreto.item_numero == ItemCompresion.item
+        )
+    ).order_by(asc(MuestraConcreto.item_numero))
+
+    results = query.all()
+    return [build_probeta_response(m, r, ic, e) for m, r, ic, e in results]
+
+
+@router.post("/importar-recepcion/{recepcion_id}", response_model=List[ProbetaListItem])
+def importar_recepcion_probetas(
+    recepcion_id: int,
+    request: Request,
+    db: Session = Depends(get_db_session)
+):
+    """
+    Import all concrete specimens from a reception into Control Probetas.
+    Marks them with es_control_probetas=True and returns the list.
+    """
+    recep = db.query(RecepcionMuestra).filter(RecepcionMuestra.id == recepcion_id).first()
+    if not recep:
+        raise HTTPException(status_code=404, detail="Recepción no encontrada")
+
+    muestras = db.query(MuestraConcreto).filter(
+        MuestraConcreto.recepcion_id == recepcion_id,
+    ).order_by(asc(MuestraConcreto.item_numero)).all()
+
+    if not muestras:
+        raise HTTPException(status_code=404, detail="No se encontraron probetas para esta recepción")
+
+    imported_ids = []
+    for m in muestras:
+        if not m.es_control_probetas:
+            m.es_control_probetas = True
+            imported_ids.append(m.id)
+
+    if imported_ids:
+        db.commit()
+
+    try:
+        actor = resolve_actor_identity(db, request)
+        log_audit_action(
+            user_id=actor.get("user_id"),
+            user_name=actor.get("full_name"),
+            action=f"Importó {len(muestras)} probetas de la Recepción OT {recep.numero_ot} ({recep.numero_recepcion})",
+            module="LABORATORIO",
+            details={
+                "recepcion_id": recep.id,
+                "numero_recepcion": recep.numero_recepcion,
+                "numero_ot": recep.numero_ot,
+                "muestras_importadas": len(imported_ids),
+                "muestras_ya_existian": len(muestras) - len(imported_ids),
+            }
+        )
+    except Exception as e:
+        logger.error("Error creating audit log for import: %s", e)
+
+    query = db.query(
+        MuestraConcreto,
+        RecepcionMuestra,
+        ItemCompresion,
+        EnsayoCompresion
+    ).join(
+        RecepcionMuestra, MuestraConcreto.recepcion_id == RecepcionMuestra.id
+    ).filter(
         MuestraConcreto.recepcion_id == recepcion_id,
         MuestraConcreto.es_control_probetas == True
     ).outerjoin(
