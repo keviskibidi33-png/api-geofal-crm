@@ -1,4 +1,5 @@
 import logging
+import math
 from datetime import datetime, date
 from typing import List, Optional
 from zoneinfo import ZoneInfo
@@ -10,6 +11,7 @@ from pydantic import BaseModel
 from app.database import get_db_session
 from app.modules.recepcion.models import RecepcionMuestra, MuestraConcreto
 from app.modules.compresion.models import EnsayoCompresion, ItemCompresion
+from app.modules.verificacion.models import VerificacionMuestras, MuestraVerificada
 from app.modules.common.notifications import resolve_actor_identity, log_audit_action
 
 router = APIRouter(prefix="/api/control-probetas", tags=["Control Probetas"])
@@ -85,6 +87,37 @@ class ProbetasKpis(BaseModel):
 ALLOWED_ELEMENTOS = {"-", "PEQUEÑA", "GRANDE", "DIAMANTINA", "CUBO Y VIGA"}
 ALLOWED_STATUS_ENSAYO = {"-", "ENSAYADO", "PENDIENTE", "FALTA", "ANULADO"}
 ALLOWED_STATUS_ENTREGA = {"-", "ENTREGADO", "INFORME LISTO"}
+
+
+def calculate_density_from_verification(
+    masa_g: Optional[float],
+    d1_mm: Optional[float],
+    d2_mm: Optional[float],
+    l1_mm: Optional[float],
+    l2_mm: Optional[float],
+    l3_mm: Optional[float],
+) -> Optional[float]:
+    """
+    Calculate density (g/cm³) from verification measurements.
+    Density = mass / volume, where volume = π × (d_avg/2)² × L_avg
+    All dimensions converted from mm to cm.
+    """
+    if not masa_g or masa_g <= 0:
+        return None
+    diameters = [d for d in [d1_mm, d2_mm] if d and d > 0]
+    lengths = [l for l in [l1_mm, l2_mm, l3_mm] if l and l > 0]
+    if not diameters or not lengths:
+        return None
+    d_avg_cm = (sum(diameters) / len(diameters)) / 10.0
+    l_avg_cm = (sum(lengths) / len(lengths)) / 10.0
+    if d_avg_cm <= 0 or l_avg_cm <= 0:
+        return None
+    radius_cm = d_avg_cm / 2.0
+    volume_cm3 = math.pi * (radius_cm ** 2) * l_avg_cm
+    if volume_cm3 <= 0:
+        return None
+    density = masa_g / volume_cm3
+    return round(density, 3)
 
 
 def normalize_date_string(d_str: Optional[str]) -> Optional[date]:
@@ -228,7 +261,8 @@ def importar_recepcion_probetas(
 ):
     """
     Import all concrete specimens from a reception into Control Probetas.
-    Marks them with es_control_probetas=True and returns the list.
+    Marks them with es_control_probetas=True, calculates density from verification
+    data if available, and returns the list.
     """
     recep = db.query(RecepcionMuestra).filter(RecepcionMuestra.id == recepcion_id).first()
     if not recep:
@@ -241,14 +275,34 @@ def importar_recepcion_probetas(
     if not muestras:
         raise HTTPException(status_code=404, detail="No se encontraron probetas para esta recepción")
 
+    verificacion = db.query(VerificacionMuestras).filter(
+        VerificacionMuestras.numero_verificacion == recep.numero_recepcion
+    ).first()
+
+    verif_map: dict[int, MuestraVerificada] = {}
+    if verificacion:
+        for mv in verificacion.muestras_verificadas:
+            verif_map[mv.item_numero] = mv
+
     imported_ids = []
+    density_updated = 0
     for m in muestras:
         if not m.es_control_probetas:
             m.es_control_probetas = True
             imported_ids.append(m.id)
 
-    if imported_ids:
-        db.commit()
+        mv = verif_map.get(m.item_numero)
+        if mv and (not m.densidad or m.densidad in ("-", "", None)):
+            calc = calculate_density_from_verification(
+                mv.masa_muestra_aire_g,
+                mv.diametro_1_mm, mv.diametro_2_mm,
+                mv.longitud_1_mm, mv.longitud_2_mm, mv.longitud_3_mm,
+            )
+            if calc is not None:
+                m.densidad = f"{calc:.3f}"
+                density_updated += 1
+
+    db.commit()
 
     try:
         actor = resolve_actor_identity(db, request)
@@ -262,7 +316,7 @@ def importar_recepcion_probetas(
                 "numero_recepcion": recep.numero_recepcion,
                 "numero_ot": recep.numero_ot,
                 "muestras_importadas": len(imported_ids),
-                "muestras_ya_existian": len(muestras) - len(imported_ids),
+                "densidades_calculadas": density_updated,
             }
         )
     except Exception as e:
