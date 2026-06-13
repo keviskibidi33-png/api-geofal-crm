@@ -100,3 +100,5 @@ Thumbs.db
 !app/templates/copias/
 !app/templates/copias/**
 *.xls
+**/~$*.xlsx
+**/~$*.xls
