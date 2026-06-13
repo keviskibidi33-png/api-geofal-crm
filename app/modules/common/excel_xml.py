@@ -33,6 +33,12 @@ def find_template_path(filename: str) -> Path:
 
         # Use recursive search to find the filename
         try:
+            # First pass: ignore any templates in 'copias' to prioritize new production ones
+            for match in root.rglob(filename):
+                if match.is_file() and "copias" not in match.parts:
+                    return match
+            
+            # Second pass: fallback to 'copias' if nothing else matches
             for match in root.rglob(filename):
                 if match.is_file():
                     return match
