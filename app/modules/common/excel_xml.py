@@ -31,34 +31,13 @@ def find_template_path(filename: str) -> Path:
         if not root.exists():
             continue
 
-        # 1. Direct path in root
-        path = root / filename
-        if path.exists():
-            return path
-
-        # 2. Under 'ensayos/'
-        path = root / "ensayos" / filename
-        if path.exists():
-            return path
-
-        # 3. Under 'informes/'
-        path = root / "informes" / filename
-        if path.exists():
-            return path
-
-        # 4. Under 'copias/'
-        path = root / "copias" / filename
-        if path.exists():
-            return path
-
-        # 5. Under any subdirectory of 'informes/'
-        informes_dir = root / "informes"
-        if informes_dir.exists():
-            for sub in informes_dir.iterdir():
-                if sub.is_dir():
-                    path = sub / filename
-                    if path.exists():
-                        return path
+        # Use recursive search to find the filename
+        try:
+            for match in root.rglob(filename):
+                if match.is_file():
+                    return match
+        except Exception:
+            pass
 
     # Fallback to default candidate
     return app_dir / "templates" / filename
