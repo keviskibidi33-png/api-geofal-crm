@@ -358,8 +358,8 @@ def generate_humedad_excel(data: HumedadRequest) -> bytes:
             elif item.filename == "xl/worksheets/sheet5.xml":
                 raw = _fill_incertidumbre(raw, data)
 
-            # ── Modificar drawing1.xml (shapes del footer) ─────────────
-            if item.filename == "xl/drawings/drawing1.xml":
+            # ── Modificar drawings (shapes del footer) ─────────────────
+            if item.filename.startswith("xl/drawings/drawing") and item.filename.endswith(".xml"):
                 raw = _fill_drawing(raw, data)
             elif item.filename == "xl/workbook.xml":
                 raw = enable_full_recalc_on_open(raw)
@@ -583,8 +583,9 @@ def _fill_resumen(
 
     _set_cell(sd, "D52", data.observaciones)
 
-    _set_cell(sd, "C55", _build_footer_block("Revisado", data.revisado_por, data.revisado_fecha))
-    _set_cell(sd, "G55", _build_footer_block("Aprobado", data.aprobado_por, data.aprobado_fecha))
+    # Comentado para evitar que se escriba en las celdas debajo de las cajas de dibujo
+    # _set_cell(sd, "C55", _build_footer_block("Revisado", data.revisado_por, data.revisado_fecha))
+    # _set_cell(sd, "G55", _build_footer_block("Aprobado", data.aprobado_por, data.aprobado_fecha))
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
