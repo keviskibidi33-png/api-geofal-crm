@@ -101,7 +101,10 @@ def _set_text(sheet_data: etree._Element, ref: str, value: Any) -> None:
     cell = _find_or_create_cell(row, ref)
     _clear_cell(cell)
 
-    text = "" if value is None else str(value)
+    text = str(value or "").strip()
+    if not text:
+        return
+
     cell.set("t", "inlineStr")
     is_el = etree.SubElement(cell, f"{{{NS_SHEET}}}is")
     t_el = etree.SubElement(is_el, f"{{{NS_SHEET}}}t")
@@ -114,7 +117,7 @@ def _set_number(sheet_data: etree._Element, ref: str, value: float | int | None)
     cell = _find_or_create_cell(row, ref)
     _clear_cell(cell)
 
-    if value is None:
+    if value is None or value == "":
         return
 
     val = etree.SubElement(cell, f"{{{NS_SHEET}}}v")
