@@ -30,7 +30,7 @@ TAMIZ_ROWS = [29, 30, 31, 32, 33, 34, 35]
 ITEM_ROWS = [41, 42, 43, 44, 45, 46, 47]
 
 
-TEMPLATE_PATH = str(find_template_path("Template_ABRASCRM.xlsx"))
+TEMPLATE_PATH = str(find_template_path("Template_ABRA.xlsx"))
 
 
 def _parse_cell_ref(ref: str) -> tuple[str, int]:
@@ -116,8 +116,8 @@ def _fill_sheet(sheet_xml: bytes, data: AbrassRequest) -> bytes:
     # Encabezado
     _set_cell(sd, "C11", data.muestra)
     _set_cell(sd, "E11", data.numero_ot)
-    _set_cell(sd, "G11", data.fecha_ensayo)
-    _set_cell(sd, "I11", data.realizado_por)
+    _set_cell(sd, "F11", data.fecha_ensayo)
+    _set_cell(sd, "G11", data.realizado_por)
 
     # Muestra de prueba antes del fraccionamiento
     _set_cell(sd, "E17", data.masa_muestra_inicial_g, is_number=True)

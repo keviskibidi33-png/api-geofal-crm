@@ -30,7 +30,7 @@ TAMIZ_ROWS = [30, 31, 32, 33, 34, 35]
 ITEM_ROWS = [38, 39, 40, 41, 42, 43, 44]
 
 
-TEMPLATE_PATH = str(find_template_path("Template_ABRA.xlsx"))
+TEMPLATE_PATH = str(find_template_path("Template_ABRASCRM.xlsx"))
 
 
 def _parse_cell_ref(ref: str) -> tuple[str, int]:
@@ -115,9 +115,9 @@ def _fill_sheet(sheet_xml: bytes, data: AbraRequest) -> bytes:
 
     # Encabezado
     _set_cell(sd, "C11", data.muestra)
-    _set_cell(sd, "E11", data.numero_ot)
-    _set_cell(sd, "G11", data.fecha_ensayo)
-    _set_cell(sd, "I11", data.realizado_por)
+    _set_cell(sd, "D11", data.numero_ot)
+    _set_cell(sd, "F11", data.fecha_ensayo)
+    _set_cell(sd, "H11", data.realizado_por)
 
     # Datos
     _set_cell(sd, "E18", data.masa_muestra_inicial_g, is_number=True)
@@ -159,9 +159,8 @@ def _fill_sheet(sheet_xml: bytes, data: AbraRequest) -> bytes:
     # Equipos
     _set_cell(sd, "E46", data.horno_codigo)
     _set_cell(sd, "E47", data.maquina_los_angeles_codigo)
-    _set_cell(sd, "E48", data.balanza_1g_codigo)
-    _set_cell(sd, "I46", data.malla_no_12_codigo)
-    _set_cell(sd, "I47", data.malla_no_4_codigo)
+    _set_cell(sd, "I46", data.balanza_1g_codigo)
+    _set_cell(sd, "I47", data.malla_no_12_codigo)
 
     # Nota
     if data.observaciones:
