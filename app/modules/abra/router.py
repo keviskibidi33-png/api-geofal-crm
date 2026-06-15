@@ -393,7 +393,7 @@ def generar_excel_abra(
     try:
         _ensure_payload_column(db)
         _apply_footer_defaults(payload)
-        excel_bytes = generate_abra_excel(payload)
+        excel_bytes = generate_abra_excel(payload, db=db)
 
         today = date.today()
         filename = build_formato_filename(payload.muestra, "AG", "ABRA")

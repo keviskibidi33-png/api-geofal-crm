@@ -107,7 +107,73 @@ def _set_cell(sheet_data: etree._Element, ref: str, value: Any, is_number: bool 
     t_el.text = text
 
 
-def _fill_sheet(sheet_xml: bytes, data: AbraRequest) -> bytes:
+def _excel_date_serial(value: str | None) -> float | None:
+    text = (value or "").strip()
+    if not text:
+        return None
+    for fmt in ("%Y/%m/%d", "%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            from datetime import datetime, date
+            parsed = datetime.strptime(text, fmt).date()
+            return float((parsed - date(1899, 12, 30)).days)
+        except ValueError:
+            continue
+    return None
+
+
+def _get_reception_metadata(db: Any, sample_code: str, ot_code: str) -> dict[str, str]:
+    metadata = {
+        "cliente": "",
+        "direccion": "",
+        "proyecto": "",
+        "ubicacion": "",
+        "numero_recepcion": "",
+        "fecha_recepcion": "",
+        "cantera": "",
+        "muestra_nombre": "",
+        "tipo_muestra": "",
+    }
+    if not db:
+        return metadata
+    try:
+        from app.modules.recepcion.models import MuestraConcreto, RecepcionMuestra
+        from sqlalchemy import or_
+        sample_clean = sample_code.strip()
+        muestra_db = db.query(MuestraConcreto).filter(
+            or_(
+                MuestraConcreto.codigo_muestra_lem == sample_clean,
+                MuestraConcreto.codigo_muestra == sample_clean,
+                MuestraConcreto.identificacion_muestra == sample_clean,
+            )
+        ).first()
+        recepcion = None
+        if muestra_db:
+            recepcion = muestra_db.recepcion_parent
+            metadata["muestra_nombre"] = muestra_db.identificacion_muestra or ""
+            metadata["tipo_muestra"] = muestra_db.elemento or "AGREGADO"
+        if not recepcion and ot_code:
+            recepcion = db.query(RecepcionMuestra).filter(RecepcionMuestra.numero_ot == ot_code.strip()).first()
+        if not recepcion:
+            from app.modules.tracing.service import TracingService
+            base_num = TracingService._extraer_numero_base(sample_clean)
+            if base_num:
+                res = TracingService._buscar_recepcion_flexible(db, base_num)
+                if res:
+                    recepcion, _ = res
+        if recepcion:
+            metadata["cliente"] = recepcion.cliente or ""
+            metadata["direccion"] = recepcion.domicilio_legal or ""
+            metadata["proyecto"] = recepcion.proyecto or ""
+            metadata["ubicacion"] = recepcion.ubicacion or ""
+            metadata["numero_recepcion"] = recepcion.numero_recepcion or ""
+            if recepcion.fecha_recepcion:
+                metadata["fecha_recepcion"] = recepcion.fecha_recepcion.strftime("%Y/%m/%d")
+    except Exception as exc:
+        logger.warning("Error fetching reception metadata: %s", exc)
+    return metadata
+
+
+def _fill_sheet(sheet_xml: bytes, data: AbraRequest, metadata: dict[str, str]) -> bytes:
     root = etree.fromstring(sheet_xml)
     sd = root.find(f".//{{{NS_SHEET}}}sheetData")
     if sd is None:
@@ -118,6 +184,21 @@ def _fill_sheet(sheet_xml: bytes, data: AbraRequest) -> bytes:
     _set_cell(sd, "D11", data.numero_ot)
     _set_cell(sd, "F11", data.fecha_ensayo)
     _set_cell(sd, "H11", data.realizado_por)
+
+    # Inyectar en Columna N (Mapeo a sheet FORMATO para que el INFORME lo lea vía fórmulas)
+    _set_cell(sd, "N2", metadata["cliente"])
+    _set_cell(sd, "N3", metadata["direccion"])
+    _set_cell(sd, "N4", metadata["proyecto"])
+    _set_cell(sd, "N5", metadata["ubicacion"])
+    _set_cell(sd, "N7", metadata["numero_recepcion"])
+    _set_cell(sd, "N8", data.fecha_ensayo)  # F. Emisión
+    _set_cell(sd, "N9", data.numero_ot)
+    _set_cell(sd, "N11", data.muestra)
+    _set_cell(sd, "N12", metadata["fecha_recepcion"])
+    _set_cell(sd, "N13", data.fecha_ensayo)
+    _set_cell(sd, "N15", metadata["cantera"])
+    _set_cell(sd, "N16", metadata["muestra_nombre"] or data.muestra)
+    _set_cell(sd, "N17", metadata["tipo_muestra"] or "AGREGADO")
 
     # Datos
     _set_cell(sd, "E18", data.masa_muestra_inicial_g, is_number=True)
@@ -169,6 +250,30 @@ def _fill_sheet(sheet_xml: bytes, data: AbraRequest) -> bytes:
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
+def _fill_incertidumbre_sheet(sheet_xml: bytes, data: AbraRequest) -> bytes:
+    root = etree.fromstring(sheet_xml)
+    sd = root.find(f".//{{{NS_SHEET}}}sheetData")
+    if sd is None:
+        return sheet_xml
+
+    _set_cell(sd, "B51", data.revisado_por)
+    _set_cell(sd, "G51", data.aprobado_por)
+
+    rev_serial = _excel_date_serial(data.revisado_fecha)
+    aprob_serial = _excel_date_serial(data.aprobado_fecha)
+    if rev_serial is not None:
+        _set_cell(sd, "B53", rev_serial, is_number=True)
+    elif data.revisado_fecha:
+        _set_cell(sd, "B53", data.revisado_fecha)
+
+    if aprob_serial is not None:
+        _set_cell(sd, "G53", aprob_serial, is_number=True)
+    elif data.aprobado_fecha:
+        _set_cell(sd, "G53", data.aprobado_fecha)
+
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
 def _fill_drawing(drawing_xml: bytes, data: AbraRequest) -> bytes:
     return fill_standard_footer_shapes(
         drawing_xml,
@@ -179,12 +284,14 @@ def _fill_drawing(drawing_xml: bytes, data: AbraRequest) -> bytes:
     )
 
 
-def generate_abra_excel(data: AbraRequest) -> bytes:
+def generate_abra_excel(data: AbraRequest, db: Any = None) -> bytes:
     """Generate ABRA Excel file from template."""
     logger.info("Generating ABRA Excel - ASTM C535-16")
 
     if not Path(TEMPLATE_PATH).exists():
         raise FileNotFoundError(f"Template not found: {TEMPLATE_PATH}")
+
+    metadata = _get_reception_metadata(db, data.muestra, data.numero_ot)
 
     with open(TEMPLATE_PATH, "rb") as file_handle:
         template_bytes = file_handle.read()
@@ -192,16 +299,35 @@ def generate_abra_excel(data: AbraRequest) -> bytes:
     output = io.BytesIO()
     with zipfile.ZipFile(io.BytesIO(template_bytes), "r") as zin, zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zout:
         sheet_original = zin.read("xl/worksheets/sheet1.xml")
-        sheet_xml = _fill_sheet(sheet_original, data)
+        sheet_xml = _fill_sheet(sheet_original, data, metadata)
+
+        incertidumbre_original = zin.read("xl/worksheets/sheet4.xml")
+        incertidumbre_xml = _fill_incertidumbre_sheet(incertidumbre_original, data)
 
         for item in zin.infolist():
+            if item.filename == "xl/calcChain.xml":
+                continue
+            if item.filename.startswith("xl/externalLinks/"):
+                continue
+
             if item.filename == "xl/worksheets/sheet1.xml":
                 raw = sheet_xml
+            elif item.filename == "xl/worksheets/sheet4.xml":
+                raw = incertidumbre_xml
             else:
                 raw = zin.read(item.filename)
 
             if item.filename.startswith("xl/drawings/drawing") and item.filename.endswith(".xml"):
                 raw = _fill_drawing(raw, data)
+            elif item.filename == "xl/workbook.xml":
+                raw = enable_full_recalc_on_open(raw)
+                raw = strip_external_references(raw)
+            elif item.filename == "xl/_rels/workbook.xml.rels":
+                raw = remove_calc_chain_relationships(raw)
+                raw = remove_external_link_relationships(raw)
+            elif item.filename == "[Content_Types].xml":
+                raw = remove_calc_chain_content_type(raw)
+                raw = remove_external_link_content_types(raw)
 
             zout.writestr(item, raw)
 
