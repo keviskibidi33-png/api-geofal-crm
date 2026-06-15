@@ -9,7 +9,15 @@ from __future__ import annotations
 
 import io
 import logging
-from app.modules.common.excel_xml import find_template_path
+from app.modules.common.excel_xml import (
+    enable_full_recalc_on_open,
+    remove_calc_chain_content_type,
+    remove_calc_chain_relationships,
+    remove_external_link_content_types,
+    remove_external_link_relationships,
+    strip_external_references,
+    find_template_path,
+)
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -159,6 +167,44 @@ def _fill_sheet(sheet_xml: bytes, data: GranAgregadoRequest) -> bytes:
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
+def _excel_date_serial(value: str | None) -> float | None:
+    text = (value or "").strip()
+    if not text:
+        return None
+    for fmt in ("%Y/%m/%d", "%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            from datetime import datetime, date
+            parsed = datetime.strptime(text, fmt).date()
+            return float((parsed - date(1899, 12, 30)).days)
+        except ValueError:
+            continue
+    return None
+
+
+def _fill_incertidumbre_sheet(sheet_xml: bytes, data: GranAgregadoRequest) -> bytes:
+    root = etree.fromstring(sheet_xml)
+    sd = root.find(f".//{{{NS_SHEET}}}sheetData")
+    if sd is None:
+        return sheet_xml
+
+    _set_cell(sd, "B278", data.revisado_por)
+    _set_cell(sd, "G278", data.aprobado_por)
+
+    rev_serial = _excel_date_serial(data.revisado_fecha)
+    aprob_serial = _excel_date_serial(data.aprobado_fecha)
+    if rev_serial is not None:
+        _set_cell(sd, "B280", rev_serial, is_number=True)
+    elif data.revisado_fecha:
+        _set_cell(sd, "B280", data.revisado_fecha)
+
+    if aprob_serial is not None:
+        _set_cell(sd, "G280", aprob_serial, is_number=True)
+    elif data.aprobado_fecha:
+        _set_cell(sd, "G280", data.aprobado_fecha)
+
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
 def _fill_drawing(drawing_xml: bytes, data: GranAgregadoRequest) -> bytes:
     return fill_standard_footer_shapes(
         drawing_xml,
@@ -169,7 +215,7 @@ def _fill_drawing(drawing_xml: bytes, data: GranAgregadoRequest) -> bytes:
     )
 
 
-def generate_gran_agregado_excel(data: GranAgregadoRequest) -> bytes:
+def generate_gran_agregado_excel(data: GranAgregadoRequest, db: Any = None) -> bytes:
     """Generates the Gran Agregado Excel file from template."""
     logger.info("Generating Gran Agregado Excel - ASTM C136/C136M-25")
 
@@ -184,14 +230,33 @@ def generate_gran_agregado_excel(data: GranAgregadoRequest) -> bytes:
         sheet_original = zin.read("xl/worksheets/sheet1.xml")
         sheet_xml = _fill_sheet(sheet_original, data)
 
+        incertidumbre_original = zin.read("xl/worksheets/sheet5.xml")
+        incertidumbre_xml = _fill_incertidumbre_sheet(incertidumbre_original, data)
+
         for item in zin.infolist():
+            if item.filename == "xl/calcChain.xml":
+                continue
+            if item.filename.startswith("xl/externalLinks/"):
+                continue
+
             if item.filename == "xl/worksheets/sheet1.xml":
                 raw = sheet_xml
+            elif item.filename == "xl/worksheets/sheet5.xml":
+                raw = incertidumbre_xml
             else:
                 raw = zin.read(item.filename)
 
             if item.filename.startswith("xl/drawings/drawing") and item.filename.endswith(".xml"):
                 raw = _fill_drawing(raw, data)
+            elif item.filename == "xl/workbook.xml":
+                raw = enable_full_recalc_on_open(raw)
+                raw = strip_external_references(raw)
+            elif item.filename == "xl/_rels/workbook.xml.rels":
+                raw = remove_calc_chain_relationships(raw)
+                raw = remove_external_link_relationships(raw)
+            elif item.filename == "[Content_Types].xml":
+                raw = remove_calc_chain_content_type(raw)
+                raw = remove_external_link_content_types(raw)
 
             zout.writestr(item, raw)
 
