@@ -214,13 +214,16 @@ def _fill_sheet(sheet_xml: bytes, data: AbrassRequest, metadata: dict[str, str])
     _set_cell(sd, "E19", data.masa_muestra_inicial_seca_constante_despues_lavado_g, is_number=True)
     _set_cell(sd, "H19", data.numero_revoluciones, is_number=True)
 
-    # Marcado SI/NO en la fila de casilla (fila 18)
-    _set_cell(sd, "G18", "")
-    _set_cell(sd, "H18", "")
+    # Marcado SI/NO en la fila 17 (G17 y H17)
     if data.requiere_lavado == "SI":
-        _set_cell(sd, "G18", "X")
+        _set_cell(sd, "G17", "SI (X)")
+        _set_cell(sd, "H17", "NO")
     elif data.requiere_lavado == "NO":
-        _set_cell(sd, "H18", "X")
+        _set_cell(sd, "G17", "SI")
+        _set_cell(sd, "H17", "NO (X)")
+    else:
+        _set_cell(sd, "G17", "SI")
+        _set_cell(sd, "H17", "NO")
 
     # Tabla TAMIZ (filas 29-35), gradaciones A/B/C/D (E/F/G/H)
     for idx, row_num in enumerate(TAMIZ_ROWS):
