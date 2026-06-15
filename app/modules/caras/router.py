@@ -403,7 +403,7 @@ def generar_excel_caras(
     try:
         _ensure_payload_column(db)
         _apply_footer_defaults(payload)
-        excel_bytes = generate_caras_excel(payload)
+        excel_bytes = generate_caras_excel(payload, db=db)
 
         today = date.today()
         filename = build_formato_filename(payload.muestra, "AG", "CARAS")
