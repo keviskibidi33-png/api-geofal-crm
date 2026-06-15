@@ -409,7 +409,7 @@ def generar_excel_ge_grueso(
     try:
         _ensure_payload_column(db)
         _apply_footer_defaults(payload)
-        excel_bytes = generate_ge_grueso_excel(payload)
+        excel_bytes = generate_ge_grueso_excel(payload, db=db)
 
         today = date.today()
         tipo_muestra = _extract_muestra_tipo(payload.muestra)

@@ -135,7 +135,59 @@ def _excel_date_serial(value: str | None) -> float | None:
     return None
 
 
-def _fill_sheet(sheet_xml: bytes, data: GeGruesoRequest) -> bytes:
+def _get_reception_metadata(db: Any, sample_code: str, ot_code: str) -> dict[str, str]:
+    metadata = {
+        "cliente": "",
+        "direccion": "",
+        "proyecto": "",
+        "ubicacion": "",
+        "numero_recepcion": "",
+        "fecha_recepcion": "",
+        "cantera": "",
+        "muestra_nombre": "",
+        "tipo_muestra": "",
+    }
+    if not db:
+        return metadata
+    try:
+        from app.modules.recepcion.models import MuestraConcreto, RecepcionMuestra
+        from sqlalchemy import or_
+        sample_clean = sample_code.strip()
+        muestra_db = db.query(MuestraConcreto).filter(
+            or_(
+                MuestraConcreto.codigo_muestra_lem == sample_clean,
+                MuestraConcreto.codigo_muestra == sample_clean,
+                MuestraConcreto.identificacion_muestra == sample_clean,
+            )
+        ).first()
+        recepcion = None
+        if muestra_db:
+            recepcion = muestra_db.recepcion_parent
+            metadata["muestra_nombre"] = muestra_db.identificacion_muestra or ""
+            metadata["tipo_muestra"] = muestra_db.elemento or "AGREGADO"
+        if not recepcion and ot_code:
+            recepcion = db.query(RecepcionMuestra).filter(RecepcionMuestra.numero_ot == ot_code.strip()).first()
+        if not recepcion:
+            from app.modules.tracing.service import TracingService
+            base_num = TracingService._extraer_numero_base(sample_clean)
+            if base_num:
+                res = TracingService._buscar_recepcion_flexible(db, base_num)
+                if res:
+                    recepcion, _ = res
+        if recepcion:
+            metadata["cliente"] = recepcion.cliente or ""
+            metadata["direccion"] = recepcion.domicilio_legal or ""
+            metadata["proyecto"] = recepcion.proyecto or ""
+            metadata["ubicacion"] = recepcion.ubicacion or ""
+            metadata["numero_recepcion"] = recepcion.numero_recepcion or ""
+            if recepcion.fecha_recepcion:
+                metadata["fecha_recepcion"] = recepcion.fecha_recepcion.strftime("%Y/%m/%d")
+    except Exception as exc:
+        logger.warning("Error fetching reception metadata for GE Grueso: %s", exc)
+    return metadata
+
+
+def _fill_sheet(sheet_xml: bytes, data: GeGruesoRequest, metadata: dict[str, str]) -> bytes:
     root = etree.fromstring(sheet_xml)
     sd = root.find(f".//{{{NS_SHEET}}}sheetData")
     if sd is None:
@@ -146,6 +198,16 @@ def _fill_sheet(sheet_xml: bytes, data: GeGruesoRequest) -> bytes:
     _set_cell(sd, "F11", data.numero_ot)
     _set_cell(sd, "H11", data.fecha_ensayo)
     _set_cell(sd, "I11", data.realizado_por)
+
+    # Inyectar en Columna U (Mapeo a sheet FORMATO para que el INFORME lo lea vía fórmulas)
+    _set_cell(sd, "U2", metadata["cliente"])
+    _set_cell(sd, "U3", metadata["direccion"])
+    _set_cell(sd, "U4", metadata["proyecto"])
+    _set_cell(sd, "U5", metadata["ubicacion"])
+    _set_cell(sd, "U8", data.fecha_ensayo)  # Fecha Emisión
+    _set_cell(sd, "U11", metadata["muestra_nombre"] or data.muestra)
+    _set_cell(sd, "U12", metadata["fecha_recepcion"])
+    _set_cell(sd, "U13", data.fecha_ensayo)  # Fecha de Ejecución
 
     # Descripción de muestra
     _set_cell(sd, "E17", data.tamano_maximo_nominal)
@@ -267,9 +329,11 @@ def _fill_drawing(drawing_xml: bytes, data: GeGruesoRequest) -> bytes:
     )
 
 
-def generate_ge_grueso_excel(data: GeGruesoRequest) -> bytes:
+def generate_ge_grueso_excel(data: GeGruesoRequest, db: Any = None) -> bytes:
     """Generates the GE Grueso Excel file from template."""
     logger.info("Generating GE Grueso Excel - ASTM C127-25")
+
+    metadata = _get_reception_metadata(db, data.muestra, data.numero_ot)
 
     if not Path(TEMPLATE_PATH).exists():
         raise FileNotFoundError(f"Template not found: {TEMPLATE_PATH}")
@@ -280,7 +344,7 @@ def generate_ge_grueso_excel(data: GeGruesoRequest) -> bytes:
     output = io.BytesIO()
     with zipfile.ZipFile(io.BytesIO(template_bytes), "r") as zin, zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zout:
         sheet_original = zin.read("xl/worksheets/sheet1.xml")
-        sheet_xml = _fill_sheet(sheet_original, data)
+        sheet_xml = _fill_sheet(sheet_original, data, metadata)
 
         informe_original = zin.read("xl/worksheets/sheet2.xml")
         informe_xml = _strip_sheet_protection(informe_original)
