@@ -238,14 +238,22 @@ def _fill_sheet(sheet_xml: bytes, data: GeGruesoRequest, metadata: dict[str, str
     _set_cell(sd, "N34", data.fr1_a_g, is_number=True)
     _set_cell(sd, "N35", data.fr1_b_g, is_number=True)
     _set_cell(sd, "N36", data.fr1_c_g, is_number=True)
-    _set_cell(sd, "O37", data.fr1_d_g, is_number=True)
+    if data.fr1_d1_g is not None or data.fr1_d2_g is not None:
+        _set_cell(sd, "M37", data.fr1_d1_g, is_number=True)
+        _set_cell(sd, "O37", data.fr1_d2_g, is_number=True)
+    else:
+        _set_cell(sd, "M37", data.fr1_d_g, is_number=True)
     _set_cell(sd, "O38", data.fr1_masa_total_g, is_number=True)
 
     # Reporte de datos 2° fracción
     _set_cell(sd, "M41", data.fr2_a_g, is_number=True)
     _set_cell(sd, "M42", data.fr2_b_g, is_number=True)
     _set_cell(sd, "M43", data.fr2_c_g, is_number=True)
-    _set_cell(sd, "M44", data.fr2_d_g, is_number=True)
+    if data.fr2_d1_g is not None or data.fr2_d2_g is not None:
+        _set_cell(sd, "M44", data.fr2_d1_g, is_number=True)
+        _set_cell(sd, "O44", data.fr2_d2_g, is_number=True)
+    else:
+        _set_cell(sd, "M44", data.fr2_d_g, is_number=True)
     _set_cell(sd, "O45", data.fr2_masa_total_g, is_number=True)
 
     # Observaciones
@@ -267,7 +275,6 @@ def _fill_datos_sheet(sheet_xml: bytes, data: GeGruesoRequest) -> bytes:
         "+'FORMATO PEG'!M34": "+'FORMATO PEG'!N34",
         "+'FORMATO PEG'!M35": "+'FORMATO PEG'!N35",
         "+'FORMATO PEG'!M36": "+'FORMATO PEG'!N36",
-        "+'FORMATO PEG'!O38": "+'FORMATO PEG'!O37",
     }
 
     for formula in sd.findall(f".//{{{NS_SHEET}}}f"):

@@ -147,6 +147,8 @@ class GeGruesoRequest(BaseModel):
     fr1_a_g: Optional[float] = None
     fr1_b_g: Optional[float] = None
     fr1_c_g: Optional[float] = None
+    fr1_d1_g: Optional[float] = None
+    fr1_d2_g: Optional[float] = None
     fr1_d_g: Optional[float] = None
     fr1_masa_total_g: Optional[float] = None
 
@@ -154,6 +156,8 @@ class GeGruesoRequest(BaseModel):
     fr2_a_g: Optional[float] = None
     fr2_b_g: Optional[float] = None
     fr2_c_g: Optional[float] = None
+    fr2_d1_g: Optional[float] = None
+    fr2_d2_g: Optional[float] = None
     fr2_d_g: Optional[float] = None
     fr2_masa_total_g: Optional[float] = None
 
@@ -208,11 +212,15 @@ class GeGruesoRequest(BaseModel):
         "fr1_a_g",
         "fr1_b_g",
         "fr1_c_g",
+        "fr1_d1_g",
+        "fr1_d2_g",
         "fr1_d_g",
         "fr1_masa_total_g",
         "fr2_a_g",
         "fr2_b_g",
         "fr2_c_g",
+        "fr2_d1_g",
+        "fr2_d2_g",
         "fr2_d_g",
         "fr2_masa_total_g",
         mode="before",
@@ -234,16 +242,33 @@ class GeGruesoRequest(BaseModel):
             "fr1_a_g",
             "fr1_b_g",
             "fr1_c_g",
+            "fr1_d1_g",
+            "fr1_d2_g",
             "fr1_d_g",
             "fr1_masa_total_g",
             "fr2_a_g",
             "fr2_b_g",
             "fr2_c_g",
+            "fr2_d1_g",
+            "fr2_d2_g",
             "fr2_d_g",
             "fr2_masa_total_g",
         ]
         for field_name in numeric_fields:
             setattr(self, field_name, _coerce_float(getattr(self, field_name)))
+
+        # Sum logic for fr1_d_g / fr2_d_g
+        non_null_d1 = [x for x in [self.fr1_d1_g, self.fr1_d2_g] if x is not None]
+        if non_null_d1:
+            self.fr1_d_g = sum(non_null_d1)
+        elif self.fr1_d_g is not None:
+            self.fr1_d1_g = self.fr1_d_g
+
+        non_null_d2 = [x for x in [self.fr2_d1_g, self.fr2_d2_g] if x is not None]
+        if non_null_d2:
+            self.fr2_d_g = sum(non_null_d2)
+        elif self.fr2_d_g is not None:
+            self.fr2_d1_g = self.fr2_d_g
 
         if self.fr1_masa_total_g is None:
             if self.fr1_d_g is not None:
