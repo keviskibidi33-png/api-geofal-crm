@@ -27,10 +27,10 @@ NS_PKG_REL = "http://schemas.openxmlformats.org/package/2006/relationships"
 NS_DRAW = "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"
 NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
-TARGET_SHEET_NAME = "PLANAS Y ALARGADAS"
+TARGET_SHEET_NAME = "FORMATO"
 
 
-TEMPLATE_PATH = str(find_template_path("Template_Planas.xlsx"))
+TEMPLATE_PATH = str(find_template_path("1-INF.-N-000-26-AG34-PLANAS-ASTM-D4791-V02-1-M.xlsx"))
 
 
 def _parse_cell_ref(ref: str) -> tuple[str, int]:
@@ -237,6 +237,44 @@ def _fill_sheet(sheet_xml: bytes, data: PlanasRequest) -> bytes:
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
+def _excel_date_serial(value: str | None) -> float | None:
+    from datetime import date, datetime
+    text = (value or "").strip()
+    if not text:
+        return None
+    for fmt in ("%Y/%m/%d", "%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            parsed = datetime.strptime(text, fmt).date()
+            return float((parsed - date(1899, 12, 30)).days)
+        except ValueError:
+            continue
+    return None
+
+
+def _fill_incertidumbre_sheet(sheet_xml: bytes, data: PlanasRequest) -> bytes:
+    root = etree.fromstring(sheet_xml)
+    sheet_data = root.find(f".//{{{NS_SHEET}}}sheetData")
+    if sheet_data is None:
+        return sheet_xml
+
+    _set_cell(sheet_data, "C126", data.revisado_por)
+    _set_cell(sheet_data, "H126", data.aprobado_por)
+
+    revisado_serial = _excel_date_serial(data.revisado_fecha)
+    aprobado_serial = _excel_date_serial(data.aprobado_fecha)
+    if revisado_serial is not None:
+        _set_cell(sheet_data, "C128", revisado_serial, is_number=True)
+    elif data.revisado_fecha:
+        _set_cell(sheet_data, "C128", data.revisado_fecha)
+
+    if aprobado_serial is not None:
+        _set_cell(sheet_data, "H128", aprobado_serial, is_number=True)
+    elif data.aprobado_fecha:
+        _set_cell(sheet_data, "H128", data.aprobado_fecha)
+
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
 def _fill_drawing(drawing_xml: bytes, data: PlanasRequest) -> bytes:
     return fill_standard_footer_shapes(
         drawing_xml,
@@ -261,13 +299,27 @@ def generate_planas_excel(data: PlanasRequest) -> bytes:
     with zipfile.ZipFile(io.BytesIO(template_bytes), "r") as zin, zipfile.ZipFile(
         output, "w", zipfile.ZIP_DEFLATED
     ) as zout:
-        sheet_path = _resolve_sheet_xml_path(zin, TARGET_SHEET_NAME)
-        sheet_original = zin.read(sheet_path)
-        sheet_xml = _fill_sheet(sheet_original, data)
+        formato_path = _resolve_sheet_xml_path(zin, TARGET_SHEET_NAME)
+        formato_original = zin.read(formato_path)
+        formato_xml = _fill_sheet(formato_original, data)
+
+        try:
+            incert_path = _resolve_sheet_xml_path(zin, "INCERTIDUMBRE")
+            incert_original = zin.read(incert_path)
+            incert_xml = _fill_incertidumbre_sheet(incert_original, data)
+        except Exception as e:
+            logger.warning("No se pudo procesar hoja INCERTIDUMBRE: %s", e)
+            incert_path = None
+            incert_xml = None
 
         for item in zin.infolist():
-            if item.filename == sheet_path:
-                raw = sheet_xml
+            if item.filename == "xl/calcChain.xml":
+                continue
+
+            if item.filename == formato_path:
+                raw = formato_xml
+            elif incert_path and item.filename == incert_path:
+                raw = incert_xml
             else:
                 raw = zin.read(item.filename)
 
