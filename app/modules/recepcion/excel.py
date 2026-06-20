@@ -13,6 +13,17 @@ NAMESPACES = {
     'main': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main',
 }
 
+RECEPCION_TABLE_HEADER_LABELS = {"N°", "Nº"}
+RECEPCION_FOOTER_LABELS = {"NOTA:", "NOTA"}
+RECEPCION_VARIANT_SIGNATURES = {
+    "canonical": {
+        "table_header_row": 21,
+        "data_start_row": 23,
+        "footer_row": 43,
+        "print_area": "A1:K53",
+    }
+}
+
 def _parse_cell_ref(ref: str) -> tuple[str, int]:
     col = ''.join(c for c in ref if c.isalpha())
     row = int(''.join(c for c in ref if c.isdigit()))
@@ -160,6 +171,82 @@ def _duplicate_merged_cells(root: etree._Element, source_row_num: int, target_ro
     if new_merges:
         merged_cells_node.set('count', str(int(merged_cells_node.get('count', '0')) + len(new_merges)))
 
+
+def _normalize_anchor_key(value: str) -> str:
+    return (
+        str(value or "")
+        .replace("\n", " ")
+        .replace("\r", " ")
+        .replace("  ", " ")
+        .upper()
+        .strip()
+    )
+
+
+def _detect_recepcion_layout(sheet_data: etree._Element, shared_strings: list[str], ns: str) -> dict[str, Any]:
+    anchors: dict[str, tuple[str, int]] = {}
+    anchor_rows: dict[str, list[int]] = {}
+    merge_count = 0
+
+    for row_el in sheet_data.findall(f'{{{ns}}}row'):
+        r_num = int(row_el.get('r'))
+        for cell_el in row_el.findall(f'{{{ns}}}c'):
+            val = ""
+            if cell_el.get('t') == 's':
+                v_el = cell_el.find(f'{{{ns}}}v')
+                if v_el is not None:
+                    try:
+                        s_idx = int(v_el.text)
+                        if 0 <= s_idx < len(shared_strings):
+                            val = shared_strings[s_idx]
+                    except Exception:
+                        pass
+            if not val:
+                continue
+            key = _normalize_anchor_key(val)
+            if key and key not in anchors:
+                c_name, _ = _parse_cell_ref(cell_el.get('r'))
+                anchors[key] = (c_name, r_num)
+                anchor_rows.setdefault(key, []).append(r_num)
+
+    table_header_row = None
+    for key in RECEPCION_TABLE_HEADER_LABELS:
+        if key in anchors:
+            table_header_row = anchors[key][1]
+            break
+    if table_header_row is None:
+        table_header_row = 21
+
+    footer_row = None
+    for key in RECEPCION_FOOTER_LABELS:
+        if key in anchors:
+            footer_row = anchors[key][1]
+            break
+    if footer_row is None:
+        footer_row = 43
+
+    data_start_row = table_header_row + 2
+    available_rows_before_footer = max(0, footer_row - data_start_row)
+
+    merge_nodes = sheet_data.getroottree().find(f'.//{{{ns}}}mergeCells')
+    if merge_nodes is not None:
+        merge_count = len(merge_nodes.findall(f'{{{ns}}}mergeCell'))
+
+    inferred_variant = "canonical"
+    canonical = RECEPCION_VARIANT_SIGNATURES["canonical"]
+    if table_header_row != canonical["table_header_row"] or footer_row != canonical["footer_row"]:
+        inferred_variant = "variant"
+
+    return {
+        "anchors": anchors,
+        "table_header_row": table_header_row,
+        "data_start_row": data_start_row,
+        "footer_row": footer_row,
+        "available_rows_before_footer": available_rows_before_footer,
+        "variant": inferred_variant,
+        "merge_count": merge_count,
+    }
+
 class ExcelLogic:
     def __init__(self, template_path: Optional[str] = None):
         if template_path:
@@ -203,46 +290,27 @@ class ExcelLogic:
         ns = NAMESPACES['main']
         sheet_data = root.find(f'.//{{{ns}}}sheetData')
 
-        # 1. Anchor Detection
-        anchors = {} # label -> (col, row)
-        for row_el in sheet_data.findall(f'{{{ns}}}row'):
-            r_num = int(row_el.get('r'))
-            for cell_el in row_el.findall(f'{{{ns}}}c'):
-                val = ""
-                if cell_el.get('t') == 's':
-                    v_el = cell_el.find(f'{{{ns}}}v')
-                    if v_el is not None:
-                        try:
-                            s_idx = int(v_el.text)
-                            if 0 <= s_idx < len(shared_strings):
-                                val = shared_strings[s_idx]
-                        except: pass
-                
-                if val:
-                    key = val.upper().strip()
-                    c_name, _ = _parse_cell_ref(cell_el.get('r'))
-                    if key not in anchors: # Take first occurrence
-                        anchors[key] = (c_name, r_num)
+        layout = _detect_recepcion_layout(sheet_data, shared_strings, ns)
+        anchors = layout["anchors"]
 
         # 2. Dynamic Row Logic
         muestras = recepcion.muestras
         n_muestras = len(muestras)
-        threshold = 18 # Rows 23 to 40 inclusive
-        
-        # Determine base coordinates using anchors or fallbacks
-        row_n_label = anchors.get("N°", ("A", 21))[1]
-        data_start_row = row_n_label + 2
-        row_nota_label = anchors.get("NOTA:", ("B", 43))[1]
+        threshold = layout["available_rows_before_footer"]
+        row_n_label = layout["table_header_row"]
+        data_start_row = layout["data_start_row"]
+        row_nota_label = layout["footer_row"]
         
         if n_muestras > threshold:
             extra_rows = n_muestras - threshold
             # Shift from first row after the template table (Row 41 if threshold=18)
-            shift_start = data_start_row + threshold 
+            shift_start = data_start_row + threshold
             _shift_rows(sheet_data, shift_start, extra_rows, ns)
             _shift_merged_cells(root, shift_start, extra_rows, ns)
-            # Duplicate template row for data
-            # Row 23 is header-adjacent, Row 24 is inner (standard).
-            inner_row_source = data_start_row + 1 
+            # Duplicate the last template data row so row styles remain stable
+            inner_row_source = data_start_row + max(0, threshold - 1)
+            if not sheet_data.find(f'{{{ns}}}row[@r="{inner_row_source}"]'):
+                inner_row_source = data_start_row + 1
             for i in range(threshold, n_muestras):
                 target_row = data_start_row + i
                 _duplicate_row_xml(sheet_data, inner_row_source, target_row, ns)
@@ -329,7 +397,7 @@ class ExcelLogic:
         # 4. Handle Drawings (Blue Line Shift)
         drawing_file = 'xl/drawings/drawing1.xml'
         modified_drawing_xml = None
-        if n_muestras > threshold:
+        if n_muestras > threshold and layout["variant"] == "canonical":
             shift = n_muestras - threshold
             with zipfile.ZipFile(self.template_path, 'r') as z:
                 if drawing_file in z.namelist():

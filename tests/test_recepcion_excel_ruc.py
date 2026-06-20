@@ -6,12 +6,14 @@ import unittest
 from pathlib import Path
 
 from openpyxl import Workbook
+from lxml import etree
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.modules.recepcion.excel import ExcelLogic
+from app.modules.recepcion.excel import _detect_recepcion_layout
 
 
 class TestRecepcionExcelRuc(unittest.TestCase):
@@ -120,6 +122,35 @@ class TestRecepcionExcelRuc(unittest.TestCase):
         self.assertEqual(parsed["numero_recepcion"], "REC-200-26")
         self.assertEqual(parsed["numero_cotizacion"], "")
         self.assertEqual(parsed["numero_ot"], "OT-200")
+
+    def test_detect_recepcion_layout_uses_anchor_positions(self):
+        ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+        sheet = etree.fromstring(
+            f"""
+            <worksheet xmlns="{ns}">
+              <sheetData>
+                <row r="21">
+                  <c r="A21" t="s"><v>0</v></c>
+                </row>
+                <row r="43">
+                  <c r="B43" t="s"><v>1</v></c>
+                </row>
+              </sheetData>
+              <mergeCells count="42">
+                <mergeCell ref="A1:B1"/>
+              </mergeCells>
+            </worksheet>
+            """.strip().encode("utf-8")
+        )
+        shared_strings = ["N°", "NOTA:"]
+
+        layout = _detect_recepcion_layout(sheet.find(f".//{{{ns}}}sheetData"), shared_strings, ns)
+
+        self.assertEqual(layout["table_header_row"], 21)
+        self.assertEqual(layout["data_start_row"], 23)
+        self.assertEqual(layout["footer_row"], 43)
+        self.assertEqual(layout["available_rows_before_footer"], 20)
+        self.assertEqual(layout["variant"], "canonical")
 
 
 if __name__ == "__main__":
