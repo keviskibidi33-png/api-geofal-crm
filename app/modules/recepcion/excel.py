@@ -828,7 +828,11 @@ class ExcelLogic:
                      col_map["DENSIDAD"] = cell.column
 
              # Check if this row looks like a header (has critical fields)
-             if "ITEM" in col_map or "LEM" in col_map:
+             # Must have an item/number marker (like "ITEM", "N°", "Nº") AND a sample identifier (like "LEM" or "IDENT")
+             has_item_marker = "ITEM" in col_map or any(marker in row_values for marker in ["N°", "Nº"])
+             has_sample_marker = "LEM" in col_map or "IDENT" in col_map
+             
+             if has_item_marker and has_sample_marker:
                  header_row = current_row_idx
                  print(f"[DEBUG] Found Table Header at Row {header_row}. Map: {col_map}")
                  break
