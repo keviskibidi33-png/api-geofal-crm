@@ -33,7 +33,7 @@ NS_DRAW = "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"
 NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
 
-TEMPLATE_PATH = str(find_template_path("template_cbr.xlsx"))
+TEMPLATE_PATH = str(find_template_path("1-INF.-N-000-26-SU37-CBR-ASTM-D1883-V03.xlsx"))
 
 
 def _parse_cell_ref(ref: str) -> tuple[str, int]:
@@ -203,8 +203,6 @@ def generate_cbr_excel(data: CBRRequest) -> bytes:
 
             raw = zin.read(item.filename)
 
-            if item.filename == "xl/worksheets/sheet1.xml":
-                raw = _fill_sheet(raw, data)
             if item.filename == "xl/worksheets/sheet2.xml":
                 raw = _fill_sheet(raw, data)
             elif item.filename == "xl/worksheets/sheet6.xml":
