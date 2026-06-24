@@ -26,7 +26,7 @@ NS_DRAW = "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"
 NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
 
-TEMPLATE_PATH = str(find_template_path("Template_Proctor.xlsx"))
+TEMPLATE_PATH = str(find_template_path("1-INF.-N-000-26-SU19-P.MOD.-V08.xlsx"))
 POINT_COLS = ["D", "F", "G", "H", "I"]
 SIEVE_ROWS = [37, 38, 39, 40, 41]
 

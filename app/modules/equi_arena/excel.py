@@ -29,7 +29,7 @@ NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 TRIAL_COLS = ["H", "I", "J"]
 
 
-TEMPLATE_PATH = str(find_template_path("Template_EquiArena.xlsx"))
+TEMPLATE_PATH = str(find_template_path("1-INF.-N-000-26-SU21-E.-ARENA-V08.xlsx"))
 
 
 def _parse_cell_ref(ref: str) -> tuple[str, int]:

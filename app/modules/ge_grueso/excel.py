@@ -35,7 +35,7 @@ NS_DRAW = "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"
 NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
 
-TEMPLATE_PATH = str(find_template_path("Template_GE_GRUESO.xlsx"))
+TEMPLATE_PATH = str(find_template_path("1-INF.-N-000-26-AG28-G.E.GRUESO-ASTM-C127-25-V04.xlsx"))
 
 
 def _parse_cell_ref(ref: str) -> tuple[str, int]:

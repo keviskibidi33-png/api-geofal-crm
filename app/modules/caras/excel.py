@@ -36,7 +36,7 @@ NS_PKG_REL = "http://schemas.openxmlformats.org/package/2006/relationships"
 NS_DRAW = "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"
 NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
-TEMPLATE_PATH = str(find_template_path("Template_Caras.xlsx"))
+TEMPLATE_PATH = str(find_template_path("1-INF.-N-000-26-AG35-CARAS-ASTM-D5821-V04.xlsx"))
 
 
 def _parse_cell_ref(ref: str) -> tuple[str, int]:

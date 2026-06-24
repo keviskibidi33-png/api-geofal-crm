@@ -38,7 +38,7 @@ TAMIZ_ROWS = [29, 30, 31, 32, 33, 34, 35]
 ITEM_ROWS = [41, 42, 43, 44, 45, 46, 47]
 
 
-TEMPLATE_PATH = str(find_template_path("Template_ABRA.xlsx"))
+TEMPLATE_PATH = str(find_template_path("1-INF.-N-000-26-AG36-ABRAS.-ASTM-C131-V2.xlsx"))
 
 
 def _parse_cell_ref(ref: str) -> tuple[str, int]:

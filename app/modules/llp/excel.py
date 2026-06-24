@@ -33,7 +33,7 @@ NS_DRAW = "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"
 NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
 
-TEMPLATE_PATH = str(find_template_path("Template_LLP.xlsx"))
+TEMPLATE_PATH = str(find_template_path("1-INF.-N-000-26-SU23-LL-LP-V07.xlsx"))
 POINT_COLS = ["G", "I", "J", "K", "L"]
 ELIMINACION_PARTICULAS_CELL_MAP = {
     "LAVADO POR EL TAMIZ NO. 40": "B25",

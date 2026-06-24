@@ -30,7 +30,7 @@ NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 TARGET_SHEET_NAME = "FORMATO"
 
 
-TEMPLATE_PATH = str(find_template_path("1-INF.-N-000-26-AG34-PLANAS-ASTM-D4791-V02-1-M.xlsx"))
+TEMPLATE_PATH = str(find_template_path("1-INF.-N-000-26-AG34-PLANAS-ASTM-D4791-V02.xlsx"))
 
 
 def _parse_cell_ref(ref: str) -> tuple[str, int]:

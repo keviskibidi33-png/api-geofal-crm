@@ -36,7 +36,7 @@ NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 SIEVE_ROWS = list(range(18, 36))  # I18:I35
 
 
-TEMPLATE_PATH = str(find_template_path("Template_GranAgregado.xlsx"))
+TEMPLATE_PATH = str(find_template_path("1-INF.-N-000-26-AG19-GRAN.-V10.xlsx"))
 
 
 def _parse_cell_ref(ref: str) -> tuple[str, int]:

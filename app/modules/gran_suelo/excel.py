@@ -36,7 +36,7 @@ NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 SIEVE_ROWS = [42, 43, 44, 45, 46, 47, 48, 50, 51, 52, 53, 54, 55, 56, 57]
 
 
-TEMPLATE_PATH = str(find_template_path("Template_GranSuelo.xlsx"))
+TEMPLATE_PATH = str(find_template_path("1-INF.-N-000-26-SU24-GRA.-S.-V09.xlsx"))
 
 
 def _parse_cell_ref(ref: str) -> tuple[str, int]:
