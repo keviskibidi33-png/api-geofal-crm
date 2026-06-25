@@ -305,10 +305,10 @@ def _fill_sheet(
     set_cell("K39", data.masa_retenida_primer_tamiz_g, is_number=True)
 
     # Pesos por tamiz — escribir en D (anchor de la celda fusionada D:E) con centrado
-    # s=741 = horizontal:center (verificado en styles.xml del template)
+    # s=744 = horizontal:center + bordes completos (l+r+t+b) para cuadro visible en ambos grupos
     for idx, row_num in enumerate(SIEVE_ROWS):
         val = data.masa_retenida_tamiz_g[idx]
-        set_cell(f"D{row_num}", val, is_number=True, style_id=741)
+        set_cell(f"D{row_num}", val, is_number=True, style_id=744)
 
     # Fusionar D:E programáticamente para todas las filas de tamiz en el XML
     _add_sieve_merge_cells(root)
