@@ -171,6 +171,44 @@ def _set_cell(
     t_el.text = text
 
 
+
+def _add_sieve_merge_cells(root: etree._Element) -> None:
+    """
+    Agrega mergeCell D:E para las filas de tamiz en el XML del worksheet.
+
+    El template tiene D40:E40 y D41:E41 fusionados (header del peso),
+    pero las filas de datos 42-48 y 50-57 no están fusionadas de fábrica.
+    Esta función las fusiona programáticamente en el XML generado para que
+    los valores escritos en D queden visualmente centrados abarcando D:E.
+    """
+    ns = NS_SHEET
+    merge_cells_el = root.find(f".//{{{ns}}}mergeCells")
+
+    if merge_cells_el is None:
+        # Crear el nodo mergeCells e insertarlo antes de conditionalFormatting / pageSetup
+        merge_cells_el = etree.Element(f"{{{ns}}}mergeCells")
+        sheet_data = root.find(f".//{{{ns}}}sheetData")
+        if sheet_data is not None:
+            parent = sheet_data.getparent()
+            idx = list(parent).index(sheet_data)
+            parent.insert(idx + 1, merge_cells_el)
+        else:
+            root.append(merge_cells_el)
+
+    # Recolectar merges existentes para evitar duplicados
+    existing_merges = {mc.get("ref") for mc in merge_cells_el.findall(f"{{{ns}}}mergeCell")}
+
+    for row_num in SIEVE_ROWS:
+        ref = f"D{row_num}:E{row_num}"
+        if ref not in existing_merges:
+            mc = etree.SubElement(merge_cells_el, f"{{{ns}}}mergeCell")
+            mc.set("ref", ref)
+
+    # Actualizar el atributo count
+    count = len(merge_cells_el.findall(f"{{{ns}}}mergeCell"))
+    merge_cells_el.set("count", str(count))
+
+
 def _fill_sheet(
     sheet_xml: bytes,
     data: GranSueloRequest,
@@ -266,13 +304,14 @@ def _fill_sheet(
 
     set_cell("K39", data.masa_retenida_primer_tamiz_g, is_number=True)
 
-    # Pesos por tamiz — sin forzar style_id para preservar estilos del template
+    # Pesos por tamiz — escribir en D (anchor de la celda fusionada D:E) con centrado
+    # s=741 = horizontal:center (verificado en styles.xml del template)
     for idx, row_num in enumerate(SIEVE_ROWS):
-        set_cell(
-            f"E{row_num}",
-            data.masa_retenida_tamiz_g[idx],
-            is_number=True,
-        )
+        val = data.masa_retenida_tamiz_g[idx]
+        set_cell(f"D{row_num}", val, is_number=True, style_id=741)
+
+    # Fusionar D:E programáticamente para todas las filas de tamiz en el XML
+    _add_sieve_merge_cells(root)
 
     # Equipos / observaciones
     set_cell("I51", data.balanza_01g_codigo)
