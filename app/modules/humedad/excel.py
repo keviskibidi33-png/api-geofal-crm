@@ -614,19 +614,22 @@ def _fill_incertidumbre(sheet_xml: bytes, data: HumedadRequest) -> bytes:
                 continue
         return None
 
-    # Use the visible boxed cells in the template instead of appending rows.
-    _set_cell(sd, "B72", data.revisado_por)
-    _set_cell(sd, "G72", data.aprobado_por)
+    # Nombres del revisor y aprobador → fila 70 (REVISADO POR / APROBADO POR)
+    # El template tiene sharedStrings hardcoded en B70/G70; se sobreescriben con inlineStr.
+    _set_cell(sd, "B70", data.revisado_por)
+    _set_cell(sd, "G70", data.aprobado_por)
+
+    # Fechas → fila 72 (FECHA DE REVISIÓN / FECHA DE APROBACIÓN) como número serial Excel
     revisado_serial = _excel_date_serial(data.revisado_fecha)
     aprobado_serial = _excel_date_serial(data.aprobado_fecha)
     if revisado_serial is not None:
-        _set_cell(sd, "B74", revisado_serial, is_number=True)
+        _set_cell(sd, "B72", revisado_serial, is_number=True)
     elif data.revisado_fecha:
-        _set_cell(sd, "B74", data.revisado_fecha)
+        _set_cell(sd, "B72", data.revisado_fecha)
     if aprobado_serial is not None:
-        _set_cell(sd, "G74", aprobado_serial, is_number=True)
+        _set_cell(sd, "G72", aprobado_serial, is_number=True)
     elif data.aprobado_fecha:
-        _set_cell(sd, "G74", data.aprobado_fecha)
+        _set_cell(sd, "G72", data.aprobado_fecha)
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
