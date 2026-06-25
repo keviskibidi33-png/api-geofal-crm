@@ -227,7 +227,9 @@ def _fill_sheet(
     set_cell("J17", data.descripcion_turbo_organico)
     set_cell("H17", data.tipo_muestra)
     set_cell("H18", data.condicion_muestra if data.condicion_muestra != "-" else None)
-    set_cell("H19", data.tamano_maximo_particula_in)
+    # H19: tamaño máximo — quitar el símbolo de pulgada si viene con comillas (ej: '1"' -> '1')
+    tamano_val = (data.tamano_maximo_particula_in or "").replace('"', '').strip() or None
+    set_cell("H19", tamano_val)
     set_cell("H20", data.forma_particula)
     set_cell("K20", data.tamiz_separador)
 
@@ -264,13 +266,12 @@ def _fill_sheet(
 
     set_cell("K39", data.masa_retenida_primer_tamiz_g, is_number=True)
 
-    # Pesos por tamiz
+    # Pesos por tamiz — sin forzar style_id para preservar estilos del template
     for idx, row_num in enumerate(SIEVE_ROWS):
         set_cell(
             f"E{row_num}",
             data.masa_retenida_tamiz_g[idx],
             is_number=True,
-            style_id=750,
         )
 
     # Equipos / observaciones
