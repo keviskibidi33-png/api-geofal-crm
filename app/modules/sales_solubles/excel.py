@@ -21,7 +21,7 @@ NS_SHEET = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 NS_DRAW = "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"
 NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
-SHEET_NAME = "SST (2)"
+SHEET_NAME = "FORMATO"
 SECADO_AIRE_BOUNDS = (5, 15, 6, 16)
 SECADO_HORNO_BOUNDS = (5, 16, 6, 17)
 SIG_REVISADO_BOUNDS = (2, 47, 4, 50)
