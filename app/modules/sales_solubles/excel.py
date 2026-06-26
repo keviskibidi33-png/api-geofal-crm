@@ -295,6 +295,8 @@ def _set_anchor_value_text(anchor: etree._Element, value: str) -> bool:
 
     for line in text.split("\n"):
         paragraph = etree.SubElement(tx_body, paragraph_tag)
+        p_pr = etree.SubElement(paragraph, f"{{{NS_A}}}pPr")
+        p_pr.set("algn", "ctr")
         run = etree.SubElement(paragraph, run_tag)
         run_props = etree.SubElement(run, run_props_tag)
 
@@ -419,11 +421,8 @@ def _fill_sheet(sheet_xml: bytes, payload: SalesSolublesRequest) -> bytes:
 
     shared_sales = {
         "G22": _to_float(data.get("volumen_agua_ml")),
-        "H22": _to_float(data.get("volumen_agua_ml")),
         "G23": _to_float(data.get("peso_suelo_g")),
-        "H23": _to_float(data.get("peso_suelo_g")),
         "G24": _to_float(data.get("volumen_solucion_tomada_ml")),
-        "H24": _to_float(data.get("volumen_solucion_tomada_ml")),
     }
     for ref, value in shared_sales.items():
         _set_cell(sheet_data, ref, value, is_number=True, merge_anchor_map=merge_anchor_map, style_ref=ref)
@@ -458,14 +457,6 @@ def _fill_sheet(sheet_xml: bytes, payload: SalesSolublesRequest) -> bytes:
     _set_cell(sheet_data, "F43", payload.equipo_horno_codigo or "", merge_anchor_map=merge_anchor_map, style_ref="F43")
     _set_cell(sheet_data, "F44", payload.equipo_balanza_0001_codigo or "", merge_anchor_map=merge_anchor_map, style_ref="F44")
     _set_cell(sheet_data, "F45", payload.equipo_balanza_001_codigo or "", merge_anchor_map=merge_anchor_map, style_ref="F45")
-
-    _center_style = "61"
-    for ref in ("G21", "H21", "G25", "H25", "G27", "H27"):
-        target_ref = merge_anchor_map.get(ref, ref)
-        _, row_num = _parse_cell_ref(target_ref)
-        row = _find_or_create_row(sheet_data, row_num)
-        cell = _find_or_create_cell(row, target_ref)
-        cell.set("s", _center_style)
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
