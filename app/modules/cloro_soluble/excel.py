@@ -21,7 +21,7 @@ NS_SHEET = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 NS_DRAW = "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"
 NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
-SHEET_NAME = "CLOR"
+SHEET_NAME = "FORMATO"
 SECADO_AIRE_BOUNDS = (4, 15, 5, 16)
 SECADO_HORNO_BOUNDS = (4, 16, 5, 18)
 SIG_REVISADO_BOUNDS = (1, 43, 4, 47)
@@ -385,6 +385,20 @@ def _fill_sheet(sheet_xml: bytes, payload: CloroSolubleRequest) -> bytes:
     _set_cell(sheet_data, "E10", payload.fecha_ensayo, merge_anchor_map=merge_anchor_map)
     _set_cell(sheet_data, "G10", payload.realizado_por or "", merge_anchor_map=merge_anchor_map)
 
+    # Set metadata cells on the right
+    _set_cell(sheet_data, "M2", payload.cliente or data.get("cliente") or "", merge_anchor_map=merge_anchor_map)
+    _set_cell(sheet_data, "M3", data.get("direccion") or "", merge_anchor_map=merge_anchor_map)
+    _set_cell(sheet_data, "M4", data.get("proyecto") or "", merge_anchor_map=merge_anchor_map)
+    _set_cell(sheet_data, "M5", data.get("ubicacion") or "", merge_anchor_map=merge_anchor_map)
+    _set_cell(sheet_data, "M7", data.get("recepcion_n") or data.get("numero_recepcion") or "", merge_anchor_map=merge_anchor_map)
+    _set_cell(sheet_data, "M8", data.get("fecha_emision") or "", merge_anchor_map=merge_anchor_map)
+    _set_cell(sheet_data, "M11", data.get("codigo_muestra") or "", merge_anchor_map=merge_anchor_map)
+    _set_cell(sheet_data, "M12", data.get("fecha_recepcion") or "", merge_anchor_map=merge_anchor_map)
+    _set_cell(sheet_data, "M13", payload.fecha_ensayo or data.get("fecha_ejecucion") or "", merge_anchor_map=merge_anchor_map)
+    _set_cell(sheet_data, "M15", data.get("cantera_sondaje") or data.get("cantera") or "", merge_anchor_map=merge_anchor_map)
+    _set_cell(sheet_data, "M16", data.get("numero_muestra") or "", merge_anchor_map=merge_anchor_map)
+    _set_cell(sheet_data, "M17", data.get("tipo_muestra") or "", merge_anchor_map=merge_anchor_map)
+
     _set_cell(sheet_data, "G22", _to_float(data.get("volumen_agua_ml")), is_number=True, merge_anchor_map=merge_anchor_map)
     _set_cell(sheet_data, "G23", _to_float(data.get("peso_suelo_seco_g")), is_number=True, merge_anchor_map=merge_anchor_map)
     _set_cell(sheet_data, "G24", _to_float(data.get("alicuota_tomada_ml")), is_number=True, merge_anchor_map=merge_anchor_map)
@@ -406,10 +420,10 @@ def _fill_sheet(sheet_xml: bytes, payload: CloroSolubleRequest) -> bytes:
         _set_cell(sheet_data, refs[1], resultado.contenido_cloruros_ppm, is_number=True, merge_anchor_map=merge_anchor_map)
 
     if payload.observaciones:
-        _set_cell(sheet_data, "A35", payload.observaciones, merge_anchor_map=merge_anchor_map)
+        _set_cell(sheet_data, "A34", payload.observaciones, merge_anchor_map=merge_anchor_map)
 
-    _set_cell(sheet_data, "F40", data.get("equipo_horno_codigo") or "", merge_anchor_map=merge_anchor_map)
-    _set_cell(sheet_data, "F41", data.get("equipo_balanza_001_codigo") or "", merge_anchor_map=merge_anchor_map)
+    _set_cell(sheet_data, "E40", data.get("equipo_horno_codigo") or "", merge_anchor_map=merge_anchor_map)
+    _set_cell(sheet_data, "E41", data.get("equipo_balanza_001_codigo") or "", merge_anchor_map=merge_anchor_map)
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
@@ -443,7 +457,7 @@ def _fill_drawing(drawing_xml: bytes, payload: CloroSolubleRequest) -> bytes:
 
 def generate_cloro_soluble_excel(payload: CloroSolubleRequest) -> bytes:
     """Generate Excel from template preserving styles, merges and drawings."""
-    template_bytes = _get_template_bytes("Template_Cloro_Soluble.xlsx")
+    template_bytes = _get_template_bytes("1- Inf N° 001-26 SU14 Cloruros-1.xlsx")
 
     output = io.BytesIO()
     with zipfile.ZipFile(io.BytesIO(template_bytes), "r") as zin, \

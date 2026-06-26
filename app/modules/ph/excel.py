@@ -141,11 +141,73 @@ def _set_cell(sheet_data: etree._Element, ref: str, value: Any, is_number: bool 
     t_el.text = text
 
 
+def _resolve_sheet_and_drawing_paths(zin: zipfile.ZipFile, sheet_name: str) -> tuple[str | None, str | None]:
+    try:
+        workbook_xml = zin.read("xl/workbook.xml")
+        rels_xml = zin.read("xl/_rels/workbook.xml.rels")
+    except KeyError:
+        return None, None
+
+    wb_root = etree.fromstring(workbook_xml)
+    ns = {
+        "main": NS_SHEET,
+        "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+    }
+    rel_id: str | None = None
+    for sheet in wb_root.findall("main:sheets/main:sheet", ns):
+        if sheet.get("name") == sheet_name:
+            rel_id = sheet.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id")
+            break
+    if not rel_id:
+        return None, None
+
+    rel_root = etree.fromstring(rels_xml)
+    rel_ns = {"rel": "http://schemas.openxmlformats.org/package/2006/relationships"}
+    sheet_target: str | None = None
+    for rel in rel_root.findall("rel:Relationship", rel_ns):
+        if rel.get("Id") == rel_id:
+            sheet_target = rel.get("Target")
+            break
+    if not sheet_target:
+        return None, None
+
+    sheet_path = f"xl/{sheet_target.lstrip('/')}"
+
+    sheet_rels_name = Path(sheet_target).name + ".rels"
+    sheet_rels_path = f"xl/worksheets/_rels/{sheet_rels_name}"
+    if sheet_rels_path not in zin.namelist():
+        return sheet_path, None
+
+    try:
+        sheet_rels_xml = zin.read(sheet_rels_path)
+    except KeyError:
+        return sheet_path, None
+
+    sheet_rels_root = etree.fromstring(sheet_rels_xml)
+    drawing_target: str | None = None
+    for rel in sheet_rels_root.findall("rel:Relationship", rel_ns):
+        rel_type = rel.get("Type", "")
+        if rel_type.endswith("/drawing"):
+            drawing_target = rel.get("Target")
+            break
+
+    if not drawing_target:
+        return sheet_path, None
+
+    clean_target = drawing_target.lstrip("/")
+    while clean_target.startswith("../"):
+        clean_target = clean_target[3:]
+    drawing_path = f"xl/{clean_target}"
+    return sheet_path, drawing_path
+
+
 def _fill_sheet(sheet_xml: bytes, data: PHRequest) -> bytes:
     root = etree.fromstring(sheet_xml)
     sd = root.find(f".//{{{NS_SHEET}}}sheetData")
     if sd is None:
         return sheet_xml
+
+    payload_dict = data.model_dump(mode="json")
 
     # Encabezado (row 11)
     _set_cell(sd, "B11", data.muestra)
@@ -153,8 +215,20 @@ def _fill_sheet(sheet_xml: bytes, data: PHRequest) -> bytes:
     _set_cell(sd, "E11", data.fecha_ensayo)
     _set_cell(sd, "G11", data.realizado_por)
 
-    # Condiciones de secado (rows 17-18) - ahora se inyectan en shapes, no en celdas
-    # Las condiciones se renderizarán en los shapes del drawing
+    # Set metadata cells on the right (Column L)
+    _set_cell(sd, "L2", data.cliente or payload_dict.get("cliente") or "")
+    _set_cell(sd, "L3", payload_dict.get("direccion") or "")
+    _set_cell(sd, "L4", payload_dict.get("proyecto") or "")
+    _set_cell(sd, "L5", payload_dict.get("ubicacion") or "")
+    _set_cell(sd, "L7", payload_dict.get("recepcion_n") or payload_dict.get("numero_recepcion") or "")
+    _set_cell(sd, "L8", payload_dict.get("fecha_emision") or "")
+    _set_cell(sd, "L9", payload_dict.get("ot_n") or data.numero_ot or "")
+    _set_cell(sd, "L11", payload_dict.get("codigo_muestra") or "")
+    _set_cell(sd, "L12", payload_dict.get("fecha_recepcion") or "")
+    _set_cell(sd, "L13", data.fecha_ensayo or payload_dict.get("fecha_ejecucion") or "")
+    _set_cell(sd, "L15", payload_dict.get("cantera_sondaje") or payload_dict.get("cantera") or "")
+    _set_cell(sd, "L16", payload_dict.get("numero_muestra") or "")
+    _set_cell(sd, "L17", payload_dict.get("tipo_muestra") or "")
 
     # Resultados principales (rows 24-25) - inyectar en F (celda fusionada F:G)
     _set_cell(sd, "F24", data.temperatura_ensayo_c, is_number=True)
@@ -165,9 +239,9 @@ def _fill_sheet(sheet_xml: bytes, data: PHRequest) -> bytes:
     _set_cell(sd, "E37", data.equipo_balanza_001_codigo)
     _set_cell(sd, "E38", data.equipo_ph_metro_codigo)
 
-    # Observaciones (row 32)
+    # Observaciones (row 31)
     if data.observaciones:
-        _set_cell(sd, "A32", data.observaciones)
+        _set_cell(sd, "A31", data.observaciones)
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
@@ -244,18 +318,23 @@ def generate_ph_excel(payload: PHRequest) -> bytes:
     """
     logger.info("Generating PH Excel - NTP 339.176")
 
-    template_bytes = _get_template_bytes("Template_PH.xlsx")
+    template_bytes = _get_template_bytes("1- Inf N° 001-26 SU03 PH-1..xlsx")
 
     in_zip = zipfile.ZipFile(io.BytesIO(template_bytes), "r")
     out_buffer = io.BytesIO()
     out_zip = zipfile.ZipFile(out_buffer, "w", zipfile.ZIP_DEFLATED)
 
+    sheet_path, drawing_path = _resolve_sheet_and_drawing_paths(in_zip, "FORMATO")
+    if sheet_path is None:
+        logger.warning("Sheet FORMATO not found in template, falling back to sheet1.xml")
+        sheet_path = "xl/worksheets/sheet1.xml"
+
     for item in in_zip.infolist():
         data_bytes = in_zip.read(item.filename)
 
-        if item.filename == "xl/worksheets/sheet2.xml":
+        if item.filename == sheet_path:
             data_bytes = _fill_sheet(data_bytes, payload)
-        elif item.filename == "xl/drawings/drawing2.xml":
+        elif drawing_path and item.filename == drawing_path:
             data_bytes = _fill_drawing(data_bytes, payload)
         elif item.filename == "xl/calcChain.xml":
             continue
