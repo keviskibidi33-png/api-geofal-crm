@@ -353,9 +353,13 @@ def _resolve_sheet_and_drawing_paths(zin: zipfile.ZipFile, sheet_name: str) -> t
     if not sheet_target:
         return None, None
 
-    sheet_path = f"xl/{sheet_target.lstrip('/')}"
+    sheet_target_clean = sheet_target.lstrip("/")
+    if sheet_target_clean.startswith("xl/"):
+        sheet_path = sheet_target_clean
+    else:
+        sheet_path = f"xl/{sheet_target_clean}"
 
-    sheet_rels_name = Path(sheet_target).name + ".rels"
+    sheet_rels_name = Path(sheet_target_clean).name + ".rels"
     sheet_rels_path = f"xl/worksheets/_rels/{sheet_rels_name}"
     if sheet_rels_path not in zin.namelist():
         return sheet_path, None
@@ -379,7 +383,10 @@ def _resolve_sheet_and_drawing_paths(zin: zipfile.ZipFile, sheet_name: str) -> t
     clean_target = drawing_target.lstrip("/")
     while clean_target.startswith("../"):
         clean_target = clean_target[3:]
-    drawing_path = f"xl/{clean_target}"
+    if clean_target.startswith("xl/"):
+        drawing_path = clean_target
+    else:
+        drawing_path = f"xl/{clean_target}"
     return sheet_path, drawing_path
 
 
