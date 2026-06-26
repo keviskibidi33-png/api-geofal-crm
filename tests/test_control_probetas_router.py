@@ -65,6 +65,7 @@ class TestControlProbetasRouter(unittest.TestCase):
             edad=7,
             fecha_rotura=tomorrow_str,
             requiere_densidad=False,
+            es_control_probetas=True,
         )
         
         # 2. Specimen Pending (today break date)
@@ -80,6 +81,7 @@ class TestControlProbetasRouter(unittest.TestCase):
             edad=7,
             fecha_rotura=today_str,
             requiere_densidad=True,
+            es_control_probetas=True,
         )
 
         # 3. Specimen Overdue (yesterday break date, no test results)
@@ -95,6 +97,7 @@ class TestControlProbetasRouter(unittest.TestCase):
             edad=7,
             fecha_rotura=yesterday_str,
             requiere_densidad=False,
+            es_control_probetas=True,
         )
 
         # 4. Specimen Crushed (tested with results)
@@ -110,6 +113,7 @@ class TestControlProbetasRouter(unittest.TestCase):
             edad=7,
             fecha_rotura=yesterday_str,
             requiere_densidad=False,
+            es_control_probetas=True,
         )
 
         self.db.add(self.muestra_curado)

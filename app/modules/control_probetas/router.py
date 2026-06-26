@@ -32,24 +32,26 @@ class ProbetaListItem(BaseModel):
     fecha_rotura: Optional[str] = ""
     requiere_densidad: bool
     elemento: Optional[str] = "-"
-    densidad: Optional[str] = "-"
+    # densidad: "SI" or "NO" derived from requiere_densidad; numeric value kept internally
+    densidad: Optional[str] = "NO"
     status_ensayo: Optional[str] = "-"
     status_entrega: Optional[str] = "-"
     fecha_entrega: Optional[str] = "-"
-    
+
     # Recepcion Info
     recepcion_id: int
     numero_recepcion: str
     numero_ot: str
     cliente: str
     proyecto: str
-    
+    fecha_recepcion: Optional[str] = None
+
     # Compression Info (if exists)
     compresion_id: Optional[int] = None
     fecha_ensayo: Optional[str] = None
     carga_maxima: Optional[float] = None
     tipo_fractura: Optional[str] = None
-    
+
     # Calculated Status: "curado", "pendiente", "ensayado", "vencido"
     estado_probeta: str
 
@@ -84,7 +86,7 @@ class ProbetasKpis(BaseModel):
     vencido: int
 
 
-ALLOWED_ELEMENTOS = {"-", "PEQUEÑA", "GRANDE", "DIAMANTINA", "CUBO Y VIGA"}
+ALLOWED_ELEMENTOS = {"-", "PEQUEÑA", "GRANDE", "DIAMANTINA", "CUBO", "VIGA"}
 ALLOWED_STATUS_ENSAYO = {"-", "ENSAYADO", "PENDIENTE", "FALTA", "ANULADO"}
 ALLOWED_STATUS_ENTREGA = {"-", "ENTREGADO", "INFORME LISTO"}
 
@@ -151,6 +153,16 @@ def normalize_date_payload(value: Optional[str]) -> str:
     return raw
 
 
+def _format_fecha_recepcion(recep: RecepcionMuestra) -> Optional[str]:
+    """Format the reception date as YYYY/MM/DD string."""
+    if recep.fecha_recepcion is None:
+        return None
+    try:
+        return recep.fecha_recepcion.strftime("%Y/%m/%d")
+    except Exception:
+        return str(recep.fecha_recepcion)[:10]
+
+
 def build_probeta_response(
     muestra: MuestraConcreto,
     recep: RecepcionMuestra,
@@ -159,6 +171,8 @@ def build_probeta_response(
 ) -> ProbetaListItem:
     est_prob = calculate_status(muestra, item_comp)
     fecha_ensayo_str = item_comp.fecha_ensayo.strftime("%Y/%m/%d") if (item_comp and item_comp.fecha_ensayo) else None
+    # Densidad expressed as SI/NO from requiere_densidad boolean
+    densidad_display = "SI" if muestra.requiere_densidad else "NO"
     return ProbetaListItem(
         muestra_id=muestra.id,
         item_numero=muestra.item_numero,
@@ -172,7 +186,7 @@ def build_probeta_response(
         fecha_rotura=muestra.fecha_rotura or "",
         requiere_densidad=muestra.requiere_densidad,
         elemento=muestra.elemento or "-",
-        densidad=muestra.densidad or "-",
+        densidad=densidad_display,
         status_ensayo=muestra.status_ensayo or "-",
         status_entrega=muestra.status_entrega or "-",
         fecha_entrega=muestra.fecha_entrega or "-",
@@ -181,6 +195,7 @@ def build_probeta_response(
         numero_ot=recep.numero_ot,
         cliente=recep.cliente,
         proyecto=recep.proyecto,
+        fecha_recepcion=_format_fecha_recepcion(recep),
         compresion_id=ensayo.id if ensayo else None,
         fecha_ensayo=fecha_ensayo_str,
         carga_maxima=item_comp.carga_maxima if item_comp else None,
@@ -617,6 +632,10 @@ def update_probeta(
             antes_dict[key] = getattr(muestra, key)
             
     for key, val in payload.items():
+        if key == "densidad" and isinstance(val, str) and val.upper() in {"SI", "NO"}:
+            # Accept SI/NO from frontend and persist as requiere_densidad boolean
+            muestra.requiere_densidad = val.upper() == "SI"
+            continue
         if hasattr(muestra, key):
             if key == "elemento":
                 setattr(muestra, key, normalize_option(val, ALLOWED_ELEMENTOS))
