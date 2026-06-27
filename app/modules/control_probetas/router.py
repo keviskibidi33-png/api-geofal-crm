@@ -89,9 +89,9 @@ class ProbetasKpis(BaseModel):
 
 
 ALLOWED_ELEMENTOS = {"-", "PEQUEÑA", "GRANDE", "DIAMANTINA", "CUBO", "VIGA"}
-ALLOWED_FOSAS = {"-", "FOSA 1", "FOSA 2", "FOSA 3", "FOSA 4", "FOSA 5", "FOSA 6"}
+ALLOWED_FOSAS = {"-", "FOSA 1", "FOSA 2", "FOSA 3", "FOSA 4", "FOSA 5", "FOSA 6", "ROTAS"}
 ALLOWED_STATUS_ENSAYO = {"-", "ENSAYADO", "PENDIENTE", "FALTA", "ANULADO"}
-ALLOWED_STATUS_ENTREGA = {"-", "ENTREGADO", "INFORME LISTO"}
+ALLOWED_STATUS_ENTREGA = {"-", "ENTREGADO", "INFORME LISTO", "ROTAS", "ANULADAS"}
 
 
 def calculate_density_from_verification(
@@ -208,6 +208,11 @@ def build_probeta_response(
     densidad_display = "SI" if muestra.requiere_densidad else "NO"
     status_ensayo_auto = _compute_status_ensayo(muestra, item_comp, recep)
     status_ensayo_final = "ANULADO" if (muestra.status_ensayo or "").strip().upper() == "ANULADO" else status_ensayo_auto
+    status_entrega_final = (muestra.status_entrega or "-").strip().upper() or "-"
+    if status_ensayo_final == "ENSAYADO":
+        status_entrega_final = "ROTAS"
+    elif status_ensayo_final == "ANULADO":
+        status_entrega_final = "ANULADAS"
     return ProbetaListItem(
         muestra_id=muestra.id,
         item_numero=muestra.item_numero,
@@ -224,7 +229,7 @@ def build_probeta_response(
         fosa=getattr(muestra, "fosa", None) or "-",
         densidad=densidad_display,
         status_ensayo=status_ensayo_final,
-        status_entrega=muestra.status_entrega or "-",
+        status_entrega=status_entrega_final,
         fecha_entrega=muestra.fecha_entrega or "-",
         recepcion_id=recep.id,
         numero_recepcion=recep.numero_recepcion,
@@ -613,7 +618,7 @@ def create_probeta(
         fosa=normalize_option(payload.fosa, ALLOWED_FOSAS),
         densidad=(payload.densidad or "-").strip() or "-",
         status_ensayo="ANULADO" if str(payload.status_ensayo or "").strip().upper() == "ANULADO" else "PENDIENTE",
-        status_entrega=normalize_option(payload.status_entrega, ALLOWED_STATUS_ENTREGA),
+        status_entrega="ANULADAS" if str(payload.status_ensayo or "").strip().upper() == "ANULADO" else ("ROTAS" if str(payload.status_ensayo or "").strip().upper() == "ENSAYADO" else normalize_option(payload.status_entrega, ALLOWED_STATUS_ENTREGA)),
         fecha_entrega=normalize_date_payload(payload.fecha_entrega) or "-",
         es_control_probetas=True
     )
@@ -686,7 +691,9 @@ def update_probeta(
                     # keep as auto-managed unless the user explicitly marks ANULADO
                     setattr(muestra, key, "")
             elif key == "status_entrega":
-                setattr(muestra, key, normalize_option(val, ALLOWED_STATUS_ENTREGA))
+                normalized_status_entrega = str(val or "").strip().upper()
+                if normalized_status_entrega in {"ROTAS", "ANULADAS", "ENTREGADO", "INFORME LISTO", "FALTA", "PENDIENTE", "-"}:
+                    setattr(muestra, key, normalize_option(val, ALLOWED_STATUS_ENTREGA))
             elif key in {"fecha_rotura", "fecha_entrega", "fecha_moldeo"}:
                 setattr(muestra, key, normalize_date_payload(val) or ("-" if key == "fecha_entrega" else ""))
             else:
