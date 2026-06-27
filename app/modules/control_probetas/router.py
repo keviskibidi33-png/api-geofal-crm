@@ -409,6 +409,8 @@ def get_control_probetas(
     estado: Optional[str] = None,
     fecha_inicio: Optional[str] = None,
     fecha_fin: Optional[str] = None,
+    sort_column: Optional[str] = None,
+    sort_direction: Optional[str] = Query("asc", regex="^(asc|desc)$"),
     db: Session = Depends(get_db_session)
 ):
     """
@@ -474,7 +476,29 @@ def get_control_probetas(
         target_status = estado.lower().strip()
         mapped_items = [x for x in mapped_items if x.estado_probeta == target_status]
         
-    # 6. Paginate List
+    # 6. Apply Column Sort
+    if sort_column:
+        SORT_FIELDS = {
+            "numero_recepcion": lambda x: x.numero_recepcion or "",
+            "codigo_muestra_lem": lambda x: x.codigo_muestra_lem or "",
+            "cliente": lambda x: x.cliente or "",
+            "elemento": lambda x: x.elemento or "",
+            "fecha_rotura": lambda x: x.fecha_rotura or "",
+            "densidad": lambda x: x.densidad or "",
+            "edad": lambda x: x.edad or 0,
+            "fosa": lambda x: x.fosa or "",
+            "fc_kg_cm2": lambda x: x.fc_kg_cm2 or 0,
+            "status_ensayo": lambda x: x.status_ensayo or "",
+            "status_entrega": lambda x: x.status_entrega or "",
+            "fecha_entrega": lambda x: x.fecha_entrega or "",
+            "estado_probeta": lambda x: x.estado_probeta or "",
+        }
+        key_fn = SORT_FIELDS.get(sort_column)
+        if key_fn:
+            reverse = sort_direction == "desc"
+            mapped_items.sort(key=key_fn, reverse=reverse)
+        
+    # 7. Paginate List
     total = len(mapped_items)
     start = (page - 1) * page_size
     end = start + page_size
