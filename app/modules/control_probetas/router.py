@@ -461,8 +461,8 @@ def get_control_probetas(
         normalized_fin = fecha_fin.replace('-', '/')
         query = query.filter(normalized_fecha_rotura <= normalized_fin)
 
-    # Order by scheduled break date desc, then item number
-    query = query.order_by(desc(normalized_fecha_rotura), asc(MuestraConcreto.item_numero))
+    # Order by reception group, then item number
+    query = query.order_by(asc(RecepcionMuestra.numero_recepcion), asc(MuestraConcreto.item_numero))
     
     # 4. Fetch all candidates to process status in-memory (highly safe and correct)
     results = query.all()
