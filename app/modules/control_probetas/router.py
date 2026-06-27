@@ -404,7 +404,7 @@ def importar_recepcion_probetas(
 @router.get("/", response_model=ProbetaPaginatedResponse)
 def get_control_probetas(
     page: int = Query(1, ge=1),
-    page_size: int = Query(25, ge=1, le=4000),
+    page_size: int = Query(100, ge=1, le=4000),
     search: Optional[str] = None,
     estado: Optional[str] = None,
     fecha_inicio: Optional[str] = None,
