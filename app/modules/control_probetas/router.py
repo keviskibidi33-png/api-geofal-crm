@@ -32,6 +32,7 @@ class ProbetaListItem(BaseModel):
     fecha_rotura: Optional[str] = ""
     requiere_densidad: bool
     elemento: Optional[str] = "-"
+    fosa: Optional[str] = "-"
     # densidad: "SI" or "NO" derived from requiere_densidad; numeric value kept internally
     densidad: Optional[str] = "NO"
     status_ensayo: Optional[str] = "-"
@@ -66,6 +67,7 @@ class ProbetaCreatePayload(BaseModel):
     fecha_rotura: Optional[str] = ""
     requiere_densidad: bool = False
     elemento: Optional[str] = "-"
+    fosa: Optional[str] = "-"
     densidad: Optional[str] = "-"
     status_ensayo: Optional[str] = "-"
     status_entrega: Optional[str] = "-"
@@ -87,6 +89,7 @@ class ProbetasKpis(BaseModel):
 
 
 ALLOWED_ELEMENTOS = {"-", "PEQUEÑA", "GRANDE", "DIAMANTINA", "CUBO", "VIGA"}
+ALLOWED_FOSAS = {"-", "FOSA 1", "FOSA 2", "FOSA 3", "FOSA 4", "FOSA 5", "FOSA 6"}
 ALLOWED_STATUS_ENSAYO = {"-", "ENSAYADO", "PENDIENTE", "FALTA", "ANULADO"}
 ALLOWED_STATUS_ENTREGA = {"-", "ENTREGADO", "INFORME LISTO"}
 
@@ -163,6 +166,36 @@ def _format_fecha_recepcion(recep: RecepcionMuestra) -> Optional[str]:
         return str(recep.fecha_recepcion)[:10]
 
 
+def _parse_recepcion_date(recep: RecepcionMuestra) -> Optional[date]:
+    if recep.fecha_recepcion is None:
+        return None
+    if isinstance(recep.fecha_recepcion, datetime):
+        return recep.fecha_recepcion.date()
+    if isinstance(recep.fecha_recepcion, date):
+        return recep.fecha_recepcion
+    normalized = normalize_date_string(str(recep.fecha_recepcion))
+    return normalized
+
+
+def _compute_status_ensayo(muestra: MuestraConcreto, item_comp: Optional[ItemCompresion], recep: RecepcionMuestra) -> str:
+    carga = None
+    if item_comp and item_comp.carga_maxima is not None:
+        try:
+            carga = float(item_comp.carga_maxima)
+        except Exception:
+            carga = None
+    if carga is not None and carga > 0:
+        return "ENSAYADO"
+
+    recep_date = _parse_recepcion_date(recep)
+    if not recep_date:
+        return "PENDIENTE"
+
+    now_lima = datetime.now(LIMA_TZ)
+    cutoff = datetime.combine(recep_date, datetime.min.time()).replace(hour=12, minute=0, second=0, microsecond=0, tzinfo=LIMA_TZ)
+    return "FALTA" if now_lima >= cutoff else "PENDIENTE"
+
+
 def build_probeta_response(
     muestra: MuestraConcreto,
     recep: RecepcionMuestra,
@@ -173,6 +206,8 @@ def build_probeta_response(
     fecha_ensayo_str = item_comp.fecha_ensayo.strftime("%Y/%m/%d") if (item_comp and item_comp.fecha_ensayo) else None
     # Densidad expressed as SI/NO from requiere_densidad boolean
     densidad_display = "SI" if muestra.requiere_densidad else "NO"
+    status_ensayo_auto = _compute_status_ensayo(muestra, item_comp, recep)
+    status_ensayo_final = "ANULADO" if (muestra.status_ensayo or "").strip().upper() == "ANULADO" else status_ensayo_auto
     return ProbetaListItem(
         muestra_id=muestra.id,
         item_numero=muestra.item_numero,
@@ -186,8 +221,9 @@ def build_probeta_response(
         fecha_rotura=muestra.fecha_rotura or "",
         requiere_densidad=muestra.requiere_densidad,
         elemento=muestra.elemento or "-",
+        fosa=getattr(muestra, "fosa", None) or "-",
         densidad=densidad_display,
-        status_ensayo=muestra.status_ensayo or "-",
+        status_ensayo=status_ensayo_final,
         status_entrega=muestra.status_entrega or "-",
         fecha_entrega=muestra.fecha_entrega or "-",
         recepcion_id=recep.id,
@@ -207,7 +243,7 @@ def build_probeta_response(
 def calculate_status(muestra: MuestraConcreto, item_comp: Optional[ItemCompresion]) -> str:
     """
     Calculates specimen lifecycle status:
-    - ensayado: Compression test has results recorded (carga_maxima and tipo_fractura).
+    - ensayado: Compression test has recorded carga_maxima > 0.
     - pendiente: Due today (fecha_rotura == today).
     - vencido: Overdue (fecha_rotura < today).
     - curado: In curing pool (fecha_rotura > today).
@@ -218,7 +254,7 @@ def calculate_status(muestra: MuestraConcreto, item_comp: Optional[ItemCompresio
         fractura = item_comp.tipo_fractura
         has_carga = carga is not None and str(carga).strip() != "" and float(carga) > 0
         has_fractura = fractura is not None and str(fractura).strip() != ""
-        if has_carga and has_fractura:
+        if has_carga:
             has_results = True
             
     if has_results:
@@ -574,8 +610,9 @@ def create_probeta(
         fecha_rotura=fecha_rotura or "",
         requiere_densidad=payload.requiere_densidad,
         elemento=normalize_option(payload.elemento, ALLOWED_ELEMENTOS),
+        fosa=normalize_option(payload.fosa, ALLOWED_FOSAS),
         densidad=(payload.densidad or "-").strip() or "-",
-        status_ensayo=normalize_option(payload.status_ensayo, ALLOWED_STATUS_ENSAYO),
+        status_ensayo="ANULADO" if str(payload.status_ensayo or "").strip().upper() == "ANULADO" else "PENDIENTE",
         status_entrega=normalize_option(payload.status_entrega, ALLOWED_STATUS_ENTREGA),
         fecha_entrega=normalize_date_payload(payload.fecha_entrega) or "-",
         es_control_probetas=True
@@ -639,8 +676,15 @@ def update_probeta(
         if hasattr(muestra, key):
             if key == "elemento":
                 setattr(muestra, key, normalize_option(val, ALLOWED_ELEMENTOS))
+            elif key == "fosa":
+                setattr(muestra, key, normalize_option(val, ALLOWED_FOSAS))
             elif key == "status_ensayo":
-                setattr(muestra, key, normalize_option(val, ALLOWED_STATUS_ENSAYO))
+                normalized_status = str(val or "").strip().upper()
+                if normalized_status == "ANULADO":
+                    setattr(muestra, key, "ANULADO")
+                elif normalized_status in {"", "-", "PENDIENTE", "FALTA", "ENSAYADO"}:
+                    # keep as auto-managed unless the user explicitly marks ANULADO
+                    setattr(muestra, key, "")
             elif key == "status_entrega":
                 setattr(muestra, key, normalize_option(val, ALLOWED_STATUS_ENTREGA))
             elif key in {"fecha_rotura", "fecha_entrega", "fecha_moldeo"}:
@@ -660,6 +704,14 @@ def update_probeta(
                 muestra.fecha_rotura = rotura_dt.strftime("%Y/%m/%d")
             except Exception:
                 pass
+
+    item_comp = db.query(ItemCompresion).join(EnsayoCompresion, EnsayoCompresion.id == ItemCompresion.ensayo_id).filter(
+        EnsayoCompresion.recepcion_id == muestra.recepcion_id,
+        ItemCompresion.item == muestra.item_numero
+    ).first()
+    recep = db.query(RecepcionMuestra).filter(RecepcionMuestra.id == muestra.recepcion_id).first()
+    if recep and (muestra.status_ensayo or "").strip().upper() != "ANULADO":
+        muestra.status_ensayo = _compute_status_ensayo(muestra, item_comp, recep)
                 
     db.commit()
     db.refresh(muestra)

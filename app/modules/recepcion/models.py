@@ -107,6 +107,7 @@ class MuestraConcreto(Base):
     
     # Nuevos campos para Control de Probetas
     elemento = Column(String(50), nullable=True, default="-", comment="Elemento/Tamaño de probeta")
+    fosa = Column(String(20), nullable=True, default="-", comment="Fosa de ubicación de la probeta")
     densidad = Column(String(50), nullable=True, default="-", comment="Densidad de la probeta")
     status_ensayo = Column(String(50), nullable=True, default="-", comment="Estado del ensayo")
     status_entrega = Column(String(50), nullable=True, default="-", comment="Estado de entrega de informe")
