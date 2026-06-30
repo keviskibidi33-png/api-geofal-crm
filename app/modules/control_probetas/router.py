@@ -460,13 +460,12 @@ def get_control_probetas(
         )
 
     # 3. Date Filters
-    normalized_fecha_rotura = func.replace(MuestraConcreto.fecha_rotura, '-', '/')
     if fecha_inicio:
-        normalized_inicio = fecha_inicio.replace('-', '/')
-        query = query.filter(normalized_fecha_rotura >= normalized_inicio)
+        normalized_rotura = fecha_inicio.replace('-', '/')
+        query = query.filter(func.replace(MuestraConcreto.fecha_rotura, '-', '/') == normalized_rotura)
     if fecha_fin:
-        normalized_fin = fecha_fin.replace('-', '/')
-        query = query.filter(normalized_fecha_rotura <= normalized_fin)
+        normalized_entrega = fecha_fin.replace('-', '/')
+        query = query.filter(func.replace(MuestraConcreto.fecha_entrega, '-', '/') == normalized_entrega)
 
     # Order by reception group (newest first), then item number
     query = query.order_by(desc(RecepcionMuestra.id), asc(MuestraConcreto.item_numero))
@@ -888,13 +887,12 @@ def exportar_control_probetas(
                     MuestraConcreto.status_entrega.ilike(search_filter),
                 )
             )
-        normalized_fecha_rotura = func.replace(MuestraConcreto.fecha_rotura, '-', '/')
         if fecha_inicio:
-            normalized_inicio = fecha_inicio.replace('-', '/')
-            query = query.filter(normalized_fecha_rotura >= normalized_inicio)
+            normalized_rotura = fecha_inicio.replace('-', '/')
+            query = query.filter(func.replace(MuestraConcreto.fecha_rotura, '-', '/') == normalized_rotura)
         if fecha_fin:
-            normalized_fin = fecha_fin.replace('-', '/')
-            query = query.filter(normalized_fecha_rotura <= normalized_fin)
+            normalized_entrega = fecha_fin.replace('-', '/')
+            query = query.filter(func.replace(MuestraConcreto.fecha_entrega, '-', '/') == normalized_entrega)
 
     query = query.order_by(desc(RecepcionMuestra.id), asc(MuestraConcreto.item_numero))
     results = query.all()
