@@ -145,8 +145,8 @@ def normalize_date_string(d_str: Optional[str]) -> Optional[date]:
 
 
 def normalize_option(value: Optional[str], allowed: set[str], default: str = "-") -> str:
-    normalized = (value or default).strip().upper()
-    return normalized if normalized in allowed else default
+    val_str = str(value or "").strip().upper()
+    return val_str if val_str else default
 
 
 def normalize_date_payload(value: Optional[str]) -> str:
