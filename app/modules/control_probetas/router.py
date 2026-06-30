@@ -1,9 +1,14 @@
+import io
 import logging
 import math
+import openpyxl
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+from openpyxl.utils import get_column_letter
 from datetime import datetime, date
 from typing import List, Optional
 from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_, desc, asc, func
 from pydantic import BaseModel
@@ -463,8 +468,8 @@ def get_control_probetas(
         normalized_fin = fecha_fin.replace('-', '/')
         query = query.filter(normalized_fecha_rotura <= normalized_fin)
 
-    # Order by reception group, then item number
-    query = query.order_by(asc(RecepcionMuestra.numero_recepcion), asc(MuestraConcreto.item_numero))
+    # Order by reception group (newest first), then item number
+    query = query.order_by(desc(RecepcionMuestra.id), asc(MuestraConcreto.item_numero))
     
     # 4. Fetch all candidates to process status in-memory (highly safe and correct)
     results = query.all()
@@ -474,7 +479,10 @@ def get_control_probetas(
     # 5. Apply Status Filter in memory
     if estado:
         target_status = estado.lower().strip()
-        mapped_items = [x for x in mapped_items if x.estado_probeta == target_status]
+        if target_status == "faltas":
+            mapped_items = [x for x in mapped_items if x.status_ensayo == "FALTA"]
+        else:
+            mapped_items = [x for x in mapped_items if x.estado_probeta == target_status]
         
     # 6. Apply Column Sort
     if sort_column:
@@ -825,3 +833,178 @@ def delete_probeta(
         logger.error("Error creating audit log for probeta deletion: %s", e)
         
     return {"success": True, "message": "Probeta eliminada con éxito"}
+
+
+@router.get("/exportar")
+def exportar_control_probetas(
+    search: Optional[str] = None,
+    estado: Optional[str] = None,
+    fecha_inicio: Optional[str] = None,
+    fecha_fin: Optional[str] = None,
+    muestra_ids: Optional[str] = None,
+    db: Session = Depends(get_db_session)
+):
+    query = db.query(
+        MuestraConcreto,
+        RecepcionMuestra,
+        ItemCompresion,
+        EnsayoCompresion
+    ).join(
+        RecepcionMuestra, MuestraConcreto.recepcion_id == RecepcionMuestra.id
+    ).filter(
+        MuestraConcreto.es_control_probetas == True
+    ).outerjoin(
+        EnsayoCompresion, RecepcionMuestra.id == EnsayoCompresion.recepcion_id
+    ).outerjoin(
+        ItemCompresion, and_(
+            EnsayoCompresion.id == ItemCompresion.ensayo_id,
+            MuestraConcreto.item_numero == ItemCompresion.item
+        )
+    )
+
+    if muestra_ids:
+        try:
+            ids = [int(x.strip()) for x in muestra_ids.split(",") if x.strip()]
+            if ids:
+                query = query.filter(MuestraConcreto.id.in_(ids))
+        except ValueError:
+            pass
+
+    if not muestra_ids:
+        if search:
+            search_filter = f"%{search}%"
+            query = query.filter(
+                or_(
+                    RecepcionMuestra.cliente.ilike(search_filter),
+                    RecepcionMuestra.proyecto.ilike(search_filter),
+                    RecepcionMuestra.numero_recepcion.ilike(search_filter),
+                    RecepcionMuestra.numero_ot.ilike(search_filter),
+                    RecepcionMuestra.numero_cotizacion.ilike(search_filter),
+                    MuestraConcreto.codigo_muestra_lem.ilike(search_filter),
+                    MuestraConcreto.identificacion_muestra.ilike(search_filter),
+                    MuestraConcreto.elemento.ilike(search_filter),
+                    MuestraConcreto.status_ensayo.ilike(search_filter),
+                    MuestraConcreto.status_entrega.ilike(search_filter),
+                )
+            )
+        normalized_fecha_rotura = func.replace(MuestraConcreto.fecha_rotura, '-', '/')
+        if fecha_inicio:
+            normalized_inicio = fecha_inicio.replace('-', '/')
+            query = query.filter(normalized_fecha_rotura >= normalized_inicio)
+        if fecha_fin:
+            normalized_fin = fecha_fin.replace('-', '/')
+            query = query.filter(normalized_fecha_rotura <= normalized_fin)
+
+    query = query.order_by(desc(RecepcionMuestra.id), asc(MuestraConcreto.item_numero))
+    results = query.all()
+    
+    mapped_items = [build_probeta_response(muestra, recep, item_comp, ensayo) for muestra, recep, item_comp, ensayo in results]
+    
+    if estado and not muestra_ids:
+        target_status = estado.lower().strip()
+        if target_status == "faltas":
+            mapped_items = [x for x in mapped_items if x.status_ensayo == "FALTA"]
+        else:
+            mapped_items = [x for x in mapped_items if x.estado_probeta == target_status]
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Control Probetas"
+    
+    font_title = Font(name="Arial", size=14, bold=True, color="1F497D")
+    font_header = Font(name="Arial", size=9, bold=True, color="FFFFFF")
+    font_data = Font(name="Arial", size=9)
+    font_bold = Font(name="Arial", size=9, bold=True)
+    
+    fill_header = PatternFill(start_color="1F497D", end_color="1F497D", fill_type="solid")
+    fill_even = PatternFill(start_color="F2F5F8", end_color="F2F5F8", fill_type="solid")
+    
+    thin_border = Border(
+        left=Side(style='thin', color='D9D9D9'),
+        right=Side(style='thin', color='D9D9D9'),
+        top=Side(style='thin', color='D9D9D9'),
+        bottom=Side(style='thin', color='D9D9D9')
+    )
+    
+    ws.merge_cells("A1:N1")
+    ws["A1"] = "CONTROL DE PROBETAS - REPORTE GENERAL"
+    ws["A1"].font = font_title
+    ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 40
+    
+    ws.row_dimensions[2].height = 15
+    
+    headers = [
+        "#", "RECEPCIÓN", "CÓDIGO LEM", "CLIENTE", "ELEMENTO", 
+        "F. ROTURA", "DENSIDAD", "EDAD", "FOSA", "F'C", 
+        "STATUS ENSAYO", "STATUS ENTREGA", "F. ENTREGA", "ESTADO"
+    ]
+    
+    for col_idx, h in enumerate(headers, 1):
+        cell = ws.cell(row=3, column=col_idx)
+        cell.value = h
+        cell.font = font_header
+        cell.fill = fill_header
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        cell.border = thin_border
+        
+    ws.row_dimensions[3].height = 28
+    
+    for idx, item in enumerate(mapped_items, 1):
+        row_idx = idx + 3
+        ws.row_dimensions[row_idx].height = 20
+        
+        row_data = [
+            idx,
+            item.numero_recepcion,
+            item.codigo_muestra_lem,
+            item.cliente,
+            item.elemento,
+            item.fecha_rotura,
+            item.densidad,
+            item.edad,
+            item.fosa,
+            item.fc_kg_cm2,
+            item.status_ensayo,
+            item.status_entrega,
+            item.fecha_entrega,
+            item.estado_probeta.upper()
+        ]
+        
+        is_even = idx % 2 == 0
+        for col_idx, val in enumerate(row_data, 1):
+            cell = ws.cell(row=row_idx, column=col_idx)
+            cell.value = val
+            cell.font = font_bold if col_idx in (1, 2, 10, 14) else font_data
+            cell.border = thin_border
+            
+            if col_idx in (1, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14):
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+            else:
+                cell.alignment = Alignment(horizontal="left", vertical="center")
+                
+            if is_even:
+                cell.fill = fill_even
+                
+    for col in ws.columns:
+        max_len = 0
+        col_letter = get_column_letter(col[0].column)
+        for cell in col:
+            if cell.row == 1:
+                continue
+            if cell.value:
+                max_len = max(max_len, len(str(cell.value)))
+        ws.column_dimensions[col_letter].width = max(max_len + 3, 10)
+        
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    
+    headers_response = {
+        'Content-Disposition': 'attachment; filename="Control_Probetas.xlsx"'
+    }
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers_response
+    )
