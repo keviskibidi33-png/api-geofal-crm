@@ -37,7 +37,7 @@ class ProbetaListItem(BaseModel):
     fecha_rotura: Optional[str] = ""
     requiere_densidad: bool
     elemento: Optional[str] = "-"
-    fosa: Optional[str] = "-"
+    poza: Optional[str] = "-"
     # densidad: "SI" or "NO" derived from requiere_densidad; numeric value kept internally
     densidad: Optional[str] = "NO"
     status_ensayo: Optional[str] = "-"
@@ -72,7 +72,7 @@ class ProbetaCreatePayload(BaseModel):
     fecha_rotura: Optional[str] = ""
     requiere_densidad: bool = False
     elemento: Optional[str] = "-"
-    fosa: Optional[str] = "-"
+    poza: Optional[str] = "-"
     densidad: Optional[str] = "-"
     status_ensayo: Optional[str] = "-"
     status_entrega: Optional[str] = "-"
@@ -94,7 +94,7 @@ class ProbetasKpis(BaseModel):
 
 
 ALLOWED_ELEMENTOS = {"-", "PEQUEÑA", "GRANDE", "DIAMANTINA", "CUBO", "VIGA"}
-ALLOWED_FOSAS = {"-", "FOSA 1", "FOSA 2", "FOSA 3", "FOSA 4", "FOSA 5", "FOSA 6", "ROTAS"}
+ALLOWED_POZAS = {"-", "ROTAS", "ANULADO", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"}
 ALLOWED_STATUS_ENSAYO = {"-", "ENSAYADO", "PENDIENTE", "FALTA", "ANULADO"}
 ALLOWED_STATUS_ENTREGA = {"-", "ENTREGADO", "INFORME LISTO", "ROTAS", "ANULADAS"}
 
@@ -231,7 +231,7 @@ def build_probeta_response(
         fecha_rotura=muestra.fecha_rotura or "",
         requiere_densidad=muestra.requiere_densidad,
         elemento=muestra.elemento or "-",
-        fosa=getattr(muestra, "fosa", None) or "-",
+        poza=getattr(muestra, "fosa", None) or "-",
         densidad=densidad_display,
         status_ensayo=status_ensayo_final,
         status_entrega=status_entrega_final,
@@ -494,7 +494,7 @@ def get_control_probetas(
             "fecha_rotura": lambda x: x.fecha_rotura or "",
             "densidad": lambda x: x.densidad or "",
             "edad": lambda x: x.edad or 0,
-            "fosa": lambda x: x.fosa or "",
+            "poza": lambda x: x.poza or "",
             "fc_kg_cm2": lambda x: x.fc_kg_cm2 or 0,
             "status_ensayo": lambda x: x.status_ensayo or "",
             "status_entrega": lambda x: x.status_entrega or "",
@@ -647,7 +647,7 @@ def create_probeta(
         fecha_rotura=fecha_rotura or "",
         requiere_densidad=payload.requiere_densidad,
         elemento=normalize_option(payload.elemento, ALLOWED_ELEMENTOS),
-        fosa=normalize_option(payload.fosa, ALLOWED_FOSAS),
+        fosa=normalize_option(payload.poza, ALLOWED_POZAS),
         densidad=(payload.densidad or "-").strip() or "-",
         status_ensayo="ANULADO" if str(payload.status_ensayo or "").strip().upper() == "ANULADO" else "PENDIENTE",
         status_entrega="ANULADAS" if str(payload.status_ensayo or "").strip().upper() == "ANULADO" else ("ROTAS" if str(payload.status_ensayo or "").strip().upper() == "ENSAYADO" else normalize_option(payload.status_entrega, ALLOWED_STATUS_ENTREGA)),
@@ -710,11 +710,12 @@ def update_probeta(
             # Accept SI/NO from frontend and persist as requiere_densidad boolean
             muestra.requiere_densidad = val.upper() == "SI"
             continue
+        if key == "poza" or key == "fosa":
+            muestra.fosa = normalize_option(val, ALLOWED_POZAS)
+            continue
         if hasattr(muestra, key):
             if key == "elemento":
                 setattr(muestra, key, normalize_option(val, ALLOWED_ELEMENTOS))
-            elif key == "fosa":
-                setattr(muestra, key, normalize_option(val, ALLOWED_FOSAS))
             elif key == "status_ensayo":
                 normalized_status = str(val or "").strip().upper()
                 if normalized_status == "ANULADO":
@@ -936,7 +937,7 @@ def exportar_control_probetas(
     
     headers = [
         "#", "RECEPCIÓN", "CÓDIGO LEM", "CLIENTE", "ELEMENTO", 
-        "F. ROTURA", "DENSIDAD", "EDAD", "FOSA", "F'C", 
+        "F. ROTURA", "DENSIDAD", "EDAD", "POZA", "F'C", 
         "STATUS ENSAYO", "STATUS ENTREGA", "F. ENTREGA", "ESTADO"
     ]
     
@@ -963,7 +964,7 @@ def exportar_control_probetas(
             item.fecha_rotura,
             item.densidad,
             item.edad,
-            item.fosa,
+            item.poza,
             item.fc_kg_cm2,
             item.status_ensayo,
             item.status_entrega,
