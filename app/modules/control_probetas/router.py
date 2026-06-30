@@ -96,7 +96,7 @@ class ProbetasKpis(BaseModel):
 ALLOWED_ELEMENTOS = {"-", "PEQUEÑA", "GRANDE", "DIAMANTINA", "CUBO", "VIGA"}
 ALLOWED_POZAS = {"-", "ROTAS", "ANULADO", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"}
 ALLOWED_STATUS_ENSAYO = {"-", "ENSAYADO", "PENDIENTE", "FALTA", "ANULADO"}
-ALLOWED_STATUS_ENTREGA = {"-", "ENTREGADO", "INFORME LISTO", "ROTAS", "ANULADAS"}
+ALLOWED_STATUS_ENTREGA = {"-", "ENTREGADO", "INFORME", "ROTAS", "ANULADAS"}
 
 
 def calculate_density_from_verification(
@@ -214,10 +214,6 @@ def build_probeta_response(
     status_ensayo_auto = _compute_status_ensayo(muestra, item_comp, recep)
     status_ensayo_final = "ANULADO" if (muestra.status_ensayo or "").strip().upper() == "ANULADO" else status_ensayo_auto
     status_entrega_final = (muestra.status_entrega or "-").strip().upper() or "-"
-    if status_ensayo_final == "ENSAYADO":
-        status_entrega_final = "ROTAS"
-    elif status_ensayo_final == "ANULADO":
-        status_entrega_final = "ANULADAS"
     return ProbetaListItem(
         muestra_id=muestra.id,
         item_numero=muestra.item_numero,
@@ -649,7 +645,7 @@ def create_probeta(
         fosa=normalize_option(payload.poza, ALLOWED_POZAS),
         densidad=(payload.densidad or "-").strip() or "-",
         status_ensayo="ANULADO" if str(payload.status_ensayo or "").strip().upper() == "ANULADO" else "PENDIENTE",
-        status_entrega="ANULADAS" if str(payload.status_ensayo or "").strip().upper() == "ANULADO" else ("ROTAS" if str(payload.status_ensayo or "").strip().upper() == "ENSAYADO" else normalize_option(payload.status_entrega, ALLOWED_STATUS_ENTREGA)),
+        status_entrega=normalize_option(payload.status_entrega or "-", ALLOWED_STATUS_ENTREGA),
         fecha_entrega=normalize_date_payload(payload.fecha_entrega) or "-",
         es_control_probetas=True
     )
@@ -724,7 +720,7 @@ def update_probeta(
                     setattr(muestra, key, "")
             elif key == "status_entrega":
                 normalized_status_entrega = str(val or "").strip().upper()
-                if normalized_status_entrega in {"ROTAS", "ANULADAS", "ENTREGADO", "INFORME LISTO", "FALTA", "PENDIENTE", "-"}:
+                if normalized_status_entrega in {"ROTAS", "ANULADAS", "ENTREGADO", "INFORME", "FALTA", "PENDIENTE", "-"}:
                     setattr(muestra, key, normalize_option(val, ALLOWED_STATUS_ENTREGA))
             elif key in {"fecha_rotura", "fecha_entrega", "fecha_moldeo"}:
                 setattr(muestra, key, normalize_date_payload(val) or ("-" if key == "fecha_entrega" else ""))
