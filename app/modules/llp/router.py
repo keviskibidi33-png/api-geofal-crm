@@ -228,18 +228,28 @@ def _point_is_complete(point, require_golpes: bool) -> bool:
 
 
 def _is_payload_completo(payload: LLPRequest) -> bool:
-    required_text_fields = [
+    # 1. Basic required fields must always be present
+    basic_fields = [
         payload.muestra,
         payload.numero_ot,
         payload.fecha_ensayo,
         payload.realizado_por,
-        payload.tipo_muestra,
-        payload.tamano_maximo_visual_in,
-        payload.forma_particula,
     ]
-    if not all(_has_text_value(value) for value in required_text_fields):
+    if not all(_has_text_value(value) for value in basic_fields):
         return False
 
+    # 2. Check if any point is marked as NP (Non-Plastic)
+    is_np = False
+    for pt in payload.puntos:
+        val = (pt.recipiente_numero or "").strip().upper()
+        if val in ("NP", "N.P.", "NP.", "NO PRESENTO", "NO PRESENTA", "NO PLASTICO"):
+            is_np = True
+            break
+
+    if is_np:
+        return True
+
+    # 3. Standard validations (only when NOT NP)
     if not _is_selected(payload.condicion_muestra):
         return False
 
@@ -257,17 +267,6 @@ def _is_payload_completo(payload: LLPRequest) -> bool:
     ]
     if not all(_is_selected(value) for value in required_selects):
         return False
-
-    # Check if any point is marked as NP (Non-Plastic)
-    is_np = False
-    for pt in payload.puntos:
-        val = (pt.recipiente_numero or "").strip().upper()
-        if val in ("NP", "N.P.", "NP.", "NO PRESENTO", "NO PRESENTA", "NO PLASTICO"):
-            is_np = True
-            break
-
-    if is_np:
-        return True
 
     if payload.contenido_humedad_muestra_inicial_pct is None:
         return False
