@@ -385,7 +385,7 @@ def _fill_sheet(sheet_xml: bytes, data: ProctorRequest, centered_style_map: dict
     if data.tamiz_metodo_b_codigo and data.tamiz_metodo_b_codigo != "-":
         tamiz_rows.append(data.tamiz_metodo_b_codigo)
     
-    tamiz_display = " | ".join(tamiz_rows) if tamiz_rows else (data.tamiz_utilizado_metodo_codigo or "")
+    tamiz_display = " - ".join(tamiz_rows) if tamiz_rows else (data.tamiz_utilizado_metodo_codigo or "")
     if tamiz_display:
         for suffix in [" - METODO C", " - METODO B", " - METODO A", " - METODO C", " - METODO B", " - METODO A"]:
             tamiz_display = tamiz_display.replace(suffix, "").replace(suffix.lower(), "")
