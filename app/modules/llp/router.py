@@ -258,6 +258,17 @@ def _is_payload_completo(payload: LLPRequest) -> bool:
     if not all(_is_selected(value) for value in required_selects):
         return False
 
+    # Check if any point is marked as NP (Non-Plastic)
+    is_np = False
+    for pt in payload.puntos:
+        val = (pt.recipiente_numero or "").strip().upper()
+        if val in ("NP", "N.P.", "NP.", "NO PRESENTO", "NO PRESENTA", "NO PLASTICO"):
+            is_np = True
+            break
+
+    if is_np:
+        return True
+
     if payload.contenido_humedad_muestra_inicial_pct is None:
         return False
     if payload.porcentaje_retenido_tamiz_40_pct is None:
