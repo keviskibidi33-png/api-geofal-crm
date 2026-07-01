@@ -445,18 +445,18 @@ def _fill_incertidumbre(sheet_xml: bytes, data: GranSueloRequest) -> bytes:
                 continue
         return None
 
-    set_cell("B227", data.revisado_por)
-    set_cell("G227", data.aprobado_por)
-    revisado_serial = _excel_date_serial(getattr(data, "revisado_fecha", None))
-    aprobado_serial = _excel_date_serial(getattr(data, "aprobado_fecha", None))
-    if revisado_serial is not None:
-        set_cell("B229", revisado_serial, is_number=True)
-    elif getattr(data, "revisado_fecha", None):
-        set_cell("B229", data.revisado_fecha)
-    if aprobado_serial is not None:
-        set_cell("G229", aprobado_serial, is_number=True)
-    elif getattr(data, "aprobado_fecha", None):
-        set_cell("G229", data.aprobado_fecha)
+    # set_cell("B227", data.revisado_por)
+    # set_cell("G227", data.aprobado_por)
+    # revisado_serial = _excel_date_serial(getattr(data, "revisado_fecha", None))
+    # aprobado_serial = _excel_date_serial(getattr(data, "aprobado_fecha", None))
+    # if revisado_serial is not None:
+    #     set_cell("B229", revisado_serial, is_number=True)
+    # elif getattr(data, "revisado_fecha", None):
+    #     set_cell("B229", data.revisado_fecha)
+    # if aprobado_serial is not None:
+    #     set_cell("G229", aprobado_serial, is_number=True)
+    # elif getattr(data, "aprobado_fecha", None):
+    #     set_cell("G229", data.aprobado_fecha)
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 

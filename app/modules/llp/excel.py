@@ -421,18 +421,18 @@ def generate_llp_excel(data: LLPRequest) -> bytes:
                             continue
                     return None
 
-                _set_cell(sd, "B98", data.revisado_por)
-                _set_cell(sd, "G98", data.aprobado_por)
-                revisado_serial = _excel_date_serial(data.revisado_fecha)
-                aprobado_serial = _excel_date_serial(data.aprobado_fecha)
-                if revisado_serial is not None:
-                    _set_cell(sd, "B100", revisado_serial, is_number=True)
-                elif data.revisado_fecha:
-                    _set_cell(sd, "B100", data.revisado_fecha)
-                if aprobado_serial is not None:
-                    _set_cell(sd, "G100", aprobado_serial, is_number=True)
-                elif data.aprobado_fecha:
-                    _set_cell(sd, "G100", data.aprobado_fecha)
+                # _set_cell(sd, "B98", data.revisado_por)
+                # _set_cell(sd, "G98", data.aprobado_por)
+                # revisado_serial = _excel_date_serial(data.revisado_fecha)
+                # aprobado_serial = _excel_date_serial(data.aprobado_fecha)
+                # if revisado_serial is not None:
+                #     _set_cell(sd, "B100", revisado_serial, is_number=True)
+                # elif data.revisado_fecha:
+                #     _set_cell(sd, "B100", data.revisado_fecha)
+                # if aprobado_serial is not None:
+                #     _set_cell(sd, "G100", aprobado_serial, is_number=True)
+                # elif data.aprobado_fecha:
+                #     _set_cell(sd, "G100", data.aprobado_fecha)
             incert_xml = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
         except KeyError:
             incert_xml = None

@@ -183,20 +183,20 @@ def _fill_incertidumbre_sheet(sheet_xml: bytes, data: PesoUnitarioRequest) -> by
     if sd is None:
         return sheet_xml
 
-    _set_cell(sd, "B81", data.revisado_por)
-    _set_cell(sd, "G81", data.aprobado_por)
-
-    revisado_serial = _excel_date_serial(data.revisado_fecha)
-    aprobado_serial = _excel_date_serial(data.aprobado_fecha)
-    if revisado_serial is not None:
-        _set_cell(sd, "B83", revisado_serial, is_number=True)
-    elif data.revisado_fecha:
-        _set_cell(sd, "B83", data.revisado_fecha)
-
-    if aprobado_serial is not None:
-        _set_cell(sd, "G83", aprobado_serial, is_number=True)
-    elif data.aprobado_fecha:
-        _set_cell(sd, "G83", data.aprobado_fecha)
+    # _set_cell(sd, "B81", data.revisado_por)
+    # _set_cell(sd, "G81", data.aprobado_por)
+    # 
+    # revisado_serial = _excel_date_serial(data.revisado_fecha)
+    # aprobado_serial = _excel_date_serial(data.aprobado_fecha)
+    # if revisado_serial is not None:
+    #     _set_cell(sd, "B83", revisado_serial, is_number=True)
+    # elif data.revisado_fecha:
+    #     _set_cell(sd, "B83", data.revisado_fecha)
+    # 
+    # if aprobado_serial is not None:
+    #     _set_cell(sd, "G83", aprobado_serial, is_number=True)
+    # elif data.aprobado_fecha:
+    #     _set_cell(sd, "G83", data.aprobado_fecha)
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 

@@ -170,10 +170,10 @@ def _fill_incertidumbre_sheet(sheet_xml: bytes, data: TamizRequest) -> bytes:
     if sd is None:
         return sheet_xml
 
-    _set_cell(sd, "B58", data.revisado_por)
-    _set_cell(sd, "B60", data.revisado_fecha)
-    _set_cell(sd, "G58", data.aprobado_por)
-    _set_cell(sd, "G60", data.aprobado_fecha)
+    # _set_cell(sd, "B58", data.revisado_por)
+    # _set_cell(sd, "B60", data.revisado_fecha)
+    # _set_cell(sd, "G58", data.aprobado_por)
+    # _set_cell(sd, "G60", data.aprobado_fecha)
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 

@@ -295,24 +295,24 @@ def _fill_incertidumbre_sheet(sheet_xml: bytes, data: GeGruesoRequest) -> bytes:
     if sd is None:
         return sheet_xml
 
-    _set_cell(sd, "B8", data.revisado_por)
-    _set_cell(sd, "B9", data.aprobado_por)
+    # _set_cell(sd, "B8", data.revisado_por)
+    # _set_cell(sd, "B9", data.aprobado_por)
 
     # Footer visible en la hoja de incertidumbre
-    _set_cell(sd, "B90", data.revisado_por)
-    _set_cell(sd, "G90", data.aprobado_por)
+    # _set_cell(sd, "B90", data.revisado_por)
+    # _set_cell(sd, "G90", data.aprobado_por)
 
-    revisado_serial = _excel_date_serial(data.revisado_fecha)
-    aprobado_serial = _excel_date_serial(data.aprobado_fecha)
-    if revisado_serial is not None:
-        _set_cell(sd, "B92", revisado_serial, is_number=True)
-    elif data.revisado_fecha:
-        _set_cell(sd, "B92", data.revisado_fecha)
+    # revisado_serial = _excel_date_serial(data.revisado_fecha)
+    # aprobado_serial = _excel_date_serial(data.aprobado_fecha)
+    # if revisado_serial is not None:
+    #     _set_cell(sd, "B92", revisado_serial, is_number=True)
+    # elif data.revisado_fecha:
+    #     _set_cell(sd, "B92", data.revisado_fecha)
 
-    if aprobado_serial is not None:
-        _set_cell(sd, "G92", aprobado_serial, is_number=True)
-    elif data.aprobado_fecha:
-        _set_cell(sd, "G92", data.aprobado_fecha)
+    # if aprobado_serial is not None:
+    #     _set_cell(sd, "G92", aprobado_serial, is_number=True)
+    # elif data.aprobado_fecha:
+    #     _set_cell(sd, "G92", data.aprobado_fecha)
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 

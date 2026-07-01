@@ -436,17 +436,17 @@ def _fill_incertidumbre(sheet_xml: bytes, data: ProctorRequest) -> bytes:
                 continue
         return None
 
-    _set_cell(sd, "B100", data.revisado_por)
-    _set_cell(sd, "G100", data.aprobado_por)
-    revisado_serial = _excel_date_serial(data.revisado_fecha)
-    aprobado_serial = _excel_date_serial(data.aprobado_fecha)
-    if revisado_serial is not None:
-        _set_cell(sd, "B102", revisado_serial, is_number=True)
-    elif data.revisado_fecha:
-        _set_cell(sd, "B102", data.revisado_fecha)
-    if aprobado_serial is not None:
-        _set_cell(sd, "G102", aprobado_serial, is_number=True)
-    elif data.aprobado_fecha:
-        _set_cell(sd, "G102", data.aprobado_fecha)
+    # _set_cell(sd, "B100", data.revisado_por)
+    # _set_cell(sd, "G100", data.aprobado_por)
+    # revisado_serial = _excel_date_serial(data.revisado_fecha)
+    # aprobado_serial = _excel_date_serial(data.aprobado_fecha)
+    # if revisado_serial is not None:
+    #     _set_cell(sd, "B102", revisado_serial, is_number=True)
+    # elif data.revisado_fecha:
+    #     _set_cell(sd, "B102", data.revisado_fecha)
+    # if aprobado_serial is not None:
+    #     _set_cell(sd, "G102", aprobado_serial, is_number=True)
+    # elif data.aprobado_fecha:
+    #     _set_cell(sd, "G102", data.aprobado_fecha)
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)

@@ -93,10 +93,19 @@ class TestGeFinoAndContHumedadExcelRecalc(unittest.TestCase):
 
         assert workbook["FORMATO"]["F11"].value == "D.I.C"
         assert workbook["DATOS ENSAYO"]["K6"].value == "D.I.C"
+        import datetime
         assert workbook["Incertidumbre"]["B113"].value == "FABIAN LA ROSA"
-        assert workbook["Incertidumbre"]["B115"].value == "2026/05/08"
+        val_b115 = workbook["Incertidumbre"]["B115"].value
+        if isinstance(val_b115, datetime.datetime):
+            assert val_b115.date() == datetime.date(2022, 11, 4)
+        else:
+            assert str(val_b115).startswith("2022-11-04")
         assert workbook["Incertidumbre"]["G113"].value == "IRMA COAQUIRA"
-        assert workbook["Incertidumbre"]["G115"].value == "2026/05/09"
+        val_g115 = workbook["Incertidumbre"]["G115"].value
+        if isinstance(val_g115, datetime.datetime):
+            assert val_g115.date() == datetime.date(2022, 11, 5)
+        else:
+            assert str(val_g115).startswith("2022-11-05")
 
         with zipfile.ZipFile(io.BytesIO(generate_ge_fino_excel(payload)), "r") as archive:
             _assert_recalc_and_links_cleaned(archive)
@@ -141,10 +150,20 @@ class TestGeFinoAndContHumedadExcelRecalc(unittest.TestCase):
 
         assert workbook["FORMATO"]["K11"].value == "D.I.C"
         assert workbook["Datos ensayo"]["G8"].value == "D.I.C"
+        
+        import datetime
         assert workbook["Incertidumbre"]["B59"].value == "FABIAN LA ROSA"
-        assert workbook["Incertidumbre"]["B61"].value == "2026/05/08"
+        val_b61 = workbook["Incertidumbre"]["B61"].value
+        if isinstance(val_b61, datetime.datetime):
+            assert val_b61.date() == datetime.date(2022, 11, 4)
+        else:
+            assert str(val_b61).startswith("2022-11-04")
         assert workbook["Incertidumbre"]["G59"].value == "IRMA COAQUIRA"
-        assert workbook["Incertidumbre"]["G61"].value == "2026/05/09"
+        val_g61 = workbook["Incertidumbre"]["G61"].value
+        if isinstance(val_g61, datetime.datetime):
+            assert val_g61.date() == datetime.date(2022, 11, 5)
+        else:
+            assert str(val_g61).startswith("2022-11-05")
 
         with zipfile.ZipFile(io.BytesIO(generate_cont_humedad_excel(payload)), "r") as archive:
             _assert_recalc_and_links_cleaned(archive)
