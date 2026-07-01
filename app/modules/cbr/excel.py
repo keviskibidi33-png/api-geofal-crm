@@ -205,6 +205,8 @@ def generate_cbr_excel(data: CBRRequest) -> bytes:
 
             if item.filename == "xl/worksheets/sheet2.xml":
                 raw = _fill_sheet(raw, data)
+            elif item.filename == "xl/worksheets/sheet5.xml":
+                raw = _fill_datos_sheet(raw, data)
             elif item.filename == "xl/worksheets/sheet6.xml":
                 raw = _fill_incertidumbre(raw, data)
 
@@ -225,6 +227,19 @@ def generate_cbr_excel(data: CBRRequest) -> bytes:
 
     output.seek(0)
     return output.read()
+
+
+def _fill_datos_sheet(sheet_xml: bytes, data: CBRRequest) -> bytes:
+    root = etree.fromstring(sheet_xml)
+    sd = root.find(f".//{{{NS_SHEET}}}sheetData")
+    if sd is None:
+        return sheet_xml
+
+    specimen_cols = ["D", "H", "L"]
+    for idx, col in enumerate(specimen_cols):
+        _set_cell(sd, f"{col}17", data.codigo_molde_por_especimen[idx])
+
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
 def _fill_sheet(sheet_xml: bytes, data: CBRRequest) -> bytes:
