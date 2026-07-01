@@ -35,6 +35,18 @@ NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
 TEMPLATE_PATH = str(find_template_path("1-INF.-N-000-26-SU37-CBR-ASTM-D1883-V03.xlsx"))
 
+MOLD_CODE_TO_CHAR = {
+    "INS-173": "D", "D": "D",
+    "INS-174": "J", "J": "J",
+    "INS-175": "T", "T": "T",
+    "INS-200": "A", "A": "A",
+    "INS-201": "B", "B": "B",
+    "INS-202": "C", "C": "C",
+    "INS-203": "E", "E": "E",
+    "INS-204": "H", "H": "H",
+    "INS-205": "L", "L": "L",
+}
+
 
 def _parse_cell_ref(ref: str) -> tuple[str, int]:
     col = "".join(c for c in ref if c.isalpha())
@@ -257,7 +269,9 @@ def _fill_sheet(sheet_xml: bytes, data: CBRRequest) -> bytes:
     specimen_cols = ["D", "H", "L"]
     for idx, col in enumerate(specimen_cols):
         _set_cell(sd, f"{col}23", data.golpes_por_especimen[idx], is_number=True)
-        _set_cell(sd, f"{col}24", data.codigo_molde_por_especimen[idx])
+        raw_code = data.codigo_molde_por_especimen[idx]
+        mapped_code = MOLD_CODE_TO_CHAR.get(raw_code, raw_code)
+        _set_cell(sd, f"{col}24", mapped_code)
 
     # Secciones por columna (6 columnas)
     cols_6 = ["D", "F", "H", "J", "L", "O"]
