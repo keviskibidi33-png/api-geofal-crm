@@ -138,6 +138,12 @@ try:
                 SET permissions = jsonb_set(permissions, '{control_probetas}', '{"read": true, "write": true, "delete": true}'::jsonb, true)
                 WHERE role_id IN ('admin', 'admin_general');
             """))
+            # Update for Oficina Técnica roles to enable Control Probetas
+            conn.execute(text("""
+                UPDATE role_definitions
+                SET permissions = jsonb_set(permissions, '{control_probetas}', '{"read": true, "write": true, "delete": true}'::jsonb, true)
+                WHERE role_id IN ('oficina_tecnica', 'oficina_tecnica_humedad', 'oficina_tecnica_humedad_tipificador', 'oficina_tecnica_sup');
+            """))
             logger.info("Programmatic migration 044 applied successfully (or was already applied).")
     except Exception as perm_err:
         logger.warning("Could not apply migration 044 permissions: %s", perm_err)
