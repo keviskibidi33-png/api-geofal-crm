@@ -192,12 +192,14 @@ def _compute_status_ensayo(muestra: MuestraConcreto, item_comp: Optional[ItemCom
     if carga is not None and carga > 0:
         return "ENSAYADO"
 
-    recep_date = _parse_recepcion_date(recep)
-    if not recep_date:
-        return "PENDIENTE"
+    rotura_date = normalize_date_string(muestra.fecha_rotura)
+    if not rotura_date:
+        rotura_date = _parse_recepcion_date(recep)
+        if not rotura_date:
+            return "PENDIENTE"
 
     now_lima = datetime.now(LIMA_TZ)
-    cutoff = datetime.combine(recep_date, datetime.min.time()).replace(hour=12, minute=0, second=0, microsecond=0, tzinfo=LIMA_TZ)
+    cutoff = datetime.combine(rotura_date, datetime.min.time()).replace(hour=12, minute=0, second=0, microsecond=0, tzinfo=LIMA_TZ)
     return "FALTA" if now_lima >= cutoff else "PENDIENTE"
 
 

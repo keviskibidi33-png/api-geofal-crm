@@ -59,5 +59,5 @@ def test_abra_excel_template_integrity_and_generation():
     
     # Check that basic header cells are filled
     assert ws["C11"].value == "147-SU-26"
-    assert ws["E11"].value == "1000-26"
-    assert ws["G11"].value == "2026/05/07"
+    assert ws["D11"].value == "1000-26"
+    assert ws["F11"].value == "2026/05/07"
