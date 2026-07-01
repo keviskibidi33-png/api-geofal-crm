@@ -403,10 +403,6 @@ def generate_llp_excel(data: LLPRequest) -> bytes:
         try:
             raw_incert = zin.read("xl/worksheets/sheet5.xml")
             root = etree.fromstring(raw_incert)
-            for sp in list(root.findall(f".//{{{NS_SHEET}}}sheetProtection")):
-                parent = sp.getparent()
-                if parent is not None:
-                    parent.remove(sp)
             sd = root.find(f".//{{{NS_SHEET}}}sheetData")
             if sd is not None:
                 def _excel_date_serial(value: str | None) -> float | None:
