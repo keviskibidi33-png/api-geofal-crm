@@ -419,12 +419,6 @@ def _fill_drawing(drawing_xml: bytes, data: ProctorRequest) -> bytes:
 
 def _fill_incertidumbre(sheet_xml: bytes, data: ProctorRequest) -> bytes:
     root = etree.fromstring(sheet_xml)
-    # remove sheetProtection if present
-    for sp in list(root.findall(f".//{{{NS_SHEET}}}sheetProtection")):
-        parent = sp.getparent()
-        if parent is not None:
-            parent.remove(sp)
-
     sd = root.find(f".//{{{NS_SHEET}}}sheetData")
     if sd is None:
         return sheet_xml
