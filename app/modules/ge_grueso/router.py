@@ -225,13 +225,13 @@ def _normalize_footer_text(value: str | None, fallback: str) -> str:
 def _apply_footer_defaults(payload: GeGruesoRequest) -> None:
     payload.revisado_por = _normalize_footer_text(payload.revisado_por, "-")
     if payload.revisado_por != "-":
-        payload.revisado_fecha = _normalize_footer_text(payload.revisado_fecha, payload.fecha_ensayo)
+        payload.revisado_fecha = _normalize_footer_text(payload.revisado_fecha, "-")
     else:
         payload.revisado_fecha = ""
 
     payload.aprobado_por = _normalize_footer_text(payload.aprobado_por, "-")
     if payload.aprobado_por != "-":
-        payload.aprobado_fecha = _normalize_footer_text(payload.aprobado_fecha, payload.fecha_ensayo)
+        payload.aprobado_fecha = _normalize_footer_text(payload.aprobado_fecha, "-")
     else:
         payload.aprobado_fecha = ""
 
