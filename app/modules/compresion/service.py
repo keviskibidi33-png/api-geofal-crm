@@ -776,8 +776,10 @@ class CompresionService:
                     ns_mc = 'http://schemas.openxmlformats.org/markup-compatibility/2006'
                     for alt in list(wb_root.findall(f'.//{{{ns_mc}}}AlternateContent')):
                         wb_root.remove(alt)
+                    wb_xml_cleaned = etree.tostring(wb_root, encoding='utf-8', xml_declaration=True)
 
-                    from app.modules.common.excel_xml import resolve_sheet_path
+                    from app.modules.common.excel_xml import resolve_sheet_path, enable_full_recalc_on_open
+                    wb_xml_final = enable_full_recalc_on_open(wb_xml_cleaned)
                     sheet_filename = resolve_sheet_path(z_in, "Resumen") or 'xl/worksheets/sheet1.xml'
                     if sheet_filename not in z_in.namelist():
                         sheet_filename = 'xl/worksheets/sheet1.xml'
@@ -787,21 +789,10 @@ class CompresionService:
                     ns = sheet_root.nsmap.get(None, NAMESPACES['main'])
                     sheet_data = sheet_root.find(f'.//{{{ns}}}sheetData')
 
-                    cliente_val = recepcion.cliente or ''
-                    _set_cell_value(sheet_data, 'B6', cliente_val, ns)
-                    _set_cell_value(sheet_data, 'D6', cliente_val, ns)
-                    
-                    direccion_val = getattr(recepcion, "domicilio_legal", None) or getattr(recepcion, "domicilio_solicitante", "") or ''
-                    _set_cell_value(sheet_data, 'B7', direccion_val, ns)
-                    _set_cell_value(sheet_data, 'D7', direccion_val, ns)
-                    
-                    proyecto_val = getattr(recepcion, "proyecto", "") or ''
-                    _set_cell_value(sheet_data, 'B8', proyecto_val, ns)
-                    _set_cell_value(sheet_data, 'D8', proyecto_val, ns)
-                    
-                    ubicacion_val = recepcion.ubicacion or ''
-                    _set_cell_value(sheet_data, 'B9', ubicacion_val, ns)
-                    _set_cell_value(sheet_data, 'D9', ubicacion_val, ns)
+                    _set_cell_value(sheet_data, 'B6', recepcion.cliente or '', ns)
+                    _set_cell_value(sheet_data, 'B7', getattr(recepcion, "domicilio_legal", None) or getattr(recepcion, "domicilio_solicitante", "") or '', ns)
+                    _set_cell_value(sheet_data, 'B8', getattr(recepcion, "proyecto", "") or '', ns)
+                    _set_cell_value(sheet_data, 'B9', recepcion.ubicacion or '', ns)
                     
                     _set_cell_value(sheet_data, 'P6', recepcion.numero_recepcion or '', ns)
                     ot_val = (recepcion.numero_ot or "").replace("OT-", "").replace("OT", "").strip()
@@ -864,7 +855,7 @@ class CompresionService:
                         if item_name == sheet_filename:
                             z_out.writestr(item_name, etree.tostring(sheet_root, encoding='utf-8', xml_declaration=True))
                         elif item_name == 'xl/workbook.xml':
-                            z_out.writestr(item_name, etree.tostring(wb_root, encoding='utf-8', xml_declaration=True))
+                            z_out.writestr(item_name, wb_xml_final)
                         else:
                             z_out.writestr(item_name, z_in.read(item_name))
 
