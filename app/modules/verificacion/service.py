@@ -88,43 +88,6 @@ class VerificacionService:
             )
             if resp.status_code in (200, 201):
     
-    def _get_safe_filename(self, base_name: str, extension: str = "xlsx") -> str:
-        """Sanitized filename to avoid errors in Storage and file systems"""
-        if not base_name:
-            base_name = "SinNombre"
-        s = unicodedata.normalize('NFKD', base_name).encode('ascii', 'ignore').decode('ascii')
-        s = re.sub(r'[^\w\s-]', ' ', s)
-        s = re.sub(r'[-\s_]+', '_', s)
-        s = s.strip('_')
-        s = s[:60]
-        if extension:
-            return f"{s}.{extension}"
-        return s
-
-    def _upload_to_supabase_storage(self, file_data: io.BytesIO, bucket: str, path: str) -> Optional[str]:
-        url = os.getenv("SUPABASE_URL")
-        key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
-        
-        if not url or not key:
-            logger.warning("Supabase URL or Key missing. Skipping upload.")
-            return None
-            
-        storage_url = f"{url.rstrip('/')}/storage/v1/object/{bucket}/{path}"
-
-        file_data.seek(0)
-        try:
-            resp = http_post(
-                storage_url,
-                headers={
-                    "Authorization": f"Bearer {key}",
-                    "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    "x-upsert": "true"
-                },
-                data=file_data.read(),
-                timeout=30,
-                request_name="supabase.verificacion.upload_excel",
-            )
-            if resp.status_code in (200, 201):
                 return f"{bucket}/{path}"
             else:
                 logger.error("Storage upload failed: %s - %s", resp.status_code, resp.text)
