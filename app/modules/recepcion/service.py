@@ -341,40 +341,47 @@ class RecepcionService:
         
         # Actualizar muestras si se proporcionaron
         if muestras_data is not None:
-            sanitized_muestras = []
-            for muestra_data in muestras_data:
-                sanitized = self._sanitize_muestra_dict(muestra_data)
-                if sanitized:
-                    sanitized_muestras.append(sanitized)
+            # Si el frontend envía un array vacío, podría ser por pérdida de estado local, no eliminamos a menos que sea explícito
+            if len(muestras_data) > 0:
+                sanitized_muestras = []
+                for muestra_data in muestras_data:
+                    sanitized = self._sanitize_muestra_dict(muestra_data)
+                    if sanitized:
+                        sanitized_muestras.append(sanitized)
 
-            if not sanitized_muestras:
-                raise ValueError("Debe incluir al menos una muestra válida")
+                if sanitized_muestras:
+                    # 1. Eliminar muestras existentes (Cascade delete handled by ORM usually, but explicit is safer here if not using cascade)
+                    # Check model: cascade="all, delete-orphan" is present in RecepcionMuestra.muestras
+                    # Cleaning the list via relationship is the ORM way:
+                    recepcion.muestras = [] 
+                    db.flush() 
+                    
+                    # 2. Crear nuevas muestras
+                    for i, m_dict in enumerate(sanitized_muestras):
+                        m_dict['item_numero'] = i + 1
 
-            # 1. Eliminar muestras existentes (Cascade delete handled by ORM usually, but explicit is safer here if not using cascade)
-            # Check model: cascade="all, delete-orphan" is present in RecepcionMuestra.muestras
-            # Cleaning the list via relationship is the ORM way:
-            recepcion.muestras = [] 
-            db.flush() 
-            
-            # 2. Crear nuevas muestras
-            for i, m_dict in enumerate(sanitized_muestras):
-                m_dict['item_numero'] = i + 1
+                        # Ensure defaults
+                        if not m_dict.get('identificacion_muestra') or m_dict.get('identificacion_muestra', '').strip() == '':
+                             m_dict['identificacion_muestra'] = f"Muestra {m_dict.get('item_numero', i+1)}"
+                        
+                        if not m_dict.get('estructura') or m_dict.get('estructura', '').strip() == '':
+                            m_dict['estructura'] = "Sin especificar"
 
-                # Ensure defaults
-                if not m_dict.get('identificacion_muestra') or m_dict.get('identificacion_muestra', '').strip() == '':
-                     m_dict['identificacion_muestra'] = f"Muestra {m_dict.get('item_numero', i+1)}"
-                
-                if not m_dict.get('estructura') or m_dict.get('estructura', '').strip() == '':
-                    m_dict['estructura'] = "Sin especificar"
+                        # Ensure Control Probetas defaults
+                        for field in ['elemento', 'fosa', 'densidad', 'status_ensayo', 'status_entrega', 'fecha_entrega']:
+                            if not m_dict.get(field) or m_dict.get(field, '').strip() == '':
+                                m_dict[field] = "-"
 
-                # Parse update model to dict if needed, typically it's already dict
-                # Normalize LEM code: auto-append -CO-{year} if just a number
-                lem = m_dict.get('codigo_muestra_lem', '')
-                if lem:
-                    m_dict['codigo_muestra_lem'] = _normalize_lem_code(lem)
+                        # Parse update model to dict if needed, typically it's already dict
+                        # Normalize LEM code: auto-append -CO-{year} if just a number
+                        lem = m_dict.get('codigo_muestra_lem', '')
+                        if lem:
+                            m_dict['codigo_muestra_lem'] = _normalize_lem_code(lem)
 
-                new_muestra = MuestraConcreto(recepcion_id=recepcion.id, **m_dict)
-                db.add(new_muestra)
+                        new_muestra = MuestraConcreto(recepcion_id=recepcion.id, **m_dict)
+                        db.add(new_muestra)
+            else:
+                logger.warning("actualizar_recepcion: Se recibió lista de muestras vacía para la OT %s. Se ignora para prevenir borrado accidental.", recepcion.numero_ot)
 
         db.commit()
         db.refresh(recepcion)
