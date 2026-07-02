@@ -788,9 +788,15 @@ class CompresionService:
                     sheet_data = sheet_root.find(f'.//{{{ns}}}sheetData')
 
                     # Cabecera
-                    _set_cell_value(sheet_data, 'H6', recepcion.numero_ot or '', ns)
-                    _set_cell_value(sheet_data, 'K6', recepcion.numero_recepcion or '', ns)
-                    _set_cell_value(sheet_data, 'K10', recepcion.fecha_recepcion.strftime('%Y/%m/%d') if recepcion.fecha_recepcion else '', ns)
+                    _set_cell_value(sheet_data, 'D6', recepcion.cliente or '', ns)
+                    _set_cell_value(sheet_data, 'D7', recepcion.direccion or '', ns)
+                    _set_cell_value(sheet_data, 'D8', recepcion.obra or '', ns)
+                    _set_cell_value(sheet_data, 'D9', recepcion.ubicacion or '', ns)
+                    
+                    _set_cell_value(sheet_data, 'P6', recepcion.numero_recepcion or '', ns)
+                    _set_cell_value(sheet_data, 'P7', recepcion.numero_ot or '', ns)
+                    _set_cell_value(sheet_data, 'P10', recepcion.fecha_recepcion.strftime('%Y/%m/%d') if recepcion.fecha_recepcion else '', ns)
+                    _set_cell_value(sheet_data, 'P11', recepcion.densidad_kg_m3 or '', ns)
 
                     # Inyectar probetas
                     from app.modules.compresion.models import ItemCompresion, EnsayoCompresion
