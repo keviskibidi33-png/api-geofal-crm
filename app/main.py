@@ -414,8 +414,8 @@ _origins = _get_cors_origins()
 # If origins are set specifically, allow credentials. If it's "*", we cannot.
 _allow_creds = "*" not in _origins and len(_origins) > 0
 
-# Regex to allow any geofal subdomain (prod)
-_origin_regex = r"https://.*\.geofal\.com\.pe"
+# Regex to allow any geofal subdomain (prod) and local dev environments
+_origin_regex = r"https?://([a-zA-Z0-9-]+\.)*geofal\.com\.pe(:\d+)?|https?://localhost(:\d+)?|https?://127\.0\.0\.1(:\d+)?"
 
 logger.info("CORS configured: origins=%s allow_credentials=%s", _origins, _allow_creds)
 
