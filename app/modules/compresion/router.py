@@ -369,6 +369,8 @@ def export_informe_medida(
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
     except HTTPException as he:
         raise he
     except Exception as e:
