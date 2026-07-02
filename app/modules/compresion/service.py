@@ -777,12 +777,10 @@ class CompresionService:
                     for alt in list(wb_root.findall(f'.//{{{ns_mc}}}AlternateContent')):
                         wb_root.remove(alt)
 
-                    sheet_filename = 'xl/worksheets/sheet3.xml'
+                    from app.modules.common.excel_xml import resolve_sheet_path
+                    sheet_filename = resolve_sheet_path(z_in, "DATOS") or 'xl/worksheets/sheet4.xml'
                     if sheet_filename not in z_in.namelist():
-                        from app.modules.common.excel_xml import resolve_sheet_path
-                        resolved_sheet = resolve_sheet_path(z_in, "DATOS")
-                        if resolved_sheet:
-                            sheet_filename = resolved_sheet
+                        sheet_filename = 'xl/worksheets/sheet3.xml'
 
                     sheet_xml = z_in.read(sheet_filename)
                     sheet_root = etree.fromstring(sheet_xml)
