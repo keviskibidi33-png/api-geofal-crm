@@ -778,9 +778,9 @@ class CompresionService:
                         wb_root.remove(alt)
 
                     from app.modules.common.excel_xml import resolve_sheet_path
-                    sheet_filename = resolve_sheet_path(z_in, "DATOS") or 'xl/worksheets/sheet4.xml'
+                    sheet_filename = resolve_sheet_path(z_in, "Resumen") or 'xl/worksheets/sheet1.xml'
                     if sheet_filename not in z_in.namelist():
-                        sheet_filename = 'xl/worksheets/sheet3.xml'
+                        sheet_filename = 'xl/worksheets/sheet1.xml'
 
                     sheet_xml = z_in.read(sheet_filename)
                     sheet_root = etree.fromstring(sheet_xml)
