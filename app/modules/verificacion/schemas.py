@@ -198,7 +198,7 @@ class CalculoFormulaRequest(BaseModel):
     """Esquema para solicitar cálculo de fórmula de diámetros"""
     diametro_1_mm: float = Field(..., gt=0, description="Diámetro 1 en mm")
     diametro_2_mm: float = Field(..., gt=0, description="Diámetro 2 en mm")
-    tipo_testigo: str = Field(..., description="Tipo de testigo (30x15 o 20x10)")
+    tipo_testigo: Optional[str] = Field("", description="Tipo de testigo (30x15 o 20x10)")
 
 class CalculoFormulaResponse(BaseModel):
     """Esquema de respuesta para cálculo de fórmula de diámetros"""
