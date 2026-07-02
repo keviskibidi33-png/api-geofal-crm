@@ -803,7 +803,12 @@ class CompresionService:
                     for idx, m in enumerate(muestras):
                         row = 14 + idx
                         _set_cell_value(sheet_data, f'A{row}', m.codigo_muestra_lem or '', ns)
-                        _set_cell_value(sheet_data, f'B{row}', m.codigo_muestra or '', ns)
+                        # Fallback robusto para el código de cliente en caso venga nulo de la DB
+                        client_code = m.codigo_muestra or m.identificacion_muestra
+                        if not client_code and m.codigo_muestra_lem:
+                            # Si es 2312321-CO-26 -> extrae 2312321
+                            client_code = m.codigo_muestra_lem.split("-")[0]
+                        _set_cell_value(sheet_data, f'B{row}', client_code or '', ns)
                         _set_cell_value(sheet_data, f'C{row}', m.estructura or '', ns)
                         _set_cell_value(sheet_data, f'D{row}', m.fc_kg_cm2, ns, is_number=True)
                         _set_cell_value(sheet_data, f'E{row}', m.fecha_moldeo or '', ns)
