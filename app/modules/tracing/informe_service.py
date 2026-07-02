@@ -188,7 +188,7 @@ class InformeService:
             "proyecto": get_header_val("proyecto"),
             "ubicacion": get_header_val("ubicacion"),
             "recepcion_numero": (recepcion.numero_recepcion if recepcion else (verificacion.numero_verificacion if verificacion else (compresion.numero_recepcion if compresion else numero_recepcion))),
-            "ot_numero": get_header_val("numero_ot"),
+            "ot_numero": (get_header_val("numero_ot") or "").replace("OT-", "").replace("OT", "").strip(),
             "estructura": m0.estructura if m0 else "",
             "fc_kg_cm2": m0.fc_kg_cm2 if m0 else None,
             "fecha_recepcion": recepcion.fecha_recepcion if recepcion else None,

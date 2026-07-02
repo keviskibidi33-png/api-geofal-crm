@@ -787,13 +787,25 @@ class CompresionService:
                     ns = sheet_root.nsmap.get(None, NAMESPACES['main'])
                     sheet_data = sheet_root.find(f'.//{{{ns}}}sheetData')
 
-                    _set_cell_value(sheet_data, 'B6', recepcion.cliente or '', ns)
-                    _set_cell_value(sheet_data, 'B7', getattr(recepcion, "domicilio_legal", None) or getattr(recepcion, "domicilio_solicitante", "") or '', ns)
-                    _set_cell_value(sheet_data, 'B8', getattr(recepcion, "proyecto", "") or '', ns)
-                    _set_cell_value(sheet_data, 'B9', recepcion.ubicacion or '', ns)
+                    cliente_val = recepcion.cliente or ''
+                    _set_cell_value(sheet_data, 'B6', cliente_val, ns)
+                    _set_cell_value(sheet_data, 'D6', cliente_val, ns)
+                    
+                    direccion_val = getattr(recepcion, "domicilio_legal", None) or getattr(recepcion, "domicilio_solicitante", "") or ''
+                    _set_cell_value(sheet_data, 'B7', direccion_val, ns)
+                    _set_cell_value(sheet_data, 'D7', direccion_val, ns)
+                    
+                    proyecto_val = getattr(recepcion, "proyecto", "") or ''
+                    _set_cell_value(sheet_data, 'B8', proyecto_val, ns)
+                    _set_cell_value(sheet_data, 'D8', proyecto_val, ns)
+                    
+                    ubicacion_val = recepcion.ubicacion or ''
+                    _set_cell_value(sheet_data, 'B9', ubicacion_val, ns)
+                    _set_cell_value(sheet_data, 'D9', ubicacion_val, ns)
                     
                     _set_cell_value(sheet_data, 'P6', recepcion.numero_recepcion or '', ns)
-                    _set_cell_value(sheet_data, 'P7', recepcion.numero_ot or '', ns)
+                    ot_val = (recepcion.numero_ot or "").replace("OT-", "").replace("OT", "").strip()
+                    _set_cell_value(sheet_data, 'P7', ot_val, ns)
                     _set_cell_value(sheet_data, 'P10', recepcion.fecha_recepcion.strftime('%Y/%m/%d') if recepcion.fecha_recepcion else '', ns)
                     has_density = "SI" if any(getattr(m, "requiere_densidad", False) for m in muestras) else "NO"
                     _set_cell_value(sheet_data, 'P11', has_density, ns)
