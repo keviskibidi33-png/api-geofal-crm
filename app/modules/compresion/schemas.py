@@ -141,3 +141,12 @@ class CompressionExportRequest(BaseModel):
     nombre_equipo: Optional[str] = None
     otros: Optional[str] = None
     nota: Optional[str] = None
+
+
+class CompressionCustomReportRequest(BaseModel):
+    numero_recepcion: str
+    muestras_ids: List[int]
+
+    nombre_equipo: Optional[str] = None
+    otros: Optional[str] = None
+    nota: Optional[str] = None

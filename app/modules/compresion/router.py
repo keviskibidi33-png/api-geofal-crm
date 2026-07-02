@@ -9,7 +9,8 @@ from .schemas import (
     EnsayoCompresionCreate, 
     EnsayoCompresionUpdate, 
     EnsayoCompresionResponse,
-    CompressionExportRequest
+    CompressionExportRequest,
+    CompressionCustomReportRequest
 )
 from .service import CompresionService
 from .exceptions import DuplicateEnsayoError
@@ -349,3 +350,29 @@ def export_compression(payload: CompressionExportRequest):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/informe-medida")
+def export_informe_medida(
+    payload: CompressionCustomReportRequest,
+    db: Session = Depends(get_db_session)
+):
+    """Generar informe de compresión personalizado para 1-6 probetas seleccionadas"""
+    try:
+        excel_file = compresion_service.generar_excel_medida(db, payload)
+        if not excel_file:
+            raise HTTPException(status_code=400, detail="No se pudo generar el reporte a medida")
+        
+        filename = f"Informe-Concreto-{payload.numero_recepcion}.xlsx"
+        return StreamingResponse(
+            excel_file,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error al generar reporte: {str(e)}")
+

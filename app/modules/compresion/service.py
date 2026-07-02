@@ -713,3 +713,140 @@ class CompresionService:
                     logger.error(f"Error regenerando excel de compresión en sincronización: {e}")
 
         db.commit()
+
+    def generar_excel_medida(self, db: Session, payload: Any) -> Optional[io.BytesIO]:
+        """Generar Excel personalizado con 1-6 probetas utilizando plantillas de concreto a medida"""
+        from app.modules.recepcion.models import RecepcionMuestra, MuestraConcreto
+        from app.modules.common.excel_xml import find_template_path
+        import zipfile
+        from lxml import etree
+        from .excel import _set_cell_value, NAMESPACES
+
+        recepcion = db.query(RecepcionMuestra).filter(
+            RecepcionMuestra.numero_recepcion == payload.numero_recepcion
+        ).first()
+        if not recepcion:
+            return None
+
+        # Obtener las muestras seleccionadas
+        muestras = db.query(MuestraConcreto).filter(
+            MuestraConcreto.id.in_(payload.muestras_ids)
+        ).order_by(MuestraConcreto.item_numero).all()
+
+        n_muestras = len(muestras)
+        if n_muestras < 1 or n_muestras > 6:
+            raise ValueError("Debe seleccionar entre 1 y 6 probetas para este informe.")
+
+        # Resolver la plantilla correcta
+        template_name = f"1-Inf-N-000-26-CO12-COM-V04 -{n_muestras}.xlsx"
+        template_path = find_template_path(template_name)
+        if not template_path.exists():
+            # Buscar recursivamente en subdirectorios
+            import glob
+            parent_dir = template_path.parent
+            matches = glob.glob(f"**/informes/Informe-Concreto/{template_name}", recursive=True)
+            if matches:
+                template_path = Path(matches[0])
+            else:
+                raise FileNotFoundError(f"No se encontró la plantilla {template_name}")
+
+        output = io.BytesIO()
+        with zipfile.ZipFile(template_path, 'r') as z_in:
+            with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED) as z_out:
+                # Cargar estilos y workbook
+                wrap_style = None
+                if 'xl/styles.xml' in z_in.namelist():
+                    from .excel import _find_wrap_text_style
+                    wrap_style = _find_wrap_text_style(z_in.read('xl/styles.xml'))
+
+                wb_xml = z_in.read('xl/workbook.xml')
+                wb_root = etree.fromstring(wb_xml)
+                ns_mc = 'http://schemas.openxmlformats.org/markup-compatibility/2006'
+                for alt in list(wb_root.findall(f'.//{{{ns_mc}}}AlternateContent')):
+                    wb_root.remove(alt)
+
+                # Cargar hoja DATOS (usualmente sheet3.xml o resolver por relación, pero por simplicidad probamos sheet3.xml)
+                # Buscaremos primero si existe xl/worksheets/sheet3.xml que es donde está la hoja de datos
+                sheet_filename = 'xl/worksheets/sheet3.xml'
+                if sheet_filename not in z_in.namelist():
+                    # Fallback recursivo para encontrar la hoja de datos
+                    from app.modules.common.excel_xml import resolve_sheet_path
+                    resolved_sheet = resolve_sheet_path(z_in, "DATOS")
+                    if resolved_sheet:
+                        sheet_filename = resolved_sheet
+
+                sheet_xml = z_in.read(sheet_filename)
+                sheet_root = etree.fromstring(sheet_xml)
+                ns = sheet_root.nsmap.get(None, NAMESPACES['main'])
+                sheet_data = sheet_root.find(f'.//{{{ns}}}sheetData')
+
+                # Cabecera de la Recepción en Datos
+                _set_cell_value(sheet_data, 'H6', recepcion.numero_ot or '', ns)
+                _set_cell_value(sheet_data, 'K6', recepcion.numero_recepcion or '', ns)
+                _set_cell_value(sheet_data, 'K10', recepcion.fecha_recepcion.strftime('%Y/%m/%d') if recepcion.fecha_recepcion else '', ns)
+
+                # Inyectar probetas a partir de fila 14
+                # Columnas: A=LEM, B=Cliente, C=Estructura, D=F'c, E=Fecha Moldeo, F=Fecha Rotura,
+                # G=Hora Moldeo, H=Hora Rotura, I=D1, J=D2, K=L1, L=L2, M=L3, N=Carga Max, O=Tipo fractura, P=Masa
+                from app.modules.compresion.models import ItemCompresion, EnsayoCompresion
+                for idx, m in enumerate(muestras):
+                    row = 14 + idx
+                    _set_cell_value(sheet_data, f'A{row}', m.codigo_muestra_lem or '', ns)
+                    _set_cell_value(sheet_data, f'B{row}', m.codigo_muestra or '', ns)
+                    _set_cell_value(sheet_data, f'C{row}', m.estructura or '', ns)
+                    _set_cell_value(sheet_data, f'D{row}', m.fc_kg_cm2, ns, is_number=True)
+                    _set_cell_value(sheet_data, f'E{row}', m.fecha_moldeo or '', ns)
+                    _set_cell_value(sheet_data, f'F{row}', m.fecha_rotura or '', ns)
+                    _set_cell_value(sheet_data, f'G{row}', m.hora_moldeo or '', ns)
+                    
+                    # Buscar datos del ensayo físico de compresión/rotura correspondientes en DB si existen
+                    item_fisico = db.query(ItemCompresion).join(EnsayoCompresion).filter(
+                        EnsayoCompresion.numero_recepcion == recepcion.numero_recepcion,
+                        ItemCompresion.item == m.item_numero
+                    ).first()
+
+                    if item_fisico:
+                        _set_cell_value(sheet_data, f'H{row}', item_fisico.hora_ensayo or '', ns)
+                        _set_cell_value(sheet_data, f'N{row}', item_fisico.carga_maxima or 0.0, ns, is_number=True)
+                        _set_cell_value(sheet_data, f'O{row}', item_fisico.tipo_fractura or '', ns)
+                    else:
+                        _set_cell_value(sheet_data, f'H{row}', '', ns)
+                        _set_cell_value(sheet_data, f'N{row}', 0.0, ns, is_number=True)
+                        _set_cell_value(sheet_data, f'O{row}', '', ns)
+
+                    # Buscar dimensiones en Verificación de Muestras si existen
+                    from app.modules.verificacion.models import VerificacionMuestras, MuestraVerificada
+                    verif = db.query(VerificacionMuestras).filter(VerificacionMuestras.numero_verificacion == recepcion.numero_recepcion).first()
+                    if verif:
+                        m_verif = db.query(MuestraVerificada).filter(
+                            MuestraVerificada.verificacion_id == verif.id,
+                            MuestraVerificada.item_numero == m.item_numero
+                        ).first()
+                        if m_verif:
+                            _set_cell_value(sheet_data, f'I{row}', m_verif.diametro_1_mm or 0.0, ns, is_number=True)
+                            _set_cell_value(sheet_data, f'J{row}', m_verif.diametro_2_mm or 0.0, ns, is_number=True)
+                            _set_cell_value(sheet_data, f'K{row}', m_verif.longitud_1_mm or 0.0, ns, is_number=True)
+                            _set_cell_value(sheet_data, f'L{row}', m_verif.longitud_2_mm or 0.0, ns, is_number=True)
+                            _set_cell_value(sheet_data, f'M{row}', m_verif.longitud_3_mm or 0.0, ns, is_number=True)
+                            _set_cell_value(sheet_data, f'P{row}', m_verif.masa_muestra_aire_g or 0.0, ns, is_number=True)
+
+                # Escribir de vuelta todos los ficheros del zip sin calcChain para evitar alertas de Excel
+                for item_name in z_in.namelist():
+                    if item_name == "xl/calcChain.xml":
+                        continue
+                    if item_name == sheet_filename:
+                        z_out.writestr(item_name, etree.tostring(sheet_root, encoding='utf-8', xml_declaration=True))
+                    elif item_name == 'xl/workbook.xml':
+                        z_out.writestr(item_name, etree.tostring(wb_root, encoding='utf-8', xml_declaration=True))
+                    else:
+                        z_out.writestr(item_name, z_in.read(item_name))
+
+        # Registrar de forma persistente en las muestras que ya fueron reportadas
+        for m in muestras:
+            m.status_entrega = "GENERADO"
+            m.fecha_entrega = date.today().strftime('%Y-%m-%d')
+        db.commit()
+
+        output.seek(0)
+        return output
+
