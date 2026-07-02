@@ -753,6 +753,7 @@ class CompresionService:
             import glob
             matches = glob.glob(f"**/informes/Informe-Concreto/{template_name}", recursive=True)
             if matches:
+                from pathlib import Path
                 template_path = Path(matches[0])
             else:
                 raise FileNotFoundError(f"No se encontró la plantilla de informe concreto a medida: {template_name}")
