@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import List, Optional
 from datetime import datetime
+import logging
 from app.database import get_db_session
 from app.modules.common.recepcion_codes import resolve_codigo_muestra_lem
 from .schemas import (
@@ -17,6 +18,8 @@ from .schemas import (
 from .service import VerificacionService
 from .excel import ExcelLogic
 from app.modules.common.notifications import notify_laboratory_essay_event, resolve_actor_identity, get_request_actor_context
+
+logger = logging.getLogger(__name__)
 
 DELETE_ALLOWED_ROLES = {"admin", "tecnico", "oficina_tecnica"}
 
@@ -58,9 +61,33 @@ def crear_verificacion(verificacion: VerificacionMuestrasCreate, request: Reques
     new_verificacion = service.crear_verificacion(verificacion)
     try:
         from app.modules.tracing.service import TracingService
-        TracingService.actualizar_trazabilidad(db, new_verificacion.numero_verificacion)
+        numero_original = new_verificacion.numero_verificacion
+        # Red de seguridad: normalizar el número antes de sincronizar.
+        # Convierte formatos como "1343-REC-26" al canónico "1343-26"
+        # para que TracingService lo cruce correctamente con la recepción.
+        numero_para_tracing = TracingService._extraer_numero_base(numero_original) or numero_original
+        if numero_para_tracing != numero_original:
+            logger.warning(
+                "[VERIFICACION] Número con formato REC detectado al crear. "
+                "Normalizando para trazabilidad: '%s' -> '%s'. "
+                "verificacion_id=%s. Posible duplicado si ya existe entrada con número canónico.",
+                numero_original,
+                numero_para_tracing,
+                new_verificacion.id,
+            )
+        TracingService.actualizar_trazabilidad(db, numero_para_tracing)
+        logger.info(
+            "[VERIFICACION] Trazabilidad sincronizada. verificacion_id=%s numero='%s'",
+            new_verificacion.id,
+            numero_para_tracing,
+        )
     except Exception as e:
-        print(f"Error sync trazabilidad: {e}")
+        logger.error(
+            "[VERIFICACION] Error sync trazabilidad. verificacion_id=%s numero='%s' error=%s",
+            new_verificacion.id,
+            new_verificacion.numero_verificacion,
+            e,
+        )
     if request is not None:
         actor = resolve_actor_identity(db, request)
         notify_laboratory_essay_event(
@@ -120,7 +147,7 @@ async def buscar_recepcion(
                 {
                     "item_numero": m.item_numero,
                     "codigo_lem": resolve_codigo_muestra_lem(m),
-                    "tipo_testigo": "6in x 12in", # Default value as MuestraConcreto has no specific type field
+                    "tipo_testigo": "6in x 12in",
                 } 
                 for m in recepcion.muestras
             ]

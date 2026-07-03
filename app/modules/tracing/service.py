@@ -400,6 +400,14 @@ class TracingService:
             for num in numeros_busqueda:
                 traza = TracingService._trazabilidad_query(db).filter(Trazabilidad.numero_recepcion == num).first()
                 if traza:
+                    if traza.numero_recepcion != canonical_numero:
+                        logger.warning(
+                            "[TRACING] Trazabilidad encontrada con número no canónico. "
+                            "id=%s numero_actual='%s' numero_canonico='%s'. Normalizando.",
+                            traza.id,
+                            traza.numero_recepcion,
+                            canonical_numero,
+                        )
                     break
 
         # --- PERSISTENCE & CLEANUP FIX ---
@@ -407,14 +415,24 @@ class TracingService:
         if not recepcion and not verificacion and not compresion:
             if traza:
                 # Si el usuario borró todo, borramos la trazabilidad para no tener registros fantasma
-                # A menos que queramos mantener historial (pero el usuario reportó esto como bug)
+                logger.warning(
+                    "[TRACING][DELETE] Eliminando trazabilidad fantasma: no hay recepción, "
+                    "verificación ni compresión para este número. "
+                    "trazabilidad_id=%s numero='%s'",
+                    traza.id,
+                    traza.numero_recepcion,
+                )
                 db.delete(traza)
                 db.commit()
                 return None
-            return None # No crear nada si no hay nada
+            return None  # No crear nada si no hay nada
         
         if not traza:
             if has_fecha_entrega:
+                logger.info(
+                    "[TRACING] Creando nueva entrada de trazabilidad. numero='%s'",
+                    canonical_numero,
+                )
                 traza = Trazabilidad(numero_recepcion=canonical_numero)
                 db.add(traza)
             else:

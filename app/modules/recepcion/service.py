@@ -400,24 +400,54 @@ class RecepcionService:
         return recepcion
     
     def eliminar_recepcion(self, db: Session, recepcion_id: int) -> bool:
-        """Eliminar recepción"""
+        """Eliminar recepción. Emite log de auditoría completo antes del borrado físico."""
         recepcion = db.query(RecepcionMuestra).filter(RecepcionMuestra.id == recepcion_id).first()
         if not recepcion:
+            logger.warning(
+                "[RECEPCION][DELETE] Intento de eliminar recepción inexistente. recepcion_id=%s",
+                recepcion_id,
+            )
             return False
-            
+
+        # Snapshot completo ANTES del borrado físico (audit trail en logs)
+        muestras_count = len(list(recepcion.muestras or []))
+        logger.warning(
+            "[RECEPCION][DELETE] ELIMINANDO recepción. "
+            "id=%s numero='%s' ot='%s' cliente='%s' muestras=%s object_key='%s'",
+            recepcion.id,
+            recepcion.numero_recepcion,
+            recepcion.numero_ot,
+            recepcion.cliente,
+            muestras_count,
+            recepcion.object_key,
+        )
+
         from app.utils.storage_utils import StorageUtils
         StorageUtils.safe_cleanup_storage(db, recepcion.bucket, recepcion.object_key)
         
         numero_backup = recepcion.numero_recepcion
         db.delete(recepcion)
         db.commit()
+        logger.warning(
+            "[RECEPCION][DELETE] Recepción eliminada de DB. id=%s numero='%s'",
+            recepcion_id,
+            numero_backup,
+        )
 
         # Sync Trazabilidad
         try:
             from app.modules.tracing.service import TracingService
             TracingService.actualizar_trazabilidad(db, numero_backup)
+            logger.info(
+                "[RECEPCION][DELETE] Trazabilidad sincronizada post-delete. numero='%s'",
+                numero_backup,
+            )
         except Exception as tr_e:
-            logger.warning("Error syncing trazabilidad on delete reception: %s", tr_e)
+            logger.warning(
+                "[RECEPCION][DELETE] Error syncing trazabilidad post-delete. numero='%s' error=%s",
+                numero_backup,
+                tr_e,
+            )
 
         return True
 
