@@ -350,19 +350,19 @@ class RecepcionService:
                         sanitized_muestras.append(sanitized)
 
                 if sanitized_muestras:
-                    # 1. Eliminar muestras existentes (Cascade delete handled by ORM usually, but explicit is safer here if not using cascade)
-                    # Check model: cascade="all, delete-orphan" is present in RecepcionMuestra.muestras
-                    # Cleaning the list via relationship is the ORM way:
-                    recepcion.muestras = [] 
-                    db.flush() 
+                    # Mapear muestras existentes por item_numero para hacer merge/UPSERT in-place
+                    existing_muestras_map = {m.item_numero: m for m in recepcion.muestras if m.item_numero is not None}
+                    incoming_item_numbers = set()
                     
-                    # 2. Crear nuevas muestras
+                    # 1. Crear o actualizar muestras
                     for i, m_dict in enumerate(sanitized_muestras):
-                        m_dict['item_numero'] = i + 1
+                        item_num = i + 1
+                        incoming_item_numbers.add(item_num)
+                        m_dict['item_numero'] = item_num
 
                         # Ensure defaults
                         if not m_dict.get('identificacion_muestra') or m_dict.get('identificacion_muestra', '').strip() == '':
-                             m_dict['identificacion_muestra'] = f"Muestra {m_dict.get('item_numero', i+1)}"
+                             m_dict['identificacion_muestra'] = f"Muestra {item_num}"
                         
                         if not m_dict.get('estructura') or m_dict.get('estructura', '').strip() == '':
                             m_dict['estructura'] = "Sin especificar"
@@ -372,14 +372,26 @@ class RecepcionService:
                             if not m_dict.get(field) or m_dict.get(field, '').strip() == '':
                                 m_dict[field] = "-"
 
-                        # Parse update model to dict if needed, typically it's already dict
                         # Normalize LEM code: auto-append -CO-{year} if just a number
                         lem = m_dict.get('codigo_muestra_lem', '')
                         if lem:
                             m_dict['codigo_muestra_lem'] = _normalize_lem_code(lem)
 
-                        new_muestra = MuestraConcreto(recepcion_id=recepcion.id, **m_dict)
-                        db.add(new_muestra)
+                        if item_num in existing_muestras_map:
+                            # Actualizar muestra existente
+                            db_muestra = existing_muestras_map[item_num]
+                            for campo, valor in m_dict.items():
+                                if hasattr(db_muestra, campo):
+                                    setattr(db_muestra, campo, valor)
+                        else:
+                            # Crear nueva muestra
+                            new_muestra = MuestraConcreto(recepcion_id=recepcion.id, **m_dict)
+                            db.add(new_muestra)
+                            
+                    # 2. Eliminar muestras sobrantes
+                    for existing_item_num, db_muestra in list(existing_muestras_map.items()):
+                        if existing_item_num not in incoming_item_numbers:
+                            db.delete(db_muestra)
             else:
                 logger.warning("actualizar_recepcion: Se recibió lista de muestras vacía para la OT %s. Se ignora para prevenir borrado accidental.", recepcion.numero_ot)
 

@@ -92,3 +92,31 @@ class StorageUtils:
             if not StorageUtils.is_file_referenced(db, local_path=local_path):
                 logger.info("Eliminando archivo local no referenciado: %s", local_path)
                 StorageUtils.delete_local_file(local_path)
+
+    @staticmethod
+    def download_supabase_file(bucket: str, object_key: str) -> Optional[bytes]:
+        """Descarga el contenido de un archivo desde Supabase Storage"""
+        if not bucket or not object_key:
+            return None
+            
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        
+        if not supabase_url or not supabase_key:
+            return None
+            
+        url = f"{supabase_url}/storage/v1/object/{bucket}/{object_key}"
+        headers = {
+            "Authorization": f"Bearer {supabase_key}",
+            "apikey": supabase_key
+        }
+        
+        try:
+            response = http_get(url, headers=headers, timeout=30, request_name=f"storage-download:{bucket}")
+            if response.status_code == 200:
+                return response.content
+            logger.error("Error descargando archivo de Supabase bucket=%s key=%s status=%s", bucket, object_key, response.status_code)
+            return None
+        except Exception:
+            logger.exception("Error descargando archivo de Supabase bucket=%s key=%s", bucket, object_key)
+            return None

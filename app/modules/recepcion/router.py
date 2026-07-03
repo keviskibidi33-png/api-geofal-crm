@@ -358,3 +358,91 @@ async def eliminar_recepcion(
             },
         )
     return {"message": "Recepción eliminada correctamente"}
+
+@router.post("/{recepcion_id}/sync-from-excel")
+async def sync_recepcion_from_excel(
+    recepcion_id: int,
+    request: Request,
+    db: Session = Depends(get_db_session)
+):
+    """
+    Sincroniza y restaura las muestras de una recepción a partir del archivo Excel
+    guardado en Supabase Storage.
+    """
+    from app.utils.storage_utils import StorageUtils
+    
+    # 1. Obtener la recepción
+    recepcion = recepcion_service.obtener_recepcion(db, recepcion_id)
+    if not recepcion:
+        raise HTTPException(status_code=404, detail="Recepción no encontrada")
+        
+    # 2. Verificar que tenga archivo en Storage
+    bucket = recepcion.bucket or "recepciones"
+    object_key = recepcion.object_key
+    if not object_key:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"La recepción {recepcion.numero_recepcion} no tiene un archivo Excel asociado en el Storage."
+        )
+        
+    # 3. Descargar el archivo
+    excel_content = StorageUtils.download_supabase_file(bucket, object_key)
+    if not excel_content:
+        raise HTTPException(
+            status_code=404, 
+            detail=f"No se pudo descargar el archivo Excel '{object_key}' del bucket '{bucket}'."
+        )
+        
+    # 4. Parsear el archivo Excel
+    try:
+        parsed_data = excel_logic.parsear_recepcion(excel_content)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Error al analizar el archivo Excel recuperado: {str(e)}"
+        )
+        
+    muestras_data = parsed_data.get("muestras", [])
+    if not muestras_data:
+        raise HTTPException(
+            status_code=400, 
+            detail="El archivo Excel recuperado no contiene ninguna muestra válida."
+        )
+        
+    # 5. Ejecutar la actualización (UPSERT)
+    try:
+        # Enviar muestras al método actualizar_recepcion
+        update_payload = {"muestras": muestras_data}
+        updated_recepcion = recepcion_service.actualizar_recepcion(db, recepcion_id, update_payload)
+        
+        # Registrar en la auditoría
+        if request is not None:
+            actor = resolve_actor_identity(db, request)
+            notify_laboratory_essay_event(
+                module_key="recepcion",
+                record_id=updated_recepcion.id,
+                record_code=str(updated_recepcion.numero_recepcion or "").strip(),
+                actor_name=actor["full_name"],
+                actor_user_id=actor["user_id"] or None,
+                actor_role=actor["role"] or None,
+                actor_avatar_url=actor.get("avatar_url") or None,
+                action="updated",
+                extra_metadata={
+                    "numero_ot": updated_recepcion.numero_ot,
+                    "detail_route": "recepcion",
+                    "sync_from_excel": True
+                },
+            )
+            
+        return {
+            "message": f"Sincronización exitosa. Se restauraron/actualizaron {len(muestras_data)} muestras.",
+            "numero_recepcion": updated_recepcion.numero_recepcion,
+            "muestras_count": len(updated_recepcion.muestras)
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al restaurar las muestras en la base de datos: {str(e)}"
+        )
