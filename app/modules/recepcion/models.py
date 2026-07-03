@@ -121,6 +121,56 @@ class MuestraConcreto(Base):
     fecha_creacion = Column(DateTime, nullable=False, default=func.now(), comment="Fecha de creación")
     fecha_actualizacion = Column(DateTime, nullable=True, onupdate=func.now(), comment="Fecha de última actualización")
     
+    @property
+    def diametro_1(self):
+        from sqlalchemy.orm import object_session
+        session = object_session(self)
+        if not session:
+            return None
+        try:
+            from app.modules.verificacion.models import VerificacionMuestras, MuestraVerificada
+            recepcion = self.recepcion_parent
+            if not recepcion:
+                return None
+            verif = session.query(VerificacionMuestras).filter(
+                VerificacionMuestras.numero_verificacion == recepcion.numero_recepcion
+            ).first()
+            if verif:
+                m_verif = session.query(MuestraVerificada).filter(
+                    MuestraVerificada.verificacion_id == verif.id,
+                    MuestraVerificada.item_numero == self.item_numero
+                ).first()
+                if m_verif:
+                    return m_verif.diametro_1_mm
+        except Exception:
+            pass
+        return None
+
+    @property
+    def carga_maxima(self):
+        from sqlalchemy.orm import object_session
+        session = object_session(self)
+        if not session:
+            return None
+        try:
+            from app.modules.compresion.models import EnsayoCompresion, ItemCompresion
+            recepcion = self.recepcion_parent
+            if not recepcion:
+                return None
+            ensayo = session.query(EnsayoCompresion).filter(
+                EnsayoCompresion.numero_recepcion == recepcion.numero_recepcion
+            ).first()
+            if ensayo:
+                item_fisico = session.query(ItemCompresion).filter(
+                    ItemCompresion.ensayo_id == ensayo.id,
+                    ItemCompresion.item == self.item_numero
+                ).first()
+                if item_fisico:
+                    return item_fisico.carga_maxima
+        except Exception:
+            pass
+        return None
+    
 
 class RecepcionPlantilla(Base):
     """

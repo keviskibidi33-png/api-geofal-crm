@@ -23,6 +23,8 @@ class MuestraConcretoBase(BaseModel):
     status_ensayo: Optional[str] = Field("-", description="Estado del ensayo")
     status_entrega: Optional[str] = Field("-", description="Estado de la entrega de informe")
     fecha_entrega: Optional[str] = Field("-", description="Fecha de entrega de informe")
+    diametro_1: Optional[float] = Field(None, description="Diámetro 1 de la probeta")
+    carga_maxima: Optional[float] = Field(None, description="Carga máxima soportada")
 
     @validator('fecha_moldeo', 'fecha_rotura')
     def validate_date_format(cls, v):
