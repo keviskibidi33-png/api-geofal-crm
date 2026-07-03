@@ -363,7 +363,22 @@ def export_informe_medida(
         if not excel_file:
             raise HTTPException(status_code=400, detail="No se pudo generar el reporte a medida")
         
-        filename = f"Informe-Concreto-{payload.numero_recepcion}.xlsx"
+        import re
+        import os
+        rec_num = payload.numero_recepcion or ""
+        match = re.search(r'(\d+)', rec_num)
+        rec_code = match.group(1) if match else "000"
+        
+        n_muestras = len(payload.muestras_ids or [])
+        template_prefix = os.getenv("CONCRETE_TEMPLATE_PREFIX", "1-Inf-N-000-26-CO12-COM-V04")
+        
+        if "000" in template_prefix:
+            filename_prefix = template_prefix.replace("000", rec_code)
+        else:
+            filename_prefix = f"{template_prefix}-{rec_code}"
+            
+        filename = f"{filename_prefix} -{n_muestras}.xlsx"
+        
         return StreamingResponse(
             excel_file,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
