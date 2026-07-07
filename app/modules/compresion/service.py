@@ -789,8 +789,8 @@ class CompresionService:
                     ns = sheet_root.nsmap.get(None, NAMESPACES['main'])
                     sheet_data = sheet_root.find(f'.//{{{ns}}}sheetData')
 
-                    _set_cell_value(sheet_data, 'B6', recepcion.cliente or '', ns)
-                    _set_cell_value(sheet_data, 'B7', getattr(recepcion, "domicilio_legal", None) or getattr(recepcion, "domicilio_solicitante", "") or '', ns)
+                    _set_cell_value(sheet_data, 'B6', recepcion.solicitante or '-', ns)
+                    _set_cell_value(sheet_data, 'B7', getattr(recepcion, "domicilio_solicitante", None) or '-', ns)
                     _set_cell_value(sheet_data, 'B8', getattr(recepcion, "proyecto", "") or '', ns)
                     _set_cell_value(sheet_data, 'B9', recepcion.ubicacion or '', ns)
                     
