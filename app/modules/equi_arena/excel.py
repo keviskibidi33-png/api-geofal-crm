@@ -94,10 +94,27 @@ def _set_cell(sheet_data: etree._Element, ref: str, value: Any, is_number: bool 
         cell.remove(child)
 
     if is_number:
-        cell.attrib.pop("t", None)
-        val = etree.SubElement(cell, f"{{{NS_SHEET}}}v")
-        val.text = str(value)
-        return
+        is_val_numeric = False
+        num_val = value
+        try:
+            if isinstance(value, str):
+                cleaned = value.strip().replace(",", ".")
+                if cleaned and cleaned != "-":
+                    if "." in cleaned:
+                        num_val = float(cleaned)
+                    else:
+                        num_val = int(cleaned)
+                    is_val_numeric = True
+            elif isinstance(value, (int, float)):
+                is_val_numeric = True
+        except (ValueError, TypeError):
+            pass
+
+        if is_val_numeric:
+            cell.attrib.pop("t", None)
+            val = etree.SubElement(cell, f"{{{NS_SHEET}}}v")
+            val.text = str(num_val)
+            return
 
     text = str(value)
     cell.set("t", "inlineStr")

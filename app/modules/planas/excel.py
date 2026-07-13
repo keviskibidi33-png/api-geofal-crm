@@ -210,8 +210,6 @@ def _fill_sheet(sheet_xml: bytes, data: PlanasRequest) -> bytes:
         _set_cell(sheet_data, "D32", round(total_original, 4), is_number=True)
     if total_pct > 0:
         _set_cell(sheet_data, "F32", round(total_pct, 4), is_number=True)
-    if total_reduccion > 0:
-        _set_cell(sheet_data, "K32", round(total_reduccion, 4), is_number=True)
 
     # Tabla metodo A/B (filas 39..44)
     metodo_rows = data.metodo_rows[:6]
