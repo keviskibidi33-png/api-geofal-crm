@@ -123,6 +123,27 @@ def _fill_sheet(sheet_xml: bytes, data: GeFinoRequest) -> bytes:
     _set_cell(sd, "E11", data.fecha_ensayo)
     _set_cell(sd, "F11", data.realizado_por)
 
+    # Copiar estilo de C11 (que es centrado) a F11 para asegurar que se centre
+    c11 = sd.find(f".//{{{NS_SHEET}}}c[@r='C11']")
+    c11_style = c11.get("s") if c11 is not None else None
+    f11 = sd.find(f".//{{{NS_SHEET}}}c[@r='F11']")
+    if f11 is not None and c11_style is not None:
+        f11.set("s", c11_style)
+
+    # Combinar celdas F11:G11 dinámicamente
+    merge_cells = root.find(f".//{{{NS_SHEET}}}mergeCells")
+    if merge_cells is not None:
+        already_merged = False
+        for mc in merge_cells:
+            if mc.get("ref") == "F11:G11":
+                already_merged = True
+                break
+        if not already_merged:
+            new_mc = etree.SubElement(merge_cells, f"{{{NS_SHEET}}}mergeCell")
+            new_mc.set("ref", "F11:G11")
+            count = int(merge_cells.get("count", 0))
+            merge_cells.set("count", str(count + 1))
+
     # Especimen de prueba
     _set_cell(sd, "D16", data.masa_humeda_g, is_number=True)
     _set_cell(sd, "D17", data.masa_seca_g, is_number=True)
