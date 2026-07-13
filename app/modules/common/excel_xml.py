@@ -477,7 +477,7 @@ def strip_external_references(workbook_xml: bytes) -> bytes:
     if defined_names is not None:
         for defined_name in list(defined_names):
             text = (defined_name.text or "").strip()
-            if "#REF!" in text or "[" in text:
+            if "#REF!" in text or "#N/A" in text or "[" in text:
                 defined_names.remove(defined_name)
         if len(defined_names) == 0:
             root.remove(defined_names)
