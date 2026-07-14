@@ -76,6 +76,7 @@ class DensidadHuantarRequest(LabRequestBase):
     eq_tamiz_4: Optional[str] = Field("-", description="Tamiz 4 in")
     eq_pesa_patron_200g: Optional[str] = Field("-", description="Pesa patrón 200 g")
     eq_tamiz_3_8: Optional[str] = Field("-", description="Tamiz 3/8 in")
+    eq_balanza_500g: Optional[str] = Field("-", description="Balanza 500 g")
 
     puntos: List[DensidadHuantarPunto] = Field(default_factory=list, description="Lista de puntos de ensayo (hasta 4)")
 
@@ -85,7 +86,7 @@ class DensidadHuantarRequest(LabRequestBase):
         "humedad_relativa_inicial", "humedad_relativa_final",
         "eq_balanza_30kg", "eq_pesa_patron_5kg", "eq_cono_equipo",
         "eq_tamiz_3_4", "eq_termohigrometro", "eq_tamiz_4",
-        "eq_pesa_patron_200g", "eq_tamiz_3_8",
+        "eq_pesa_patron_200g", "eq_tamiz_3_8", "eq_balanza_500g",
         mode="before"
     )
     @classmethod
