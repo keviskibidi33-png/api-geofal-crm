@@ -487,6 +487,7 @@ app.add_middleware(
         "X-ANG-Id",
         "X-Storage-Object-Key",
         "X-Control-Probetas-Id",
+        "X-DH-Id",
     ],
     max_age=3600,
 )
