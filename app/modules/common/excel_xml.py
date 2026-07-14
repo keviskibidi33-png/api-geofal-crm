@@ -27,21 +27,32 @@ def find_template_path(filename: str) -> Path:
         Path("/app/templates"),
         current_dir.parents[2] / "app" / "templates",
     ]
+    
+    clean_filename = filename.replace("\\", "/")
+    
     for root in roots:
         if not root.exists():
             continue
 
+        # Direct path check
+        direct_path = root / clean_filename
+        if direct_path.is_file():
+            return direct_path
+
         # Use recursive search to find the filename
         try:
+            basename = os.path.basename(clean_filename)
             # First pass: ignore any templates in 'copias' to prioritize new production ones
-            for match in root.rglob(filename):
+            for match in root.rglob(basename):
                 if match.is_file() and "copias" not in match.parts:
-                    return match
+                    if match.as_posix().endswith(clean_filename):
+                        return match
             
             # Second pass: fallback to 'copias' if nothing else matches
-            for match in root.rglob(filename):
+            for match in root.rglob(basename):
                 if match.is_file():
-                    return match
+                    if match.as_posix().endswith(clean_filename):
+                        return match
         except Exception:
             pass
 
