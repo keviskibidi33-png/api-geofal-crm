@@ -72,6 +72,8 @@ from app.modules.seguimiento_cliente_comercial.router import router as seguimien
 from app.modules.publicidad_geofal.router import router as publicidad_geofal_router
 from app.modules.control_probetas.router import router as control_probetas_router
 from app.modules.densidad_huantar.router import router as densidad_huantar_router
+from app.modules.huanta_probetas.router import router as huanta_probetas_router
+from app.modules.huanta_compresion.router import router as huanta_compresion_router
 from app.modules.recepcion.models import Base as RecepcionBase
 from app.modules.verificacion.models import Base as VerificacionBase
 from app.modules.tracing.models import Trazabilidad
@@ -181,6 +183,68 @@ try:
             logger.info("Programmatic migration 046 applied successfully.")
     except Exception as perm_err:
         logger.warning("Could not apply migration 046 permissions: %s", perm_err)
+
+    try:
+        from sqlalchemy import text
+        with engine.begin() as conn:
+            # Migration 047: Create huanta_probetas table and indices
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS public.huanta_probetas (
+                    id SERIAL PRIMARY KEY,
+                    item INTEGER NOT NULL,
+                    codigo_probeta VARCHAR(50) NOT NULL UNIQUE,
+                    sigla VARCHAR(20) NOT NULL DEFAULT 'HHTA',
+                    elemento VARCHAR(200) NOT NULL DEFAULT '-',
+                    detalle_elemento VARCHAR(300) NOT NULL DEFAULT '-',
+                    fecha_moldeo VARCHAR(20) NOT NULL,
+                    edad INTEGER NOT NULL DEFAULT 7,
+                    fecha_rotura VARCHAR(20) NOT NULL,
+                    codigo_muestra_lem VARCHAR(200) NOT NULL DEFAULT '',
+                    codigo_lote_interno VARCHAR(80) NOT NULL,
+                    estado VARCHAR(30) NOT NULL DEFAULT 'PENDIENTE',
+                    observaciones TEXT,
+                    fecha_creacion TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+                    fecha_actualizacion TIMESTAMP WITHOUT TIME ZONE
+                );
+            """))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_huanta_probetas_lote ON public.huanta_probetas (codigo_lote_interno);"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_huanta_probetas_estado ON public.huanta_probetas (estado);"))
+            
+            # Migration 048: Create huanta_compresion table and indices
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS public.huanta_compresion (
+                    id SERIAL PRIMARY KEY,
+                    probeta_id INTEGER NOT NULL UNIQUE REFERENCES public.huanta_probetas(id) ON DELETE CASCADE,
+                    codigo_probeta VARCHAR(50) NOT NULL,
+                    codigo_lote_interno VARCHAR(80) NOT NULL,
+                    codigo_muestra_lem VARCHAR(200) NOT NULL DEFAULT '',
+                    fecha_rotura VARCHAR(20) NOT NULL,
+                    diam_1 VARCHAR(20),
+                    diam_2 VARCHAR(20),
+                    long_1 VARCHAR(20),
+                    long_2 VARCHAR(20),
+                    long_3 VARCHAR(20),
+                    carga_maxima DOUBLE PRECISION,
+                    tipo_fractura VARCHAR(50),
+                    estado VARCHAR(30) NOT NULL DEFAULT 'PENDIENTE',
+                    observaciones TEXT,
+                    fecha_creacion TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+                    fecha_actualizacion TIMESTAMP WITHOUT TIME ZONE
+                );
+            """))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_huanta_compresion_lote ON public.huanta_compresion (codigo_lote_interno);"))
+            
+            # Migration 049: Ensure densidad_huantar permissions exist for technical/admin/custom roles (including oficina_tecnica_beatriz)
+            conn.execute(text("""
+                UPDATE role_definitions
+                SET permissions = jsonb_set(permissions, '{densidad_huantar}', '{"read": true, "write": true, "delete": true}'::jsonb, true)
+                WHERE role_id IN ('admin', 'admin_general', 'oficina_tecnica', 'oficina_tecnica_beatriz', 'oficina_tecnica_humedad', 'oficina_tecnica_humedad_tipificador', 'oficina_tecnica_sup', 'jefe_laboratorio', 'tecnico', 'tecnico_suelos');
+            """))
+            
+            conn.execute(text("NOTIFY pgrst, 'reload schema';"))
+            logger.info("Programmatic migrations 047-049 for Huanta applied successfully.")
+    except Exception as huanta_db_err:
+        logger.warning("Could not apply programmatic migrations for Huanta: %s", huanta_db_err)
 
 except Exception as e:
     logger.warning("Could not create database tables on startup (DB might be offline): %s", e)
@@ -643,6 +707,8 @@ app.include_router(seguimiento_comercial_router)
 app.include_router(publicidad_geofal_router)
 app.include_router(control_probetas_router)
 app.include_router(densidad_huantar_router)
+app.include_router(huanta_probetas_router)
+app.include_router(huanta_compresion_router)
 
 # Note: All legacy endpoints for Quotes and Programacion have been moved to their respective modules.
 # Check app/modules/cotizacion and app/modules/programacion.
