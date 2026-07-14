@@ -13,7 +13,7 @@ class HuantaProbetaCreateItem(BaseModel):
     edad: int = 7
     fecha_rotura: str
     codigo_muestra_lem: str = ""
-    codigo_lote_interno: str
+    codigo_lote_interno: Optional[str] = None
 
 
 class HuantaProbetaCreateBatch(BaseModel):

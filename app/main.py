@@ -184,16 +184,6 @@ try:
     except Exception as perm_err:
         logger.warning("Could not apply migration 046 permissions: %s", perm_err)
 
-    try:
-        from sqlalchemy import text
-        with engine.begin() as conn:
-            # Migration 047: Ensure Huanta probetas sequence privileges are available in production
-            conn.execute(text("GRANT USAGE, SELECT ON SEQUENCE public.huanta_probetas_id_seq TO postgres;"))
-            conn.execute(text("GRANT USAGE, SELECT ON SEQUENCE public.huanta_probetas_id_seq TO PUBLIC;"))
-            logger.info("Programmatic migration 047 applied successfully.")
-    except Exception as seq_err:
-        logger.warning("Could not apply migration 047 sequence privileges: %s", seq_err)
-
     # Programmatic startup migrations for Huanta removed - migrated to manual execution.
 
 except Exception as e:
