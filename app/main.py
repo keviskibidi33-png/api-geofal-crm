@@ -71,6 +71,7 @@ from app.modules.control_informes.router import router as control_informes_route
 from app.modules.seguimiento_cliente_comercial.router import router as seguimiento_comercial_router
 from app.modules.publicidad_geofal.router import router as publicidad_geofal_router
 from app.modules.control_probetas.router import router as control_probetas_router
+from app.modules.densidad_huantar.router import router as densidad_huantar_router
 from app.modules.recepcion.models import Base as RecepcionBase
 from app.modules.verificacion.models import Base as VerificacionBase
 from app.modules.tracing.models import Trazabilidad
@@ -100,6 +101,7 @@ from app.modules.compresion_no_confinada.models import CompresionNoConfinadaEnsa
 from app.modules.cont_mat_organica.models import ContMatOrganicaEnsayo
 from app.modules.terrones_fino_grueso.models import TerronesFinoGruesoEnsayo
 from app.modules.azul_metileno.models import AzulMetilenoEnsayo
+from app.modules.densidad_huantar.models import DensidadHuantarEnsayo
 from app.modules.part_livianas.models import PartLivianasEnsayo
 from app.modules.imp_organicas.models import ImpOrganicasEnsayo
 from app.modules.sul_magnesio.models import SulMagnesioEnsayo
@@ -167,6 +169,19 @@ try:
     except Exception as col_err:
         logger.warning("Could not apply migration 045 columns: %s", col_err)
 
+    try:
+        from sqlalchemy import text
+        with engine.begin() as conn:
+            # Migration 046: Add densidad_huantar permissions to admin and technical roles
+            conn.execute(text("""
+                UPDATE role_definitions
+                SET permissions = jsonb_set(permissions, '{densidad_huantar}', '{"read": true, "write": true, "delete": true}'::jsonb, true)
+                WHERE role_id IN ('admin', 'admin_general', 'oficina_tecnica', 'oficina_tecnica_humedad', 'oficina_tecnica_humedad_tipificador', 'oficina_tecnica_sup', 'jefe_laboratorio', 'tecnico', 'tecnico_suelos');
+            """))
+            logger.info("Programmatic migration 046 applied successfully.")
+    except Exception as perm_err:
+        logger.warning("Could not apply migration 046 permissions: %s", perm_err)
+
 except Exception as e:
     logger.warning("Could not create database tables on startup (DB might be offline): %s", e)
 
@@ -187,6 +202,7 @@ class RolePermissions(BaseModel):
     compresion: ModulePermission | None = None
     tracing: ModulePermission | None = None
     control_probetas: ModulePermission | None = None
+    densidad_huantar: ModulePermission | None = None
     humedad: ModulePermission | None = None
     cont_humedad: ModulePermission | None = None
     planas: ModulePermission | None = None
@@ -625,6 +641,7 @@ app.include_router(control_informes_router)
 app.include_router(seguimiento_comercial_router)
 app.include_router(publicidad_geofal_router)
 app.include_router(control_probetas_router)
+app.include_router(densidad_huantar_router)
 
 # Note: All legacy endpoints for Quotes and Programacion have been moved to their respective modules.
 # Check app/modules/cotizacion and app/modules/programacion.
