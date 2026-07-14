@@ -1,0 +1,114 @@
+{
+  "id": "f68ff4b1-761e-4d14-b959-7c63bb347f2f",
+  "proyecto_id": "51e335e3-6b9b-40cb-ad87-7719555e409b",
+  "vendedor_id": "5263f429-aeb5-40d3-8ec8-9d7c20b9f4d1",
+  "numero": "1427",
+  "year": 2026,
+  "subtotal": 104850.0,
+  "igv": 18873.0,
+  "total": 123723.0,
+  "moneda": "PEN",
+  "estado": "borrador",
+  "items_json": [
+    {
+      "norma": "ASTM D6913/D6913M-17",
+      "codigo": "SU24",
+      "cantidad": 40.0,
+      "acreditado": "SI",
+      "descripcion": "Análisis granulométrico por tamizado en Suelo",
+      "costo_unitario": 100.0
+    },
+    {
+      "norma": "ASTM D4318-17ε1",
+      "codigo": "SU23",
+      "cantidad": 40.0,
+      "acreditado": "SI",
+      "descripcion": "Límite líquido y Límite Plástico del Suelo",
+      "costo_unitario": 90.0
+    },
+    {
+      "norma": "ASTM D2216-19",
+      "codigo": "SU20",
+      "cantidad": 40.0,
+      "acreditado": "SI",
+      "descripcion": "Contenido de humedad en suelos",
+      "costo_unitario": 30.0
+    },
+    {
+      "norma": "ASTM D2487-17 (Reapproved 2025) / ASTM D3282-24",
+      "codigo": "SU22",
+      "cantidad": 40.0,
+      "acreditado": "SI",
+      "descripcion": "Clasificación suelo SUCS - AASHTO",
+      "costo_unitario": 20.0
+    },
+    {
+      "norma": "NTP 339.171",
+      "codigo": "SU05",
+      "cantidad": 15.0,
+      "acreditado": "NO",
+      "descripcion": "Corte Directo.",
+      "costo_unitario": 350.0
+    },
+    {
+      "norma": "ASTM D2850",
+      "codigo": "SU45",
+      "cantidad": 15.0,
+      "acreditado": "NO",
+      "descripcion": "Compresión triaxial no consolidado no drenado UU, diametro 75 mm",
+      "costo_unitario": 1500.0
+    },
+    {
+      "norma": "ASTM D4767",
+      "codigo": "SU46",
+      "cantidad": 15.0,
+      "acreditado": "NO",
+      "descripcion": "Compresión triaxial consolidado no drenado CU, diametro 75 mm",
+      "costo_unitario": 2000.0
+    },
+    {
+      "norma": "ASTM D7181",
+      "codigo": "SU47",
+      "cantidad": 15.0,
+      "acreditado": "NO",
+      "descripcion": "Compresión triaxial consolidado drenado CD, diametro 75 mm",
+      "costo_unitario": 2500.0
+    }
+  ],
+  "storage_provider": "supabase",
+  "bucket": null,
+  "object_key": "2026/COT-2026-1427-EMPRES_CONSTRUCCIVIL_E_I_R_L.xlsx",
+  "created_at": "2026-06-17T20:07:37.771378+00:00",
+  "updated_at": "2026-06-17T20:07:37.771378+00:00",
+  "deleted_at": null,
+  "cliente_nombre": "EMPRES CONSTRUCCIVIL E.I.R.L",
+  "cliente_ruc": "20393987538",
+  "cliente_contacto": "Noe Felix Sinche",
+  "cliente_telefono": " 994315094",
+  "cliente_email": "noe.felix.sinche@gmail.com",
+  "proyecto": "CONTRATACIÓN DEL SERVICIO DE CONSULTORÍA PARA LA REFORMULACIÓN DE 02 EXPEDIENTES TÉCNICOS DE NUEVO TACABAMBA (CUI N° 2251118) Y MIRADOR ALTO ROQUE (CUI N° 2281803) DE LA REGION SAN MARTIN.",
+  "ubicacion": "NUEVO TACABAMBA, DISTRITO DE SANTA ROSA - EL DORADO – SAN MARTÍN",
+  "personal_comercial": "Yerly Yanela Infante",
+  "telefono_comercial": "972827639",
+  "fecha_solicitud": "2026-06-17",
+  "fecha_emision": "2026-06-17",
+  "include_igv": true,
+  "archivo_path": "/app/cotizaciones/2026/COT-2026-1427_EMPRES_CONSTRUCCIVIL_E_I_R_L.xlsx",
+  "template_id": "V1",
+  "items_count": 8,
+  "vendedor_nombre": "Yerly Yanela Infante",
+  "user_created": "5263f429-aeb5-40d3-8ec8-9d7c20b9f4d1",
+  "direccion": null,
+  "visibilidad": "visible",
+  "plazo_dias": 4,
+  "condicion_pago": "",
+  "condiciones_ids": [
+    "ff0921df-8d4a-44f8-b512-a567450ee2c5",
+    "567542b3-501c-4dd1-8eb4-fb6e07bcf587",
+    "17ec06c1-bceb-4afc-ba73-25d13269e986",
+    "b23174e3-1b38-4ad9-911e-e3bcc3973f3f",
+    "68944e54-9b56-4c7d-b20f-d45497d7ee12"
+  ],
+  "cliente_id": "2ed92bef-22e8-4f48-ac1c-d2f1a49c9226",
+  "correo_vendedor": "asesorcomercial1@geofal.com.pe"
+}
