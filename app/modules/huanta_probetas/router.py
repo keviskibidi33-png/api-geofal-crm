@@ -54,13 +54,14 @@ def create_huanta_batch(payload: HuantaProbetaCreateBatch, request: Request, db:
                 if parsed:
                     fecha_rotura = (parsed + timedelta(days=int(item.edad or 0))).strftime("%Y/%m/%d")
             next_correlative = existing_max + idx
-            codigo = item.codigo_muestra_lem.strip() or f"HHTA-{item.codigo_lote_interno}-{next_correlative:03d}"
+            codigo = item.codigo_muestra_lem.strip() or f"HHTA-{item.elemento}-{item.detalle_elemento}-{item.f_c}-{item.codigo_probeta.replace('-CO', '')}"
             row = HuantaProbeta(
                 item=item.item,
-                codigo_probeta=f"{next_correlative:03d}-CO",
+                codigo_probeta=item.codigo_probeta.strip(),
                 sigla=(item.sigla or "HHTA").strip().upper(),
                 elemento=(item.elemento or "-").strip() or "-",
                 detalle_elemento=(item.detalle_elemento or "-").strip() or "-",
+                f_c=(item.f_c or "-").strip() or "-",
                 fecha_moldeo=fecha_moldeo,
                 edad=int(item.edad or 0),
                 fecha_rotura=fecha_rotura,

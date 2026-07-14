@@ -17,6 +17,7 @@ class HuantaProbeta(Base):
     edad = Column(Integer, nullable=False, default=7)
     fecha_rotura = Column(String(20), nullable=False)
     codigo_muestra_lem = Column(String(200), nullable=False, default="")
+    f_c = Column(String(50), nullable=False, default="-")
     codigo_lote_interno = Column(String(80), nullable=False, index=True)
     estado = Column(String(30), nullable=False, default="PENDIENTE", index=True)
     observaciones = Column(Text, nullable=True)

@@ -240,9 +240,13 @@ try:
                 SET permissions = jsonb_set(permissions, '{densidad_huantar}', '{"read": true, "write": true, "delete": true}'::jsonb, true)
                 WHERE role_id IN ('admin', 'admin_general', 'oficina_tecnica', 'oficina_tecnica_beatriz', 'oficina_tecnica_humedad', 'oficina_tecnica_humedad_tipificador', 'oficina_tecnica_sup', 'jefe_laboratorio', 'tecnico', 'tecnico_suelos');
             """))
+            # Migration 050: Add f_c column to public.huanta_probetas
+            conn.execute(text("""
+                ALTER TABLE public.huanta_probetas ADD COLUMN IF NOT EXISTS f_c VARCHAR(50) DEFAULT '-';
+            """))
             
             conn.execute(text("NOTIFY pgrst, 'reload schema';"))
-            logger.info("Programmatic migrations 047-049 for Huanta applied successfully.")
+            logger.info("Programmatic migrations 047-050 for Huanta applied successfully.")
     except Exception as huanta_db_err:
         logger.warning("Could not apply programmatic migrations for Huanta: %s", huanta_db_err)
 

@@ -4,9 +4,11 @@ from pydantic import BaseModel, Field
 
 class HuantaProbetaCreateItem(BaseModel):
     item: int
+    codigo_probeta: str
     sigla: str = "HHTA"
     elemento: str = "-"
     detalle_elemento: str = "-"
+    f_c: str = "-"
     fecha_moldeo: str
     edad: int = 7
     fecha_rotura: str
@@ -25,6 +27,7 @@ class HuantaProbetaItem(BaseModel):
     sigla: str
     elemento: str
     detalle_elemento: str
+    f_c: str
     fecha_moldeo: str
     edad: int
     fecha_rotura: str
