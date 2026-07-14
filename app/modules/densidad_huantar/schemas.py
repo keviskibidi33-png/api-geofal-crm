@@ -61,9 +61,33 @@ class DensidadHuantarRequest(LabRequestBase):
     humedad_optima: Optional[float] = Field(None, description="Humedad Óptima (%)")
     gravedad_especifica: Optional[float] = Field(None, description="Gravedad específica (P)")
 
+    # Condiciones ambientales
+    temperatura_inicial: Optional[str] = Field("-", description="Temperatura Inicial (°C)")
+    temperatura_final: Optional[str] = Field("-", description="Temperatura Final (°C)")
+    humedad_relativa_inicial: Optional[str] = Field("-", description="Humedad relativa Inicial (%H.R.)")
+    humedad_relativa_final: Optional[str] = Field("-", description="Humedad relativa Final (%H.R.)")
+
+    # Códigos de equipos utilizados
+    eq_balanza_30kg: Optional[str] = Field("-", description="Balanza 30 kg")
+    eq_pesa_patron_5kg: Optional[str] = Field("-", description="Pesa patrón 5 kg")
+    eq_cono_equipo: Optional[str] = Field("-", description="Cono (código de equipo)")
+    eq_tamiz_3_4: Optional[str] = Field("-", description="Tamiz 3/4 in")
+    eq_termohigrometro: Optional[str] = Field("-", description="Termohigrómetro")
+    eq_tamiz_4: Optional[str] = Field("-", description="Tamiz 4 in")
+    eq_pesa_patron_200g: Optional[str] = Field("-", description="Pesa patrón 200 g")
+    eq_tamiz_3_8: Optional[str] = Field("-", description="Tamiz 3/8 in")
+
     puntos: List[DensidadHuantarPunto] = Field(default_factory=list, description="Lista de puntos de ensayo (hasta 4)")
 
-    @field_validator("cono_codigo", "proctor_norma", "proctor_metodo", mode="before")
+    @field_validator(
+        "cono_codigo", "proctor_norma", "proctor_metodo",
+        "temperatura_inicial", "temperatura_final",
+        "humedad_relativa_inicial", "humedad_relativa_final",
+        "eq_balanza_30kg", "eq_pesa_patron_5kg", "eq_cono_equipo",
+        "eq_tamiz_3_4", "eq_termohigrometro", "eq_tamiz_4",
+        "eq_pesa_patron_200g", "eq_tamiz_3_8",
+        mode="before"
+    )
     @classmethod
     def normalize_text_fields(cls, value):
         return normalize_text(value)

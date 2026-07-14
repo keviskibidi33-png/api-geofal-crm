@@ -51,10 +51,10 @@ def _fill_sheet1(sheet_xml: bytes, payload: DensidadHuantarRequest) -> bytes:
     set_cell(sheet_data, "M16", data.get("numero_muestra") or "", merge_anchor_map=merge_anchor_map)
     set_cell(sheet_data, "M17", data.get("tipo_muestra") or "", merge_anchor_map=merge_anchor_map)
 
-    # Cabecera principal izquierda (OT, Fecha, Realizado por)
-    set_cell(sheet_data, "D6", payload.numero_ot, merge_anchor_map=merge_anchor_map)
-    set_cell(sheet_data, "F6", payload.fecha_ensayo, merge_anchor_map=merge_anchor_map)
-    set_cell(sheet_data, "G6", payload.realizado_por or "", merge_anchor_map=merge_anchor_map)
+    # Cabecera principal izquierda (OT, Fecha, Realizado por) — fila 7
+    set_cell(sheet_data, "D7", payload.numero_ot, merge_anchor_map=merge_anchor_map)
+    set_cell(sheet_data, "F7", payload.fecha_ensayo, merge_anchor_map=merge_anchor_map)
+    set_cell(sheet_data, "G7", payload.realizado_por or "", merge_anchor_map=merge_anchor_map)
 
     # Calibraciones / Proctor
     set_cell(sheet_data, "D18", payload.cono_codigo or "", merge_anchor_map=merge_anchor_map)
@@ -67,6 +67,22 @@ def _fill_sheet1(sheet_xml: bytes, payload: DensidadHuantarRequest) -> bytes:
     set_cell(sheet_data, "H20", payload.peso_unitario_seco_lab, is_number=True, merge_anchor_map=merge_anchor_map)
     set_cell(sheet_data, "H21", payload.humedad_optima, is_number=True, merge_anchor_map=merge_anchor_map)
     set_cell(sheet_data, "H22", payload.gravedad_especifica, is_number=True, merge_anchor_map=merge_anchor_map)
+
+    # Condiciones ambientales
+    set_cell(sheet_data, "D24", payload.temperatura_inicial or "-", merge_anchor_map=merge_anchor_map)
+    set_cell(sheet_data, "H24", payload.temperatura_final or "-", merge_anchor_map=merge_anchor_map)
+    set_cell(sheet_data, "D25", payload.humedad_relativa_inicial or "-", merge_anchor_map=merge_anchor_map)
+    set_cell(sheet_data, "H25", payload.humedad_relativa_final or "-", merge_anchor_map=merge_anchor_map)
+
+    # Códigos de equipos utilizados
+    set_cell(sheet_data, "F41", payload.eq_balanza_30kg or "-", merge_anchor_map=merge_anchor_map)
+    set_cell(sheet_data, "H41", payload.eq_pesa_patron_5kg or "-", merge_anchor_map=merge_anchor_map)
+    set_cell(sheet_data, "F42", payload.eq_cono_equipo or "-", merge_anchor_map=merge_anchor_map)
+    set_cell(sheet_data, "H42", payload.eq_tamiz_3_4 or "-", merge_anchor_map=merge_anchor_map)
+    set_cell(sheet_data, "F43", payload.eq_termohigrometro or "-", merge_anchor_map=merge_anchor_map)
+    set_cell(sheet_data, "H43", payload.eq_tamiz_4 or "-", merge_anchor_map=merge_anchor_map)
+    set_cell(sheet_data, "F44", payload.eq_pesa_patron_200g or "-", merge_anchor_map=merge_anchor_map)
+    set_cell(sheet_data, "H44", payload.eq_tamiz_3_8 or "-", merge_anchor_map=merge_anchor_map)
 
     # Observaciones
     set_cell(sheet_data, "B46", payload.observaciones or "", merge_anchor_map=merge_anchor_map)
