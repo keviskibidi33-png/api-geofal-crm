@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -10,6 +11,8 @@ from .models import HuantaProbeta
 from .schemas import HuantaProbetaCreateBatch, HuantaProbetaItem, HuantaExcelExportRequest, HuantaLoteSummary
 from .excel import generate_huanta_probetas_list_excel, generate_huanta_report_excel
 from app.modules.huanta_compresion.models import HuantaCompresion
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/huanta-probetas", tags=["Huanta Probetas"])
 
