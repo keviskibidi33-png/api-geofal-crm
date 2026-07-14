@@ -137,10 +137,10 @@ class DensidadHuantarRequest(LabRequestBase):
                         punto.peso_unitario_seco = round_value(punto.densidad_seca * 9.802, 3)
                 
                 # 7. Porcentaje de sobretamaño = Masa sobretamaño * 100 / Masa húmeda
-                if punto.masa_sobretamaño is not None and punto.masa_humeda_orificio:
-                    punto.porcentaje_sobretamaño = round_value(punto.masa_sobretamaño * 100.0 / punto.masa_humeda_orificio, 3)
+                if punto.masa_sobretamano is not None and punto.masa_humeda_orificio:
+                    punto.porcentaje_sobretamano = round_value(punto.masa_sobretamano * 100.0 / punto.masa_humeda_orificio, 3)
                 else:
-                    punto.porcentaje_sobretamaño = 0.0
+                    punto.porcentaje_sobretamano = 0.0
 
                 # 8. Peso unitario corregido (ASTM D4718)
                 # E28: =IF($J$1="",E24,IF($J$1="-",E24,E24*$J$1*9.802*(100-E21)/(100*$J$1*9.802-E24*E21)))
@@ -150,8 +150,8 @@ class DensidadHuantarRequest(LabRequestBase):
                     if gs is None or gs == 0:
                         punto.peso_unitario_corregido = punto.peso_unitario_seco
                     else:
-                        num = punto.peso_unitario_seco * gs * 9.802 * (100.0 - punto.porcentaje_sobretamaño)
-                        den = (100.0 * gs * 9.802) - (punto.peso_unitario_seco * punto.porcentaje_sobretamaño)
+                        num = punto.peso_unitario_seco * gs * 9.802 * (100.0 - punto.porcentaje_sobretamano)
+                        den = (100.0 * gs * 9.802) - (punto.peso_unitario_seco * punto.porcentaje_sobretamano)
                         if den != 0:
                             punto.peso_unitario_corregido = round_value(num / den, 3)
                         else:
