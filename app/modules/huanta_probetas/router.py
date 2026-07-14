@@ -194,5 +194,3 @@ def export_huanta_report(
     except Exception as e:
         logger.exception("Error exporting huanta report")
         raise HTTPException(status_code=500, detail=f"Error al generar el reporte Excel: {str(e)}")
-
-

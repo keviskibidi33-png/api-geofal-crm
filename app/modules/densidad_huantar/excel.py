@@ -24,7 +24,7 @@ from .schemas import DensidadHuantarRequest
 
 logger = logging.getLogger(__name__)
 
-TEMPLATE_FILE = "informes/Proyecto Huantar/Densidad Huantar/1-INF.-N-001-26-SU06-DEN-V05.xlsx"
+TEMPLATE_FILE = "informes/Proyecto Huantar/Densidad Huanta/1-INF.-N-001-26-SU06-DEN-V05.xlsx"
 
 
 def _fill_sheet1(sheet_xml: bytes, payload: DensidadHuantarRequest) -> bytes:

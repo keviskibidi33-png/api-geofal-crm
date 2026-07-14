@@ -187,68 +187,14 @@ try:
     try:
         from sqlalchemy import text
         with engine.begin() as conn:
-            # Migration 047: Create huanta_probetas table and indices
-            conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS public.huanta_probetas (
-                    id SERIAL PRIMARY KEY,
-                    item INTEGER NOT NULL,
-                    codigo_probeta VARCHAR(50) NOT NULL UNIQUE,
-                    sigla VARCHAR(20) NOT NULL DEFAULT 'HHTA',
-                    elemento VARCHAR(200) NOT NULL DEFAULT '-',
-                    detalle_elemento VARCHAR(300) NOT NULL DEFAULT '-',
-                    fecha_moldeo VARCHAR(20) NOT NULL,
-                    edad INTEGER NOT NULL DEFAULT 7,
-                    fecha_rotura VARCHAR(20) NOT NULL,
-                    codigo_muestra_lem VARCHAR(200) NOT NULL DEFAULT '',
-                    codigo_lote_interno VARCHAR(80) NOT NULL,
-                    estado VARCHAR(30) NOT NULL DEFAULT 'PENDIENTE',
-                    observaciones TEXT,
-                    fecha_creacion TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
-                    fecha_actualizacion TIMESTAMP WITHOUT TIME ZONE
-                );
-            """))
-            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_huanta_probetas_lote ON public.huanta_probetas (codigo_lote_interno);"))
-            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_huanta_probetas_estado ON public.huanta_probetas (estado);"))
-            
-            # Migration 048: Create huanta_compresion table and indices
-            conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS public.huanta_compresion (
-                    id SERIAL PRIMARY KEY,
-                    probeta_id INTEGER NOT NULL UNIQUE REFERENCES public.huanta_probetas(id) ON DELETE CASCADE,
-                    codigo_probeta VARCHAR(50) NOT NULL,
-                    codigo_lote_interno VARCHAR(80) NOT NULL,
-                    codigo_muestra_lem VARCHAR(200) NOT NULL DEFAULT '',
-                    fecha_rotura VARCHAR(20) NOT NULL,
-                    diam_1 VARCHAR(20),
-                    diam_2 VARCHAR(20),
-                    long_1 VARCHAR(20),
-                    long_2 VARCHAR(20),
-                    long_3 VARCHAR(20),
-                    carga_maxima DOUBLE PRECISION,
-                    tipo_fractura VARCHAR(50),
-                    estado VARCHAR(30) NOT NULL DEFAULT 'PENDIENTE',
-                    observaciones TEXT,
-                    fecha_creacion TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
-                    fecha_actualizacion TIMESTAMP WITHOUT TIME ZONE
-                );
-            """))
-            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_huanta_compresion_lote ON public.huanta_compresion (codigo_lote_interno);"))
-            
-            # Migration 049: Ensure densidad_huantar permissions exist for technical/admin/custom roles (including oficina_tecnica_beatriz)
-            conn.execute(text("""
-                UPDATE role_definitions
-                SET permissions = jsonb_set(permissions, '{densidad_huantar}', '{"read": true, "write": true, "delete": true}'::jsonb, true)
-                WHERE role_id IN ('admin', 'admin_general', 'oficina_tecnica', 'oficina_tecnica_beatriz', 'oficina_tecnica_humedad', 'oficina_tecnica_humedad_tipificador', 'oficina_tecnica_sup', 'jefe_laboratorio', 'tecnico', 'tecnico_suelos');
-            """))
-            # Migration 050: Add f_c column to public.huanta_probetas
-            conn.execute(text("""
-                ALTER TABLE public.huanta_probetas ADD COLUMN IF NOT EXISTS f_c VARCHAR(50) DEFAULT '-';
-            """))
-            
-            conn.execute(text("NOTIFY pgrst, 'reload schema';"))
-            logger.info("Programmatic migrations 047-050 for Huanta applied successfully.")
-    except Exception as huanta_db_err:
-        logger.warning("Could not apply programmatic migrations for Huanta: %s", huanta_db_err)
+            # Migration 047: Ensure Huanta probetas sequence privileges are available in production
+            conn.execute(text("GRANT USAGE, SELECT ON SEQUENCE public.huanta_probetas_id_seq TO postgres;"))
+            conn.execute(text("GRANT USAGE, SELECT ON SEQUENCE public.huanta_probetas_id_seq TO PUBLIC;"))
+            logger.info("Programmatic migration 047 applied successfully.")
+    except Exception as seq_err:
+        logger.warning("Could not apply migration 047 sequence privileges: %s", seq_err)
+
+    # Programmatic startup migrations for Huanta removed - migrated to manual execution.
 
 except Exception as e:
     logger.warning("Could not create database tables on startup (DB might be offline): %s", e)
