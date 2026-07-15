@@ -76,6 +76,7 @@ class TracingService:
 
         candidatos: list[VerificacionMuestras] = (
             db.query(VerificacionMuestras)
+            .options(selectinload(VerificacionMuestras.muestras_verificadas))
             .filter(VerificacionMuestras.numero_verificacion.in_(variantes))
             .all()
         )
@@ -84,6 +85,7 @@ class TracingService:
             canonical = canonical_numero.strip()
             prefix_candidates = (
                 db.query(VerificacionMuestras)
+                .options(selectinload(VerificacionMuestras.muestras_verificadas))
                 .filter(VerificacionMuestras.numero_verificacion.ilike(f"{canonical}%"))
                 .all()
             )
@@ -489,10 +491,23 @@ class TracingService:
                 has_file = True
             # Si no hay key, verificar si hay ruta local (legacy)
             elif verificacion.archivo_excel:
-                 # Solo verificar path local si es absoluto y seguro, evitar I/O bloqueante si es red
-                 has_file = True 
-            
-            traza.estado_verificacion = "completado" if has_file else "en_proceso"
+                has_file = True
+
+            # Verificar que las muestras tengan datos reales medidos (diámetros).
+            # Si faltan diámetros, la verificación está incompleta → "en_proceso" (amarillo).
+            muestras_ver = verificacion.muestras_verificadas or []
+            datos_completos = (
+                len(muestras_ver) > 0
+                and all(
+                    m.diametro_1_mm is not None and m.diametro_2_mm is not None
+                    for m in muestras_ver
+                )
+            )
+
+            if has_file and datos_completos:
+                traza.estado_verificacion = "completado"
+            else:
+                traza.estado_verificacion = "en_proceso"
         else:
             traza.estado_verificacion = "pendiente"
         
