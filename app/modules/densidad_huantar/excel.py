@@ -128,6 +128,24 @@ def _fill_sheet2(sheet_xml: bytes, payload: DensidadHuantarRequest) -> bytes:
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
+def _fill_sheet3(sheet_xml: bytes, payload: DensidadHuantarRequest) -> bytes:
+    root = etree.fromstring(sheet_xml)
+    sheet_data = root.find(f".//{{{NS_SHEET}}}sheetData")
+    if sheet_data is None:
+        return sheet_xml
+
+    merge_anchor_map = build_merge_anchor_map(root)
+
+    # Tamiz del sobretamaño en DENSIDAD sheet (Punto 1: G, Punto 2: H, Punto 3: I, Punto 4: J)
+    cols = ["G", "H", "I", "J"]
+    for idx, col in enumerate(cols):
+        if idx < len(payload.puntos):
+            punto = payload.puntos[idx]
+            set_cell(sheet_data, f"{col}31", punto.tamiz_sobretamano or "", merge_anchor_map=merge_anchor_map)
+
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
 def generate_densidad_huantar_excel(payload: DensidadHuantarRequest) -> bytes:
     template_path = find_template_path(TEMPLATE_FILE)
     if not template_path.exists():
@@ -153,6 +171,8 @@ def generate_densidad_huantar_excel(payload: DensidadHuantarRequest) -> bytes:
                 raw = _fill_sheet1(raw, payload)
             elif item.filename == "xl/worksheets/sheet2.xml":
                 raw = _fill_sheet2(raw, payload)
+            elif item.filename == "xl/worksheets/sheet3.xml":
+                raw = _fill_sheet3(raw, payload)
 
             # Inyectar firmas/firmas de footer en drawings
             elif item.filename == "xl/drawings/drawing1.xml":
