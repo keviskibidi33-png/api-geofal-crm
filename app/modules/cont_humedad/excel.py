@@ -180,6 +180,59 @@ def _fill_incertidumbre_sheet(sheet_xml: bytes, data: ContHumedadRequest) -> byt
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
+def _inject_header_image(drawing_xml: bytes) -> bytes:
+    """Inyecta la Imagen 7 (membrete) en la fila 0 de un drawing XML si no existe."""
+    root = etree.fromstring(drawing_xml)
+    ns = {
+        "xdr": "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing",
+        "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
+        "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    }
+
+    # Verificar si ya tiene una imagen en la fila 0 (el membrete)
+    has_header = False
+    for anchor in root.findall("xdr:twoCellAnchor", ns):
+        row_el = anchor.find("xdr:from/xdr:row", ns)
+        if row_el is not None and row_el.text == "0":
+            has_header = True
+            break
+
+    if not has_header:
+        # Estructura del membrete de cabecera obtenido de drawing1
+        anchor_xml = """
+        <twoCellAnchor editAs="oneCell" xmlns="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+            <from><col>5</col><colOff>76200</colOff><row>0</row><rowOff>171450</rowOff></from>
+            <to><col>6</col><colOff>905754</colOff><row>4</row><rowOff>76200</rowOff></to>
+            <pic>
+                <nvPicPr>
+                    <cNvPr id="17" name="Imagen 7" />
+                    <cNvPicPr><a:picLocks noChangeAspect="1" noChangeArrowheads="1" /></cNvPicPr>
+                </nvPicPr>
+                <blipFill>
+                    <a:blip cstate="print" r:embed="rId4" />
+                    <a:srcRect />
+                    <a:stretch><a:fillRect /></a:stretch>
+                </blipFill>
+                <spPr bwMode="auto">
+                    <a:xfrm>
+                        <a:off x="3209925" y="171450" />
+                        <a:ext cx="1181979" cy="704850" />
+                    </a:xfrm>
+                    <a:prstGeom prst="rect"><avLst /></a:prstGeom>
+                    <a:noFill />
+                    <a:ln><a:noFill /><a:prstDash val="solid" /></a:ln>
+                </spPr>
+            </pic>
+            <clientData />
+        </twoCellAnchor>
+        """
+        new_anchor = etree.fromstring(anchor_xml.encode("utf-8"))
+        root.insert(0, new_anchor)
+        return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+    return drawing_xml
+
+
 def _fill_drawing(drawing_xml: bytes, data: ContHumedadRequest) -> bytes:
     return fill_standard_footer_shapes(
         drawing_xml,
@@ -227,7 +280,23 @@ def generate_cont_humedad_excel(data: ContHumedadRequest) -> bytes:
                 raw = zin.read(item.filename)
 
             if item.filename.startswith("xl/drawings/drawing") and item.filename.endswith(".xml"):
+                if item.filename == "xl/drawings/drawing2.xml":
+                    raw = _inject_header_image(raw)
                 raw = _fill_drawing(raw, data)
+            elif item.filename == "xl/drawings/_rels/drawing2.xml.rels":
+                # Inyectar relación de imagen del membrete (rId4 -> image1.png)
+                rels_root = etree.fromstring(raw)
+                exists = False
+                for rel in rels_root.findall("{http://schemas.openxmlformats.org/package/2006/relationships}Relationship"):
+                    if rel.get("Id") == "rId4":
+                        exists = True
+                        break
+                if not exists:
+                    new_rel = etree.SubElement(rels_root, "{http://schemas.openxmlformats.org/package/2006/relationships}Relationship")
+                    new_rel.set("Id", "rId4")
+                    new_rel.set("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image")
+                    new_rel.set("Target", "/xl/media/image1.png")
+                    raw = etree.tostring(rels_root)
             elif item.filename == "xl/workbook.xml":
                 raw = enable_full_recalc_on_open(raw)
                 raw = strip_external_references(raw)
@@ -242,3 +311,4 @@ def generate_cont_humedad_excel(data: ContHumedadRequest) -> bytes:
 
     output.seek(0)
     return output.read()
+
