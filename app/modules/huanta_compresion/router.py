@@ -58,6 +58,12 @@ def update_huanta_compresion(item_id: int, payload: HuantaCompresionUpdate, requ
     db.commit()
     db.refresh(row)
 
+    # Sync status to HuantaProbeta
+    db.query(HuantaProbeta).filter(HuantaProbeta.id == row.probeta_id).update(
+        {HuantaProbeta.estado: row.estado}, synchronize_session=False
+    )
+    db.commit()
+
     actor = resolve_actor_identity(db, request)
     log_audit_action(
         user_id=actor.get("user_id"),
