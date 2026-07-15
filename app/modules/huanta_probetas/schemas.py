@@ -69,3 +69,17 @@ class HuantaLoteSummary(BaseModel):
     estado: str
 
 
+class HuantaProbetaBatchUpdateItem(BaseModel):
+    id: int
+    sigla: Optional[str] = None
+    codigo_probeta: Optional[str] = None
+    elemento: Optional[str] = None
+    detalle_elemento: Optional[str] = None
+    f_c: Optional[str] = None
+    fecha_moldeo: Optional[str] = None
+    edad: Optional[int] = None
+    fecha_rotura: Optional[str] = None
+    codigo_muestra_lem: Optional[str] = None
+    estado: Optional[str] = None
+
+

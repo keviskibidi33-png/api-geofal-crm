@@ -8,7 +8,15 @@ from sqlalchemy.orm import Session
 from app.database import get_db_session
 from app.modules.common.notifications import resolve_actor_identity, log_audit_action
 from .models import HuantaProbeta
-from .schemas import HuantaProbetaCreateBatch, HuantaProbetaItem, HuantaProbetaPatch, HuantaProbetaBatchStatusUpdate, HuantaExcelExportRequest, HuantaLoteSummary
+from .schemas import (
+    HuantaProbetaCreateBatch,
+    HuantaProbetaItem,
+    HuantaProbetaPatch,
+    HuantaProbetaBatchStatusUpdate,
+    HuantaExcelExportRequest,
+    HuantaLoteSummary,
+    HuantaProbetaBatchUpdateItem,
+)
 from .excel import generate_huanta_probetas_list_excel, generate_huanta_report_excel
 from app.modules.huanta_compresion.models import HuantaCompresion
 
@@ -66,6 +74,22 @@ def update_huanta_probeta(probeta_id: int, payload: HuantaProbetaPatch, db: Sess
 
     db.commit()
     db.refresh(row)
+
+    # Sync with HuantaCompresion
+    comp_row = db.query(HuantaCompresion).filter(HuantaCompresion.probeta_id == row.id).first()
+    if comp_row:
+        if "codigo_probeta" in update_data:
+            comp_row.codigo_probeta = row.codigo_probeta
+        if "codigo_lote_interno" in update_data:
+            comp_row.codigo_lote_interno = row.codigo_lote_interno
+        if "codigo_muestra_lem" in update_data:
+            comp_row.codigo_muestra_lem = row.codigo_muestra_lem
+        if "fecha_rotura" in update_data:
+            comp_row.fecha_rotura = row.fecha_rotura
+        if "estado" in update_data:
+            comp_row.estado = row.estado
+        db.commit()
+
     return row
 
 
@@ -78,6 +102,12 @@ def batch_update_status(payload: HuantaProbetaBatchStatusUpdate, request: Reques
     for row in rows:
         row.estado = payload.estado
 
+    db.commit()
+
+    # Sync with HuantaCompresion
+    db.query(HuantaCompresion).filter(HuantaCompresion.probeta_id.in_(payload.ids)).update(
+        {HuantaCompresion.estado: payload.estado}, synchronize_session=False
+    )
     db.commit()
 
     actor = resolve_actor_identity(db, request)
@@ -93,6 +123,65 @@ def batch_update_status(payload: HuantaProbetaBatchStatusUpdate, request: Reques
     )
 
     return {"message": f"{len(rows)} probetas actualizadas a '{payload.estado}'.", "count": len(rows)}
+
+
+@router.patch("/batch-update")
+def batch_update_probetas(payload: list[HuantaProbetaBatchUpdateItem], request: Request, db: Session = Depends(get_db_session)):
+    updated_ids = []
+    for item in payload:
+        row = db.query(HuantaProbeta).filter(HuantaProbeta.id == item.id).first()
+        if not row:
+            continue
+        update_data = item.model_dump(exclude_unset=True)
+        update_data.pop("id", None)
+
+        if "fecha_moldeo" in update_data or "edad" in update_data:
+            moldeo = update_data.get("fecha_moldeo", row.fecha_moldeo)
+            edad = update_data.get("edad", row.edad)
+            parsed = _parse_date(moldeo)
+            if parsed and edad is not None:
+                update_data["fecha_rotura"] = (parsed + timedelta(days=int(edad))).strftime("%Y/%m/%d")
+
+        if "fecha_moldeo" in update_data:
+            update_data["fecha_moldeo"] = _fmt_date(update_data["fecha_moldeo"])
+        if "fecha_rotura" in update_data:
+            update_data["fecha_rotura"] = _fmt_date(update_data["fecha_rotura"])
+
+        for field, value in update_data.items():
+            if hasattr(row, field):
+                setattr(row, field, value)
+
+        db.commit()
+        db.refresh(row)
+        updated_ids.append(row.id)
+
+        # Sync with HuantaCompresion
+        comp_row = db.query(HuantaCompresion).filter(HuantaCompresion.probeta_id == row.id).first()
+        if comp_row:
+            if "codigo_probeta" in update_data:
+                comp_row.codigo_probeta = row.codigo_probeta
+            if "codigo_lote_interno" in update_data:
+                comp_row.codigo_lote_interno = row.codigo_lote_interno
+            if "codigo_muestra_lem" in update_data:
+                comp_row.codigo_muestra_lem = row.codigo_muestra_lem
+            if "fecha_rotura" in update_data:
+                comp_row.fecha_rotura = row.fecha_rotura
+            if "estado" in update_data:
+                comp_row.estado = row.estado
+            db.commit()
+
+    actor = resolve_actor_identity(db, request)
+    log_audit_action(
+        user_id=actor.get("user_id"),
+        user_name=actor.get("full_name"),
+        action=f"Edición masiva de {len(updated_ids)} probetas Huanta",
+        module="LABORATORIO",
+        details={
+            "ids": updated_ids,
+        },
+    )
+
+    return {"message": f"{len(updated_ids)} probetas actualizadas correctamente.", "ids": updated_ids}
 
 
 @router.post("/batch", response_model=list[HuantaProbetaItem])
