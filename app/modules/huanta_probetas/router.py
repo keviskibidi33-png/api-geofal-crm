@@ -101,6 +101,27 @@ def create_huanta_batch(payload: HuantaProbetaCreateBatch, request: Request, db:
         raise HTTPException(status_code=400, detail="El lote Huanta debe contener exactamente 6 probetas.")
 
     existing_max = db.query(func.max(HuantaProbeta.id)).scalar() or 0
+
+    # Auto-generate codigo_lote_interno if not provided
+    lote_code = (payload.items[0].codigo_lote_interno or "").strip()
+    if not lote_code:
+        now = datetime.now()
+        prefix = f"HTA-{now.strftime('%Y-%m')}"
+        last_lote = (
+            db.query(HuantaProbeta.codigo_lote_interno)
+            .filter(HuantaProbeta.codigo_lote_interno.like(f"{prefix}-%"))
+            .order_by(HuantaProbeta.codigo_lote_interno.desc())
+            .first()
+        )
+        if last_lote and last_lote[0]:
+            try:
+                last_num = int(last_lote[0].split("-")[-1])
+            except ValueError:
+                last_num = 0
+        else:
+            last_num = 0
+        lote_code = f"{prefix}-{str(last_num + 1).zfill(3)}"
+
     created: list[HuantaProbeta] = []
 
     try:
@@ -124,7 +145,7 @@ def create_huanta_batch(payload: HuantaProbetaCreateBatch, request: Request, db:
                 edad=int(item.edad or 0),
                 fecha_rotura=fecha_rotura,
                 codigo_muestra_lem=codigo,
-                codigo_lote_interno=(item.codigo_lote_interno or "").strip(),
+                codigo_lote_interno=lote_code,
                 estado="PENDIENTE",
             )
             db.add(row)
@@ -142,7 +163,7 @@ def create_huanta_batch(payload: HuantaProbetaCreateBatch, request: Request, db:
             module="LABORATORIO",
             details={
                 "created_count": len(created),
-                "codigo_lote_interno": created[0].codigo_lote_interno if created else None,
+                "codigo_lote_interno": lote_code,
             },
         )
         return created
