@@ -51,6 +51,11 @@ class HuantaProbetaPatch(BaseModel):
     estado: Optional[str] = None
 
 
+class HuantaProbetaBatchStatusUpdate(BaseModel):
+    ids: List[int] = Field(..., min_items=1)
+    estado: str
+
+
 class HuantaExcelExportRequest(BaseModel):
     probeta_ids: List[int] = Field(..., min_items=1, max_items=3)
 

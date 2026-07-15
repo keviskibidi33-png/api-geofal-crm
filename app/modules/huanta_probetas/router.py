@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db_session
 from app.modules.common.notifications import resolve_actor_identity, log_audit_action
 from .models import HuantaProbeta
-from .schemas import HuantaProbetaCreateBatch, HuantaProbetaItem, HuantaProbetaPatch, HuantaExcelExportRequest, HuantaLoteSummary
+from .schemas import HuantaProbetaCreateBatch, HuantaProbetaItem, HuantaProbetaPatch, HuantaProbetaBatchStatusUpdate, HuantaExcelExportRequest, HuantaLoteSummary
 from .excel import generate_huanta_probetas_list_excel, generate_huanta_report_excel
 from app.modules.huanta_compresion.models import HuantaCompresion
 
@@ -67,6 +67,32 @@ def update_huanta_probeta(probeta_id: int, payload: HuantaProbetaPatch, db: Sess
     db.commit()
     db.refresh(row)
     return row
+
+
+@router.patch("/batch-status")
+def batch_update_status(payload: HuantaProbetaBatchStatusUpdate, request: Request, db: Session = Depends(get_db_session)):
+    rows = db.query(HuantaProbeta).filter(HuantaProbeta.id.in_(payload.ids)).all()
+    if not rows:
+        raise HTTPException(status_code=404, detail="No se encontraron probetas con los IDs proporcionados.")
+
+    for row in rows:
+        row.estado = payload.estado
+
+    db.commit()
+
+    actor = resolve_actor_identity(db, request)
+    log_audit_action(
+        user_id=actor.get("user_id"),
+        user_name=actor.get("full_name"),
+        action=f"Cambio masivo de estado a '{payload.estado}' en {len(rows)} probetas Huanta",
+        module="LABORATORIO",
+        details={
+            "ids": payload.ids,
+            "nuevo_estado": payload.estado,
+        },
+    )
+
+    return {"message": f"{len(rows)} probetas actualizadas a '{payload.estado}'.", "count": len(rows)}
 
 
 @router.post("/batch", response_model=list[HuantaProbetaItem])
