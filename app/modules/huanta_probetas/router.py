@@ -45,6 +45,15 @@ def _fmt_date(value: str) -> str:
 @router.get("", response_model=list[HuantaProbetaItem])
 def list_huanta_probetas(db: Session = Depends(get_db_session)):
     rows = db.query(HuantaProbeta).order_by(asc(HuantaProbeta.codigo_lote_interno), asc(HuantaProbeta.item)).all()
+    
+    # Dynamically read estado from HuantaCompresion to avoid synchronization issues
+    compresiones = db.query(HuantaCompresion).all()
+    comp_map = {c.probeta_id: c.estado for c in compresiones}
+    
+    for row in rows:
+        if row.id in comp_map:
+            row.estado = comp_map[row.id]
+            
     return rows
 
 
@@ -180,6 +189,9 @@ def update_huanta_probeta(probeta_id: int, payload: HuantaProbetaPatch, db: Sess
         if "estado" in update_data:
             comp_row.estado = row.estado
         db.commit()
+        
+        # Dynamically overwrite the returned row's estado with the compression state
+        row.estado = comp_row.estado
 
     return row
 
@@ -317,6 +329,12 @@ def get_huanta_lotes(db: Session = Depends(get_db_session)):
 @router.get("/export")
 def export_huanta_probetas_list(db: Session = Depends(get_db_session)):
     rows = db.query(HuantaProbeta).order_by(asc(HuantaProbeta.codigo_lote_interno), asc(HuantaProbeta.item)).all()
+    compresiones = db.query(HuantaCompresion).all()
+    comp_map = {c.probeta_id: c.estado for c in compresiones}
+    for row in rows:
+        if row.id in comp_map:
+            row.estado = comp_map[row.id]
+            
     try:
         excel_bytes = generate_huanta_probetas_list_excel(rows)
         from fastapi.responses import Response
