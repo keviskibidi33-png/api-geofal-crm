@@ -48,51 +48,6 @@ def list_huanta_probetas(db: Session = Depends(get_db_session)):
     return rows
 
 
-@router.patch("/{probeta_id}", response_model=HuantaProbetaItem)
-def update_huanta_probeta(probeta_id: int, payload: HuantaProbetaPatch, db: Session = Depends(get_db_session)):
-    row = db.query(HuantaProbeta).filter(HuantaProbeta.id == probeta_id).first()
-    if not row:
-        raise HTTPException(status_code=404, detail="Probeta Huanta no encontrada")
-
-    update_data = payload.model_dump(exclude_unset=True)
-
-    if "fecha_moldeo" in update_data or "edad" in update_data:
-        moldeo = update_data.get("fecha_moldeo", row.fecha_moldeo)
-        edad = update_data.get("edad", row.edad)
-        parsed = _parse_date(moldeo)
-        if parsed and edad:
-            update_data["fecha_rotura"] = (parsed + timedelta(days=int(edad))).strftime("%Y/%m/%d")
-
-    if "fecha_moldeo" in update_data:
-        update_data["fecha_moldeo"] = _fmt_date(update_data["fecha_moldeo"])
-    if "fecha_rotura" in update_data:
-        update_data["fecha_rotura"] = _fmt_date(update_data["fecha_rotura"])
-
-    for field, value in update_data.items():
-        if hasattr(row, field):
-            setattr(row, field, value)
-
-    db.commit()
-    db.refresh(row)
-
-    # Sync with HuantaCompresion
-    comp_row = db.query(HuantaCompresion).filter(HuantaCompresion.probeta_id == row.id).first()
-    if comp_row:
-        if "codigo_probeta" in update_data:
-            comp_row.codigo_probeta = row.codigo_probeta
-        if "codigo_lote_interno" in update_data:
-            comp_row.codigo_lote_interno = row.codigo_lote_interno
-        if "codigo_muestra_lem" in update_data:
-            comp_row.codigo_muestra_lem = row.codigo_muestra_lem
-        if "fecha_rotura" in update_data:
-            comp_row.fecha_rotura = row.fecha_rotura
-        if "estado" in update_data:
-            comp_row.estado = row.estado
-        db.commit()
-
-    return row
-
-
 @router.patch("/batch-status")
 def batch_update_status(payload: HuantaProbetaBatchStatusUpdate, request: Request, db: Session = Depends(get_db_session)):
     rows = db.query(HuantaProbeta).filter(HuantaProbeta.id.in_(payload.ids)).all()
@@ -182,6 +137,51 @@ def batch_update_probetas(payload: list[HuantaProbetaBatchUpdateItem], request: 
     )
 
     return {"message": f"{len(updated_ids)} probetas actualizadas correctamente.", "ids": updated_ids}
+
+
+@router.patch("/{probeta_id}", response_model=HuantaProbetaItem)
+def update_huanta_probeta(probeta_id: int, payload: HuantaProbetaPatch, db: Session = Depends(get_db_session)):
+    row = db.query(HuantaProbeta).filter(HuantaProbeta.id == probeta_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Probeta Huanta no encontrada")
+
+    update_data = payload.model_dump(exclude_unset=True)
+
+    if "fecha_moldeo" in update_data or "edad" in update_data:
+        moldeo = update_data.get("fecha_moldeo", row.fecha_moldeo)
+        edad = update_data.get("edad", row.edad)
+        parsed = _parse_date(moldeo)
+        if parsed and edad:
+            update_data["fecha_rotura"] = (parsed + timedelta(days=int(edad))).strftime("%Y/%m/%d")
+
+    if "fecha_moldeo" in update_data:
+        update_data["fecha_moldeo"] = _fmt_date(update_data["fecha_moldeo"])
+    if "fecha_rotura" in update_data:
+        update_data["fecha_rotura"] = _fmt_date(update_data["fecha_rotura"])
+
+    for field, value in update_data.items():
+        if hasattr(row, field):
+            setattr(row, field, value)
+
+    db.commit()
+    db.refresh(row)
+
+    # Sync with HuantaCompresion
+    comp_row = db.query(HuantaCompresion).filter(HuantaCompresion.probeta_id == row.id).first()
+    if comp_row:
+        if "codigo_probeta" in update_data:
+            comp_row.codigo_probeta = row.codigo_probeta
+        if "codigo_lote_interno" in update_data:
+            comp_row.codigo_lote_interno = row.codigo_lote_interno
+        if "codigo_muestra_lem" in update_data:
+            comp_row.codigo_muestra_lem = row.codigo_muestra_lem
+        if "fecha_rotura" in update_data:
+            comp_row.fecha_rotura = row.fecha_rotura
+        if "estado" in update_data:
+            comp_row.estado = row.estado
+        db.commit()
+
+    return row
 
 
 @router.post("/batch", response_model=list[HuantaProbetaItem])
