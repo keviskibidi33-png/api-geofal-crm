@@ -271,6 +271,15 @@ async def importar_verificacion_excel(
     if not numero_verificacion:
         raise HTTPException(status_code=400, detail="Número de verificación es obligatorio")
         
+    from app.modules.tracing.service import TracingService
+    recepcion, canonical_numero = TracingService._buscar_recepcion_flexible(db, numero_verificacion)
+    if not recepcion:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No existe una recepción registrada para el número {numero_verificacion}. El flujo debe iniciar en Recepción."
+        )
+    numero_verificacion = canonical_numero
+        
     try:
         content = await uploaded_file.read()
         parser = ExcelImportParser()

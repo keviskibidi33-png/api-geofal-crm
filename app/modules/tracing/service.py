@@ -219,6 +219,17 @@ class TracingService:
         clean_num = numero.replace("REC-", "").replace("rec-", "").strip()
         
         variantes = {numero, clean_num, base_num}
+        
+        # Si el número ingresado no tiene sufijo de año (no termina en -\d{2}),
+        # le agregamos el sufijo del año actual y del año anterior para buscar también el formato canónico.
+        if base_num and not re.search(r'-\d{2}$', base_num):
+            current_year_suffix = str(datetime.now().year)[2:]  # "26"
+            variantes.add(f"{base_num}-{current_year_suffix}")
+            variantes.add(f"{base_num}-REC-{current_year_suffix}")
+            prev_year_suffix = str(datetime.now().year - 1)[2:]  # "25"
+            variantes.add(f"{base_num}-{prev_year_suffix}")
+            variantes.add(f"{base_num}-REC-{prev_year_suffix}")
+            
         variantes.discard("") # Remove empty strings
         
         # Query Única Optimizada con IN operator
@@ -234,13 +245,18 @@ class TracingService:
         # Mapear resultados para acceso rápido
         mapa_resultados = {r.numero_recepcion: r for r in recepciones}
         
-        # Verificar en orden de prioridad: Exacto -> Limpio -> Base
+        # Verificar en orden de prioridad: Exacto -> Limpio -> Base -> Variantes con año
         if numero in mapa_resultados:
             return mapa_resultados[numero], numero
         if clean_num in mapa_resultados:
             return mapa_resultados[clean_num], clean_num
         if base_num in mapa_resultados:
             return mapa_resultados[base_num], base_num
+            
+        # Buscar cualquiera de las otras variantes generadas que coincida en base de datos
+        for var in variantes:
+            if var in mapa_resultados:
+                return mapa_resultados[var], var
             
         # Fallback (primer match cualquiera)
         first_match = recepciones[0]

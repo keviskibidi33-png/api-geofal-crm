@@ -241,8 +241,16 @@ class VerificacionService:
     def crear_verificacion(self, verificacion_data: VerificacionMuestrasCreate) -> VerificacionMuestras:
         """Crea una nueva verificación de muestras"""
         try:
+            from app.modules.tracing.service import TracingService
+            recepcion, canonical_numero = TracingService._buscar_recepcion_flexible(self.db, verificacion_data.numero_verificacion)
+            if not recepcion:
+                raise ValueError(f"No existe una recepción registrada para el número {verificacion_data.numero_verificacion}. El flujo debe iniciar en Recepción.")
+            
+            # Coercionar al número canónico de la recepción para evitar duplicados
+            verificacion_data.numero_verificacion = canonical_numero
+
             db_verificacion = VerificacionMuestras(
-                numero_verificacion=verificacion_data.numero_verificacion,
+                numero_verificacion=canonical_numero,
                 codigo_documento=verificacion_data.codigo_documento,
                 version=verificacion_data.version,
                 fecha_documento=verificacion_data.fecha_documento,
@@ -460,7 +468,14 @@ class VerificacionService:
             # Actualizar campos de la cabecera
             update_data = data.model_dump(exclude={"muestras_verificadas"}, exclude_unset=True)
             if "numero_verificacion" in update_data and isinstance(update_data["numero_verificacion"], str):
-                update_data["numero_verificacion"] = update_data["numero_verificacion"].strip()
+                new_num = update_data["numero_verificacion"].strip()
+                if new_num != db_verificacion.numero_verificacion:
+                    from app.modules.tracing.service import TracingService
+                    recepcion, canonical_numero = TracingService._buscar_recepcion_flexible(self.db, new_num)
+                    if not recepcion:
+                        raise ValueError(f"No existe una recepción registrada para el número {new_num}. El flujo debe iniciar en Recepción.")
+                    new_num = canonical_numero
+                update_data["numero_verificacion"] = new_num
             for key, value in update_data.items():
                 setattr(db_verificacion, key, value)
             
