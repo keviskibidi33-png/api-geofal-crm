@@ -53,7 +53,18 @@ def update_huanta_compresion(item_id: int, payload: HuantaCompresionUpdate, requ
     row = db.query(HuantaCompresion).filter(HuantaCompresion.id == item_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Item de compresión Huanta no encontrado")
-    for key, value in payload.model_dump(exclude_unset=True).items():
+        
+    update_data = payload.model_dump(exclude_unset=True)
+    
+    # Auto-determine state based on carga_maxima if present
+    if "carga_maxima" in update_data:
+        val = update_data["carga_maxima"]
+        if val is not None and val > 0:
+            update_data["estado"] = "ENSAYADO"
+        else:
+            update_data["estado"] = "PENDIENTE"
+
+    for key, value in update_data.items():
         setattr(row, key, value)
     db.commit()
     db.refresh(row)
