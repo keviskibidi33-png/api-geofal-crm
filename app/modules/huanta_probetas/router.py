@@ -133,7 +133,11 @@ def create_huanta_batch(payload: HuantaProbetaCreateBatch, request: Request, db:
                 if parsed:
                     fecha_rotura = (parsed + timedelta(days=int(item.edad or 0))).strftime("%Y/%m/%d")
             next_correlative = existing_max + idx
-            codigo = item.codigo_muestra_lem.strip() or f"HHTA-{item.elemento}-{item.detalle_elemento}-{item.f_c}-{item.codigo_probeta.replace('-CO', '')}"
+            sigla_part = (item.sigla or "HHTA").strip().upper()
+            detalle = (item.detalle_elemento or "").strip()
+            detalle_part = f"{detalle}-" if (detalle and detalle != "-") else ""
+            probeta_num = item.codigo_probeta.replace('-CO', '').strip()
+            codigo = item.codigo_muestra_lem.strip() or f"{sigla_part}-{detalle_part}{item.f_c}-{probeta_num}"
             row = HuantaProbeta(
                 item=item.item,
                 codigo_probeta=item.codigo_probeta.strip(),

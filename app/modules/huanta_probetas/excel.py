@@ -295,7 +295,7 @@ def generate_huanta_report_excel(
                         fc_val = _get_fc_value(probeta)
 
                         set_cell(sheet_data, f"A{row_idx}", probeta.codigo_muestra_lem or "", merge_anchor_map=merge_anchor_map)
-                        set_cell(sheet_data, f"B{row_idx}", probeta.elemento or "-", merge_anchor_map=merge_anchor_map)
+                        set_cell(sheet_data, f"B{row_idx}", probeta.detalle_elemento or "-", merge_anchor_map=merge_anchor_map)
                         set_cell(sheet_data, f"C{row_idx}", fc_val, is_number=True, merge_anchor_map=merge_anchor_map)
 
                         moldeo_serial = _date_str_to_excel_serial(probeta.fecha_moldeo)
@@ -342,7 +342,7 @@ def generate_huanta_report_excel(
                     if probetas:
                         first = probetas[0]
                         fc_val = _get_fc_value(first)
-                        set_cell(sheet_data, "C9", first.elemento or "-", merge_anchor_map=merge_anchor_map)
+                        set_cell(sheet_data, "C9", first.detalle_elemento or "-", merge_anchor_map=merge_anchor_map)
                         set_cell(sheet_data, "C10", fc_val, is_number=True, merge_anchor_map=merge_anchor_map)
                         set_cell(sheet_data, "C11", _parse_date_str(first.fecha_moldeo), merge_anchor_map=merge_anchor_map)
                         set_cell(sheet_data, "C13", _parse_date_str(first.fecha_rotura), merge_anchor_map=merge_anchor_map)
