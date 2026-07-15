@@ -26,6 +26,12 @@ DELETE_ALLOWED_ROLES = {"admin", "tecnico", "oficina_tecnica"}
 def require_delete_permission(request: Request, db: Session = Depends(get_db_session)):
     actor = get_request_actor_context(request)
     user_id = actor.get("user_id")
+    email = str(actor.get("email") or "").strip().lower()
+
+    # Si es el correo bsaravia@geofal.com.pe, permitimos directamente
+    if email == "bsaravia@geofal.com.pe":
+        return
+
     if not user_id:
         raise HTTPException(status_code=403, detail="No tienes permisos para eliminar")
     try:
