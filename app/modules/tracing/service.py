@@ -679,3 +679,147 @@ class TracingService:
             TracingService.actualizar_trazabilidad(db, r.numero_recepcion)
             count += 1
         return count
+
+    @staticmethod
+    def sanear_duplicados(db: Session) -> dict:
+        """
+        Unifica registros de verificacion_muestras y trazabilidad que son huérfanos
+        (su numero_verificacion no coincide con ningún numero_recepcion exacto).
+
+        Por cada huérfano:
+        - Si el número canónico de recepción NO tiene verificación propia → coercionar.
+        - Si el número canónico de recepción YA tiene verificación → el huérfano es el
+          clon, se elimina.
+        - En ambos casos se borra la fila fantasma de trazabilidad y se resincroniza
+          la fila canónica.
+
+        Retorna un resumen con conteo de coercionados, eliminados y errores.
+        """
+        # Subquery de todos los numeros_recepcion válidos
+        numeros_recepcion_validos = {
+            r.numero_recepcion
+            for r in db.query(RecepcionMuestra.numero_recepcion).all()
+        }
+
+        # Verificaciones huérfanas: cuyo numero no está en recepcion exactamente
+        huerfanas = (
+            db.query(VerificacionMuestras)
+            .options(selectinload(VerificacionMuestras.muestras_verificadas))
+            .filter(
+                VerificacionMuestras.numero_verificacion.notin_(numeros_recepcion_validos)
+            )
+            .all()
+        )
+
+        coercionados = 0
+        eliminados = 0
+        errores = []
+        numeros_sincroniados: set[str] = set()
+
+        for v in huerfanas:
+            old_num = v.numero_verificacion
+            try:
+                # Buscar la recepción canónica para este número
+                recepcion, canonical = TracingService._buscar_recepcion_flexible(
+                    db, old_num
+                )
+
+                if not recepcion or not canonical:
+                    # No hay recepción para este número en ningún formato conocido
+                    logger.warning(
+                        "[SANEAR] No se encontró recepción para verificación huérfana. "
+                        "numero='%s' id=%s — se omite.",
+                        old_num,
+                        v.id,
+                    )
+                    continue
+
+                # ¿Ya existe una verificación para el número canónico?
+                existente_canonico = (
+                    db.query(VerificacionMuestras)
+                    .filter(
+                        VerificacionMuestras.numero_verificacion == canonical,
+                        VerificacionMuestras.id != v.id,
+                    )
+                    .first()
+                )
+
+                if existente_canonico:
+                    # Hay una verificación real para el canónico → el huérfano es el clon
+                    logger.info(
+                        "[SANEAR][DELETE] Eliminando verificación clon. "
+                        "huerfano_id=%s huerfano_num='%s' → canonico='%s' (id=%s)",
+                        v.id,
+                        old_num,
+                        canonical,
+                        existente_canonico.id,
+                    )
+                    db.delete(v)
+                    db.flush()
+                    eliminados += 1
+                else:
+                    # No existe verificación canónica → coercionar el número
+                    logger.info(
+                        "[SANEAR][COERCE] Coercionando verificación huérfana. "
+                        "id=%s '%s' → '%s'",
+                        v.id,
+                        old_num,
+                        canonical,
+                    )
+                    v.numero_verificacion = canonical
+                    db.flush()
+                    coercionados += 1
+
+                # Eliminar fila fantasma de trazabilidad (si existe)
+                ghost_traza = (
+                    db.query(Trazabilidad)
+                    .filter(Trazabilidad.numero_recepcion == old_num)
+                    .first()
+                )
+                if ghost_traza:
+                    logger.info(
+                        "[SANEAR][DELETE] Eliminando trazabilidad fantasma. "
+                        "numero='%s' id=%s",
+                        old_num,
+                        ghost_traza.id,
+                    )
+                    db.delete(ghost_traza)
+                    db.flush()
+
+                numeros_sincroniados.add(canonical)
+
+            except Exception as exc:
+                logger.error(
+                    "[SANEAR][ERROR] Fallo procesando verificación huérfana. "
+                    "num='%s' id=%s error=%s",
+                    old_num,
+                    v.id,
+                    exc,
+                    exc_info=True,
+                )
+                errores.append({"numero": old_num, "error": str(exc)})
+
+        # Commit de todos los cambios antes de resincronizar
+        db.commit()
+
+        # Resincronizar trazabilidad para todos los canónicos afectados
+        sincronizados = 0
+        for canonical in numeros_sincroniados:
+            try:
+                TracingService.actualizar_trazabilidad(db, canonical)
+                sincronizados += 1
+            except Exception as exc:
+                logger.error(
+                    "[SANEAR][SYNC_ERROR] Fallo al resincronizar trazabilidad. "
+                    "numero='%s' error=%s",
+                    canonical,
+                    exc,
+                )
+
+        return {
+            "total_huerfanas": len(huerfanas),
+            "coercionados": coercionados,
+            "eliminados": eliminados,
+            "sincronizados": sincronizados,
+            "errores": errores,
+        }

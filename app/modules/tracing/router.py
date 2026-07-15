@@ -602,3 +602,37 @@ def listar_versiones_informe(numero_recepcion: str, db: Session = Depends(get_db
         total_versiones=len(versiones),
         versiones=[InformeVersionResponse.from_orm_ext(v) for v in versiones],
     )
+
+
+@router.post("/admin/sanear-duplicados")
+def sanear_duplicados(db: Session = Depends(get_db_session)):
+    """
+    Saneamiento de duplicados en verificacion_muestras y trazabilidad.
+
+    Identifica verificaciones huérfanas (cuyo numero_verificacion no coincide con
+    ningún numero_recepcion exacto), y por cada una:
+    - Si el número canónico NO tiene verificación propia → coerciona el número.
+    - Si el número canónico YA tiene verificación → elimina el clon.
+    - Borra la fila fantasma de trazabilidad y resincroniza la fila canónica.
+
+    Retorna un resumen de las acciones realizadas.
+    Este endpoint es idempotente: puede ejecutarse múltiples veces de forma segura.
+    """
+    try:
+        resultado = TracingService.sanear_duplicados(db)
+        logger.info(
+            "[ADMIN] Saneamiento de duplicados completado. resultado=%s",
+            resultado,
+        )
+        return {
+            "ok": True,
+            "mensaje": (
+                f"Saneamiento completado: {resultado['coercionados']} coercionados, "
+                f"{resultado['eliminados']} eliminados, "
+                f"{resultado['sincronizados']} sincronizados."
+            ),
+            **resultado,
+        }
+    except Exception as exc:
+        logger.error("[ADMIN] Error en saneamiento de duplicados: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error en saneamiento: {exc}")
