@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db_session
 from app.modules.common.notifications import resolve_actor_identity, log_audit_action
 from .models import HuantaProbeta
-from .schemas import HuantaProbetaCreateBatch, HuantaProbetaItem, HuantaExcelExportRequest, HuantaLoteSummary
+from .schemas import HuantaProbetaCreateBatch, HuantaProbetaItem, HuantaProbetaPatch, HuantaExcelExportRequest, HuantaLoteSummary
 from .excel import generate_huanta_probetas_list_excel, generate_huanta_report_excel
 from app.modules.huanta_compresion.models import HuantaCompresion
 
@@ -38,6 +38,35 @@ def _fmt_date(value: str) -> str:
 def list_huanta_probetas(db: Session = Depends(get_db_session)):
     rows = db.query(HuantaProbeta).order_by(asc(HuantaProbeta.codigo_lote_interno), asc(HuantaProbeta.item)).all()
     return rows
+
+
+@router.patch("/{probeta_id}", response_model=HuantaProbetaItem)
+def update_huanta_probeta(probeta_id: int, payload: HuantaProbetaPatch, db: Session = Depends(get_db_session)):
+    row = db.query(HuantaProbeta).filter(HuantaProbeta.id == probeta_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Probeta Huanta no encontrada")
+
+    update_data = payload.model_dump(exclude_unset=True)
+
+    if "fecha_moldeo" in update_data or "edad" in update_data:
+        moldeo = update_data.get("fecha_moldeo", row.fecha_moldeo)
+        edad = update_data.get("edad", row.edad)
+        parsed = _parse_date(moldeo)
+        if parsed and edad:
+            update_data["fecha_rotura"] = (parsed + timedelta(days=int(edad))).strftime("%Y/%m/%d")
+
+    if "fecha_moldeo" in update_data:
+        update_data["fecha_moldeo"] = _fmt_date(update_data["fecha_moldeo"])
+    if "fecha_rotura" in update_data:
+        update_data["fecha_rotura"] = _fmt_date(update_data["fecha_rotura"])
+
+    for field, value in update_data.items():
+        if hasattr(row, field):
+            setattr(row, field, value)
+
+    db.commit()
+    db.refresh(row)
+    return row
 
 
 @router.post("/batch", response_model=list[HuantaProbetaItem])

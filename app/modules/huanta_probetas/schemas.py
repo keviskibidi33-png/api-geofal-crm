@@ -39,6 +39,18 @@ class HuantaProbetaItem(BaseModel):
         from_attributes = True
 
 
+class HuantaProbetaPatch(BaseModel):
+    sigla: Optional[str] = None
+    elemento: Optional[str] = None
+    detalle_elemento: Optional[str] = None
+    f_c: Optional[str] = None
+    fecha_moldeo: Optional[str] = None
+    edad: Optional[int] = None
+    fecha_rotura: Optional[str] = None
+    codigo_muestra_lem: Optional[str] = None
+    estado: Optional[str] = None
+
+
 class HuantaExcelExportRequest(BaseModel):
     probeta_ids: List[int] = Field(..., min_items=1, max_items=3)
 
