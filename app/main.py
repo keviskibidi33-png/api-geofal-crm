@@ -186,6 +186,34 @@ try:
 
     # Programmatic startup migrations for Huanta removed - migrated to manual execution.
 
+    # Migración de limpieza de trazabilidades obsoletas y no canónicas
+    try:
+        from sqlalchemy.orm import Session
+        from app.modules.tracing.service import TracingService
+        from app.modules.tracing.models import Trazabilidad
+        
+        with Session(engine) as db_session:
+            trazas = db_session.query(Trazabilidad).all()
+            for t in trazas:
+                num = t.numero_recepcion
+                if num and (not re.search(r'-\d{2}$', num) or num.endswith('-')):
+                    recepcion, canonical = TracingService._buscar_recepcion_flexible(db_session, num)
+                    if canonical and canonical != num:
+                        canonical_exists = db_session.query(Trazabilidad).filter(
+                            Trazabilidad.numero_recepcion == canonical
+                        ).first()
+                        
+                        if canonical_exists:
+                            logger.info("[STARTUP-CLEANUP] Eliminando trazabilidad obsoleta duplicada: '%s' (ya existe '%s')", num, canonical)
+                            db_session.delete(t)
+                        else:
+                            logger.info("[STARTUP-CLEANUP] Normalizando trazabilidad no canónica: '%s' -> '%s'", num, canonical)
+                            t.numero_recepcion = canonical
+            db_session.commit()
+            logger.info("Programmatic startup trazabilidad cleanup finished successfully.")
+    except Exception as cleanup_err:
+        logger.warning("Could not apply startup trazabilidad cleanup: %s", cleanup_err)
+
 except Exception as e:
     logger.warning("Could not create database tables on startup (DB might be offline): %s", e)
 
