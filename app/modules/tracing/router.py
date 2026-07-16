@@ -394,11 +394,23 @@ def listar_seguimiento(db: Session = Depends(get_db_session), skip: int = 0, lim
         .all()
     )
 
+    seen_ids = set()
+    seen_canonical_numbers = set()
     synced_trazas = []
     for traza in trazas:
         try:
             synced_traza = TracingService.actualizar_trazabilidad(db, traza.numero_recepcion)
-            synced_trazas.append(synced_traza or traza)
+            resolved_traza = synced_traza or traza
+            
+            # Evitar agregar trazabilidad con ID duplicado o número canónico duplicado
+            if resolved_traza:
+                t_id = resolved_traza.id
+                t_num = (resolved_traza.numero_recepcion or "").strip().upper()
+                if t_id not in seen_ids and t_num not in seen_canonical_numbers:
+                    seen_ids.add(t_id)
+                    if t_num:
+                        seen_canonical_numbers.add(t_num)
+                    synced_trazas.append(resolved_traza)
         except Exception as exc:
             logger.error(
                 "Error sincronizando trazabilidad en listar para %s: %s",
@@ -406,7 +418,14 @@ def listar_seguimiento(db: Session = Depends(get_db_session), skip: int = 0, lim
                 exc,
                 exc_info=True,
             )
-            synced_trazas.append(traza)
+            # Fallback seguro con deduplicación por si acaso
+            t_id = traza.id
+            t_num = (traza.numero_recepcion or "").strip().upper()
+            if t_id not in seen_ids and t_num not in seen_canonical_numbers:
+                seen_ids.add(t_id)
+                if t_num:
+                    seen_canonical_numbers.add(t_num)
+                synced_trazas.append(traza)
 
     trazas = synced_trazas
 
