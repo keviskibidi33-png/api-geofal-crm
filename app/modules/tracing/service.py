@@ -413,6 +413,23 @@ class TracingService:
         # 3. Buscar si ya existe en trazabilidad
         traza = TracingService._trazabilidad_query(db).filter(Trazabilidad.numero_recepcion == canonical_numero).first()
         
+        # Saneamiento de variantes duplicadas obsoletas
+        if numero_recepcion != canonical_numero:
+            old_traza = TracingService._trazabilidad_query(db).filter(Trazabilidad.numero_recepcion == numero_recepcion).first()
+            if old_traza:
+                if traza and traza.id != old_traza.id:
+                    logger.warning(
+                        "[TRACING][CLEANUP] Eliminando trazabilidad duplicada obsoleta para '%s' (ID %s) "
+                        "porque ya existe la canónica '%s' (ID %s)",
+                        numero_recepcion,
+                        old_traza.id,
+                        canonical_numero,
+                        traza.id
+                    )
+                    db.delete(old_traza)
+                    db.commit()
+                    return None
+
         # Búsqueda secundaria flexible en trazabilidad si no se encuentra por el canónico actual
         if not traza:
             for num in numeros_busqueda:
@@ -426,6 +443,9 @@ class TracingService:
                             traza.numero_recepcion,
                             canonical_numero,
                         )
+                        # Actualizar al número canónico de inmediato para normalizar la base de datos
+                        traza.numero_recepcion = canonical_numero
+                        db.flush()
                     break
 
         # --- PERSISTENCE & CLEANUP FIX ---
