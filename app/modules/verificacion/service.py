@@ -552,6 +552,14 @@ class VerificacionService:
             except Exception as e:
                 logger.error(f"Error regenerando Excel en update: {str(e)}")
             
+            # --- SYNC TRAZABILIDAD ---
+            try:
+                from app.modules.tracing.service import TracingService
+                num_tracing = TracingService._extraer_numero_base(db_verificacion.numero_verificacion) or db_verificacion.numero_verificacion
+                TracingService.actualizar_trazabilidad(self.db, num_tracing)
+            except Exception as tr_e:
+                logger.error(f"Error syncing trazabilidad on update: {tr_e}")
+            
             return db_verificacion
             
         except Exception as e:

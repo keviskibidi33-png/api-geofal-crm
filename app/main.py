@@ -193,6 +193,12 @@ try:
         from app.modules.tracing.models import Trazabilidad
         
         with Session(engine) as db_session:
+            # 1. Ejecutar saneamiento a nivel del núcleo del problema (verificacion_muestras y trazabilidad vinculadas)
+            logger.info("[STARTUP-CLEANUP] Iniciando saneamiento inteligente de duplicados en verificaciones...")
+            resultado_saneamiento = TracingService.sanear_duplicados(db_session)
+            logger.info("[STARTUP-CLEANUP] Saneamiento completado: %s", resultado_saneamiento)
+
+            # 2. Red de seguridad: limpiar cualquier trazabilidad huérfana residual sin correspondencia canónica
             trazas = db_session.query(Trazabilidad).all()
             for t in trazas:
                 num = t.numero_recepcion
@@ -204,10 +210,10 @@ try:
                         ).first()
                         
                         if canonical_exists:
-                            logger.info("[STARTUP-CLEANUP] Eliminando trazabilidad obsoleta duplicada: '%s' (ya existe '%s')", num, canonical)
+                            logger.info("[STARTUP-CLEANUP] Eliminando trazabilidad obsoleta residual: '%s' (ya existe '%s')", num, canonical)
                             db_session.delete(t)
                         else:
-                            logger.info("[STARTUP-CLEANUP] Normalizando trazabilidad no canónica: '%s' -> '%s'", num, canonical)
+                            logger.info("[STARTUP-CLEANUP] Normalizando trazabilidad no canónica residual: '%s' -> '%s'", num, canonical)
                             t.numero_recepcion = canonical
             db_session.commit()
             logger.info("Programmatic startup trazabilidad cleanup finished successfully.")
