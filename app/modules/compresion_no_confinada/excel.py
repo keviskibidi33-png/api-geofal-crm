@@ -268,7 +268,7 @@ def _format_number_text(value: float | None, decimals: int = 4) -> str:
     if value is None:
         return ""
     rounded = round(float(value), decimals)
-    text = f"{rounded:.{decimals}f}".rstrip("0").rstrip(".")
+    text = f"{rounded:.{decimals}f}".rstrip("0").rstrip(".").replace(".", ",")
     return text or "0"
 
 
