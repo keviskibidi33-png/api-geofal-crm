@@ -731,10 +731,7 @@ def export_programacion_administracion_xlsx(template_path: str, items: list[dict
                 elif field_name == "numero_factura":
                     value = item.get("numero_factura") or item.get("facturacion", "")
                 elif field_name == "costo_servicio":
-                    raw_cost = item.get("costo_servicio")
-                    if raw_cost is None or raw_cost == "":
-                        raw_cost = item.get("precio_servicio", "")
-                    value = _parse_currency_number(raw_cost)
+                    value = _parse_currency_number(item.get("costo_servicio"))
                     is_number = True
                 else:
                     value = item.get(field_name, "")
