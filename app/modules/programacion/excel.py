@@ -735,6 +735,18 @@ def export_programacion_administracion_xlsx(template_path: str, items: list[dict
                     if row.get("hidden") == "1":
                         row.attrib.pop("hidden", None)
 
+        # Remove excess rows beyond our data range to prevent template sample data leakage
+        max_data_row = START_ROW + count - 1
+        rows_to_remove = []
+        for row in sheet_data.findall(f'{{{ns}}}row'):
+            r = row.get("r")
+            if r and r.isdigit():
+                rn = int(r)
+                if rn > max_data_row:
+                    rows_to_remove.append(row)
+        for row in rows_to_remove:
+            sheet_data.remove(row)
+
     # 3. Serialize
     modified_sheet1 = etree.tostring(root, encoding='utf-8', xml_declaration=True)
     
