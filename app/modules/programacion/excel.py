@@ -735,6 +735,17 @@ def export_programacion_administracion_xlsx(template_path: str, items: list[dict
                     if row.get("hidden") == "1":
                         row.attrib.pop("hidden", None)
 
+        # Clear number cell styles to prevent template format leakage
+        # (e.g., numFmtId=164 "F-001 - 0000" from template)
+        for row in sheet_data.findall(f'{{{ns}}}row'):
+            r = row.get("r")
+            if r and r.isdigit():
+                rn = int(r)
+                if START_ROW <= rn < START_ROW + count:
+                    for cell in row.findall(f'{{{ns}}}c'):
+                        if cell.get('t') is None and cell.find(f'{{{ns}}}v') is not None:
+                            cell.attrib.pop("s", None)
+
         # Remove excess rows beyond our data range to prevent template sample data leakage
         max_data_row = START_ROW + count - 1
         rows_to_remove = []
