@@ -291,28 +291,9 @@ def _discover_admin_template_mapping(
             best_mapping = row_mapping
 
     if best_score >= 4 and best_header_row > 0:
-        # Some templates keep staging rows hidden after headers.
-        # Start at the first visible row to avoid exporting into hidden lines.
-        row_lookup: dict[int, etree._Element] = {}
-        for row in sheet_data.findall(f'{{{ns}}}row'):
-            row_ref = row.get("r")
-            if not row_ref:
-                continue
-            try:
-                row_lookup[int(row_ref)] = row
-            except ValueError:
-                continue
-
-        candidate_row = best_header_row + 1
-        while candidate_row <= 5000:
-            candidate = row_lookup.get(candidate_row)
-            if candidate is None:
-                break
-            if candidate.get("hidden") != "1":
-                break
-            candidate_row += 1
-
-        return candidate_row, best_mapping
+        # Always start at the first row after the header (ignore hidden staging rows).
+        # The export will un-hide data rows after filling.
+        return best_header_row + 1, best_mapping
     return fallback_start_row, fallback_map
 
 
@@ -744,6 +725,15 @@ def export_programacion_administracion_xlsx(template_path: str, items: list[dict
                     is_number=is_number,
                     get_string_idx=string_idx_getter,
                 )
+
+        # Ensure data rows are visible (remove hidden attribute from template staging rows)
+        for row in sheet_data.findall(f'{{{ns}}}row'):
+            r = row.get("r")
+            if r and r.isdigit():
+                rn = int(r)
+                if START_ROW <= rn < START_ROW + count:
+                    if row.get("hidden") == "1":
+                        row.attrib.pop("hidden", None)
 
     # 3. Serialize
     modified_sheet1 = etree.tostring(root, encoding='utf-8', xml_declaration=True)
