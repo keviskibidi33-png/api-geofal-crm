@@ -46,15 +46,33 @@ def _fmt_date(value: str) -> str:
 def list_huanta_probetas(db: Session = Depends(get_db_session)):
     rows = db.query(HuantaProbeta).order_by(asc(HuantaProbeta.codigo_lote_interno), asc(HuantaProbeta.item)).all()
     
-    # Dynamically read estado from HuantaCompresion to avoid synchronization issues
+    # Dynamically read estado and carga_maxima from HuantaCompresion
     compresiones = db.query(HuantaCompresion).all()
-    comp_map = {c.probeta_id: c.estado for c in compresiones}
+    comp_estado_map = {c.probeta_id: c.estado for c in compresiones}
+    comp_carga_map = {c.probeta_id: c.carga_maxima for c in compresiones}
     
+    result = []
     for row in rows:
-        if row.id in comp_map:
-            row.estado = comp_map[row.id]
+        if row.id in comp_estado_map:
+            row.estado = comp_estado_map[row.id]
+        result.append(HuantaProbetaItem(
+            id=row.id,
+            item=row.item,
+            codigo_probeta=row.codigo_probeta,
+            sigla=row.sigla,
+            elemento=row.elemento,
+            detalle_elemento=row.detalle_elemento,
+            f_c=row.f_c,
+            fecha_moldeo=row.fecha_moldeo,
+            edad=row.edad,
+            fecha_rotura=row.fecha_rotura,
+            codigo_muestra_lem=row.codigo_muestra_lem,
+            codigo_lote_interno=row.codigo_lote_interno,
+            estado=row.estado,
+            carga_maxima=comp_carga_map.get(row.id),
+        ))
             
-    return rows
+    return result
 
 
 @router.patch("/batch-status")
@@ -305,9 +323,11 @@ def get_huanta_lotes(db: Session = Depends(get_db_session)):
             state = comp_map.get(p.id, "PENDIENTE")
             states.append(state)
 
-        if all(s == "ENSAYADO" for s in states):
+        if all(s == "DESCARGADO" for s in states):
+            estado_lote = "DESCARGADO"
+        elif all(s == "ENSAYADO" for s in states):
             estado_lote = "ENSAYADO"
-        elif any(s == "ENSAYADO" for s in states):
+        elif any(s in ("ENSAYADO", "DESCARGADO") for s in states):
             estado_lote = "PARCIAL"
         else:
             estado_lote = "PENDIENTE"
@@ -370,6 +390,26 @@ def export_huanta_report(
         realizado_por = actor.get("full_name") or "LABORATORIO GEOFAL"
 
         excel_bytes = generate_huanta_report_excel(probetas, compresiones, realizado_por)
+
+        # Mark exported probetas as DESCARGADO
+        for p in probetas:
+            p.estado = "DESCARGADO"
+        db.query(HuantaCompresion).filter(HuantaCompresion.probeta_id.in_(probeta_ids)).update(
+            {HuantaCompresion.estado: "DESCARGADO"}, synchronize_session=False
+        )
+        db.commit()
+
+        log_audit_action(
+            user_id=actor.get("user_id"),
+            user_name=actor.get("full_name"),
+            action=f"Exportó reporte Huanta ({len(probeta_ids)} probetas) → DESCARGADO",
+            module="LABORATORIO",
+            details={
+                "probeta_ids": probeta_ids,
+                "codigo_lote_interno": probetas[0].codigo_lote_interno,
+            },
+        )
+
         from fastapi.responses import Response
 
         filename = f"INF-HUANTA-PROBETAS_{probetas[0].codigo_lote_interno}.xlsx"

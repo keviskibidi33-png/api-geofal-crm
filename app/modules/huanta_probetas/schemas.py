@@ -34,6 +34,7 @@ class HuantaProbetaItem(BaseModel):
     codigo_muestra_lem: str
     codigo_lote_interno: str
     estado: str
+    carga_maxima: Optional[float] = None
 
     class Config:
         from_attributes = True
