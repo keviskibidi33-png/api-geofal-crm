@@ -200,6 +200,7 @@ def _resolve_admin_header_field(normalized_header: str) -> tuple[str, bool] | No
         "DESCRIPCION DEL SERVICIO": ("descripcion_servicio", False),
         "COTIZACION": ("cotizacion_lab", False),
         "COSTO DEL SERVICIO": ("costo_servicio", False),
+        "COSTO DEL SERVICIO IGV": ("costo_servicio", False),
         "ORDEN DE SERVICIO": ("orden_servicio", False),
         "N ORDEN DE SERVICIO": ("orden_servicio", False),
         "NRO ORDEN DE SERVICIO": ("orden_servicio", False),
@@ -222,6 +223,8 @@ def _resolve_admin_header_field(normalized_header: str) -> tuple[str, bool] | No
         return direct_map[normalized_header]
     if normalized_header.startswith("EVIDENCIA SOLICITUD"):
         return ("evidencia_solicitud_envio", False)
+    if normalized_header.startswith("COSTO DEL SERVICIO"):
+        return ("costo_servicio", False)
     if normalized_header.startswith("DIAS ATRASO"):
         return ("dias_atraso_envio_coti", True)
     return None
