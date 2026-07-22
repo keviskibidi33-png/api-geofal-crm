@@ -295,13 +295,18 @@ def create_huanta_batch(payload: HuantaProbetaCreateBatch, request: Request, db:
         raise
 
 
+def _extract_digits(code: str) -> str:
+    """Extract only numeric digits from a code string."""
+    return "".join(c for c in code if c.isdigit())
+
+
 @router.get("/lotes", response_model=list[HuantaLoteSummary])
 def get_huanta_lotes(db: Session = Depends(get_db_session)):
-    probetas = db.query(HuantaProbeta).order_by(asc(HuantaProbeta.fecha_moldeo), asc(HuantaProbeta.codigo_lote_interno)).all()
+    probetas = db.query(HuantaProbeta).order_by(asc(HuantaProbeta.fecha_moldeo), asc(HuantaProbeta.codigo_lote_interno), asc(HuantaProbeta.item)).all()
     compresiones = db.query(HuantaCompresion).all()
     comp_map = {c.probeta_id: c.estado for c in compresiones}
 
-    groups = {}
+    groups: dict[str, dict] = {}
     for p in probetas:
         lote_code = (p.codigo_lote_interno or "").strip()
         if not lote_code:
@@ -317,11 +322,9 @@ def get_huanta_lotes(db: Session = Depends(get_db_session)):
         groups[lote_code]["probetas"].append(p)
 
     lotes = []
-    for lote_code, info in groups.items():
-        states = []
-        for p in info["probetas"]:
-            state = comp_map.get(p.id, "PENDIENTE")
-            states.append(state)
+    for _lote_code, info in groups.items():
+        probetas_grupo = info["probetas"]
+        states = [comp_map.get(p.id, "PENDIENTE") for p in probetas_grupo]
 
         if all(s == "DESCARGADO" for s in states):
             estado_lote = "DESCARGADO"
@@ -332,13 +335,24 @@ def get_huanta_lotes(db: Session = Depends(get_db_session)):
         else:
             estado_lote = "PENDIENTE"
 
+        first_code = _extract_digits(probetas_grupo[0].codigo_probeta)
+        last_code = _extract_digits(probetas_grupo[-1].codigo_probeta)
+        codigo_probeta_range = f"{first_code}-{last_code}"
+
+        fechas_rotura = sorted(p.fecha_rotura for p in probetas_grupo if p.fecha_rotura and p.fecha_rotura.strip())
+        fecha_rotura_inicial = fechas_rotura[0] if fechas_rotura else "-"
+        fecha_rotura_final = fechas_rotura[-1] if fechas_rotura else "-"
+
         lotes.append(
             HuantaLoteSummary(
-                codigo_lote_interno=lote_code,
+                codigo_probeta=codigo_probeta_range,
+                codigo_lote_interno=info["codigo_lote_interno"],
                 fecha_moldeo=info["fecha_moldeo"],
+                fecha_rotura_inicial=fecha_rotura_inicial,
+                fecha_rotura_final=fecha_rotura_final,
                 elemento=info["elemento"],
                 detalle_elemento=info["detalle_elemento"],
-                cantidad_probetas=len(info["probetas"]),
+                cantidad_probetas=len(probetas_grupo),
                 estado=estado_lote,
             )
         )

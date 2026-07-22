@@ -62,8 +62,11 @@ class HuantaExcelExportRequest(BaseModel):
 
 
 class HuantaLoteSummary(BaseModel):
+    codigo_probeta: str
     codigo_lote_interno: str
     fecha_moldeo: str
+    fecha_rotura_inicial: str
+    fecha_rotura_final: str
     elemento: str
     detalle_elemento: str
     cantidad_probetas: int
