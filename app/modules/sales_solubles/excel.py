@@ -496,7 +496,7 @@ def _fill_drawing(drawing_xml: bytes, payload: SalesSolublesRequest) -> bytes:
 
 def generate_sales_solubles_excel(payload: SalesSolublesRequest) -> bytes:
     """Generate Excel from template preserving styles, merges and drawings."""
-    template_bytes = _get_template_bytes("1- Info N° 001-26 SU13 Sales-1 Ult.xlsx")
+    template_bytes = _get_template_bytes("1-INF.-N-001-26-SU13-SALES-V01.xlsx")
 
     output = io.BytesIO()
     with zipfile.ZipFile(io.BytesIO(template_bytes), "r") as zin, \

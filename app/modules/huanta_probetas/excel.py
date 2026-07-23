@@ -252,7 +252,7 @@ def generate_huanta_report_excel(
     realizado_por: str
 ) -> bytes:
     """Generates the unified final report (up to 3 probetas) using 1-Inf-N-000-26-CO12-COM-V04.xlsx template."""
-    template_path = find_template_path("Proyecto Huantar/Probetas export Huanta/1-Inf-N-000-26-CO12-COM-V04.xlsx")
+    template_path = find_template_path("Proyecto Huantar/Probetas export Huanta/1-INF.-N-000-26-CO12-COM-V04.xlsx")
     if not template_path.exists():
         raise FileNotFoundError(f"Template no encontrado: {template_path}")
 

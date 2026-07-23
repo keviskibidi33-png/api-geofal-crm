@@ -457,7 +457,7 @@ def _fill_drawing(drawing_xml: bytes, payload: CloroSolubleRequest) -> bytes:
 
 def generate_cloro_soluble_excel(payload: CloroSolubleRequest) -> bytes:
     """Generate Excel from template preserving styles, merges and drawings."""
-    template_bytes = _get_template_bytes("1- Inf N° 001-26 SU14 Cloruros-1.xlsx")
+    template_bytes = _get_template_bytes("1-INF.-N-001-26-SU14-CLORUROS-V01.xlsx")
 
     output = io.BytesIO()
     with zipfile.ZipFile(io.BytesIO(template_bytes), "r") as zin, \

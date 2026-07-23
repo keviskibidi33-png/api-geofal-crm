@@ -745,7 +745,7 @@ class CompresionService:
 
         # 2. Plantilla Configurable Dinámicamente (Evita Acoplamiento Estricto / Hardcoding)
         # Prefijo base configurable por variable de entorno, por defecto la versión de producción actual V04
-        template_prefix = os.getenv("CONCRETE_TEMPLATE_PREFIX", "1-Inf-N-000-26-CO12-COM-V04")
+        template_prefix = os.getenv("CONCRETE_TEMPLATE_PREFIX", "1-INF.-N-000-26-CO12-COM-V04")
         template_name = f"{template_prefix} -{n_muestras}.xlsx"
         
         template_path = find_template_path(template_name)

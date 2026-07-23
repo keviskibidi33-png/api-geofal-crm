@@ -318,7 +318,7 @@ def generate_ph_excel(payload: PHRequest) -> bytes:
     """
     logger.info("Generating PH Excel - NTP 339.176")
 
-    template_bytes = _get_template_bytes("1- Inf N° 001-26 SU03 PH-1..xlsx")
+    template_bytes = _get_template_bytes("1-INF.-N-001-26-SU03-PH-V01.xlsx")
 
     in_zip = zipfile.ZipFile(io.BytesIO(template_bytes), "r")
     out_buffer = io.BytesIO()
