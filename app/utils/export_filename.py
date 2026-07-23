@@ -9,11 +9,11 @@ def build_formato_filename(codigo_muestra: str | None, modulo_codigo: str, modul
     Builds the download filename for a formato Excel report.
 
     Supports muestra codes in many formats:
-    - '587-SU-26'    → INF.N°-587-SU-26-CBR.xlsx
-    - '157-AG'       → INF.N°-157-AG-26-CBR.xlsx   (no year: uses current year)
-    - '157-SU'       → INF.N°-157-SU-26-CBR.xlsx
-    - '157-AG-26'    → INF.N°-157-AG-26-CBR.xlsx
-    - '157'          → INF.N°-157-SU-26-CBR.xlsx
+    - '587-SU-26'    → 1-INF.-N-587-26-SU-CBR.xlsx
+    - '157-AG'       → 1-INF.-N-157-26-AG-CBR.xlsx   (no year: uses current year)
+    - '157-SU'       → 1-INF.-N-157-26-SU-CBR.xlsx
+    - '157-AG-26'    → 1-INF.-N-157-26-AG-CBR.xlsx
+    - '157'          → 1-INF.-N-157-26-SU-CBR.xlsx
     """
     current_year = date.today().strftime("%y")
     normalized = (codigo_muestra or "").strip().upper()
@@ -39,4 +39,4 @@ def build_formato_filename(codigo_muestra: str | None, modulo_codigo: str, modul
         numero = "xxxx"
         year = current_year
 
-    return f"INF.N°-{numero}-{modulo_codigo}-{year}-{modulo_nombre}.xlsx"
+    return f"1-INF.-N-{numero}-{year}-{modulo_codigo}-{modulo_nombre}.xlsx"
