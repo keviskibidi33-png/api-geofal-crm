@@ -25,6 +25,7 @@ class SeguimientoClienteComercial(Base):
     comentarios_asistente = Column(Text, nullable=True)
     comentarios_asesor = Column(Text, nullable=True)
     numero_cotizacion = Column(String(100), nullable=True, index=True)
+    costo_cotiz_sin_igv = Column(String(100), nullable=True)
     estado_seguimiento = Column(Text, nullable=True)
     publicidad_id = Column(Integer, nullable=True, index=True)
     

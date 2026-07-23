@@ -19,6 +19,7 @@ class SeguimientoClienteComercialBase(BaseModel):
     comentarios_asistente: Optional[str] = None
     comentarios_asesor: Optional[str] = None
     numero_cotizacion: Optional[str] = None
+    costo_cotiz_sin_igv: Optional[str] = None
     estado_seguimiento: Optional[str] = None
     publicidad_id: Optional[int] = None
 
@@ -52,6 +53,7 @@ class SeguimientoClienteComercialPatch(BaseModel):
     comentarios_asistente: Optional[str] = None
     comentarios_asesor: Optional[str] = None
     numero_cotizacion: Optional[str] = None
+    costo_cotiz_sin_igv: Optional[str] = None
     estado_seguimiento: Optional[str] = None
     publicidad_id: Optional[int] = None
 

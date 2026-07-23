@@ -184,6 +184,15 @@ try:
     except Exception as perm_err:
         logger.warning("Could not apply migration 046 permissions: %s", perm_err)
 
+    try:
+        from sqlalchemy import text
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE public.seguimiento_cliente_comercial ADD COLUMN IF NOT EXISTS costo_cotiz_sin_igv VARCHAR(100);"))
+            conn.execute(text("NOTIFY pgrst, 'reload schema';"))
+            logger.info("Migration: added costo_cotiz_sin_igv to seguimiento_cliente_comercial.")
+    except Exception as seg_err:
+        logger.warning("Could not add costo_cotiz_sin_igv column: %s", seg_err)
+
     # Programmatic startup migrations for Huanta removed - migrated to manual execution.
 
     # Migración de limpieza de trazabilidades obsoletas y no canónicas
