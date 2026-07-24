@@ -268,6 +268,7 @@ class SeguimientoClienteComercialService:
             comentarios_asistente=to_str(values.get("comentarios_asistente")),
             comentarios_asesor=to_str(values.get("comentarios_asesor")),
             numero_cotizacion=to_str(values.get("numero_cotizacion")),
+            costo_cotiz_sin_igv=to_str(values.get("costo_cotiz_sin_igv")),
             estado_seguimiento=SeguimientoClienteComercialService._normalize_catalog_value(values.get("estado_seguimiento"), PREDEFINED_ESTADOS_SEGUIMIENTO),
             creado_por=creado_por,
         )
@@ -509,6 +510,7 @@ class SeguimientoClienteComercialService:
             comentarios_asistente=data.comentarios_asistente,
             comentarios_asesor=data.comentarios_asesor,
             numero_cotizacion=data.numero_cotizacion,
+            costo_cotiz_sin_igv=data.costo_cotiz_sin_igv,
             estado_seguimiento=data.estado_seguimiento,
             creado_por=creado_por
         )
@@ -557,7 +559,7 @@ class SeguimientoClienteComercialService:
             "email", "razon_social", "ruc", "asesor", "contacto", "rubro",
             "estado_cliente", "servicio_solicitado", "fecha_ultimo_contacto",
             "comentarios_asistente", "comentarios_asesor",
-            "numero_cotizacion", "estado_seguimiento"
+            "numero_cotizacion", "costo_cotiz_sin_igv", "estado_seguimiento"
         }
         
         for key, val in data.items():
@@ -810,6 +812,7 @@ class SeguimientoClienteComercialService:
             sheet.cell(row=r, column=13).value = rec.fecha_ultimo_contacto
             sheet.cell(row=r, column=14).value = rec.numero_cotizacion
             sheet.cell(row=r, column=15).value = rec.estado_seguimiento
+            sheet.cell(row=r, column=16).value = rec.costo_cotiz_sin_igv
 
         # Save workbook to BytesIO
         output = io.BytesIO()
