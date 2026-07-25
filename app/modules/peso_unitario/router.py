@@ -406,7 +406,7 @@ def generar_excel_peso_unitario(
         excel_bytes = generate_peso_unitario_excel(payload)
 
         today = date.today()
-        filename = build_formato_filename(payload.muestra, "AG", "PESO UNITARIO")
+        filename = build_formato_filename(payload.muestra, "AG22", "PESO UNITARIO")
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")

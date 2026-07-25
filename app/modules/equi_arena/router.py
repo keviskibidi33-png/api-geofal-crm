@@ -403,7 +403,7 @@ def generar_excel_equi_arena(
         excel_bytes = generate_equi_arena_excel(payload)
 
         today = date.today()
-        filename = build_formato_filename(payload.muestra, "AG", "EQUI. ARENA")
+        filename = build_formato_filename(payload.muestra, "SU21", "EQUI. ARENA")
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")

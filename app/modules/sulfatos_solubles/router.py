@@ -374,7 +374,7 @@ def generar_excel(
         excel_bytes = generate_sulfatos_solubles_excel(payload)
 
         today = date.today()
-        filename = build_formato_filename(payload.muestra, "SU", "SULFATOS SOLUBLES")
+        filename = build_formato_filename(payload.muestra, "SU15", "SULFATOS SOLUBLES")
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")

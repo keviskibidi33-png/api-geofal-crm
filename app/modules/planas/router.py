@@ -407,7 +407,7 @@ def generar_excel_planas(
         excel_bytes = generate_planas_excel(payload)
 
         today = date.today()
-        filename = build_formato_filename(payload.muestra, "AG", "PLANAS")
+        filename = build_formato_filename(payload.muestra, "AG34", "PLANAS")
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")

@@ -45,7 +45,7 @@ def _safe_filename(base_name: str, extension: str = "xlsx") -> str:
 
 
 def _build_humedad_export_filename(payload: HumedadRequest) -> str:
-    return build_formato_filename(payload.muestra, "SU", "HUMEDAD")
+    return build_formato_filename(payload.muestra, "SU20", "HUMEDAD")
 
 
 def _upload_to_supabase_storage(file_bytes: bytes, bucket: str, object_path: str) -> str | None:

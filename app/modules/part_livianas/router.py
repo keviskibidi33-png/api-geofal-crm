@@ -15,6 +15,6 @@ router = create_lab_router(
     request_model=PartLivianasRequest,
     generate_excel=generate_part_livianas_excel,
     build_numero_ensayo=lambda payload: f"{payload.numero_ot}-PL",
-    build_download_filename=lambda payload: build_formato_filename(payload.muestra, "AG", "PARTICULAS LIVIANAS"),
+    build_download_filename=lambda payload: build_formato_filename(payload.muestra, "AG24", "PARTICULAS LIVIANAS"),
     payload_preprocessor=apply_footer_defaults,
 )

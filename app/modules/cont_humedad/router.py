@@ -403,7 +403,7 @@ def generar_excel_cont_humedad(
         excel_bytes = generate_cont_humedad_excel(payload)
 
         today = date.today()
-        filename = build_formato_filename(payload.muestra, "SU", "CONT. HUMEDAD")
+        filename = build_formato_filename(payload.muestra, "SU20", "CONT. HUMEDAD")
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")

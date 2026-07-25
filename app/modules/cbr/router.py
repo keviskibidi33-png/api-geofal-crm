@@ -434,7 +434,7 @@ def generar_excel_cbr(
         excel_bytes = generate_cbr_excel(payload)
 
         today = date.today()
-        filename = build_formato_filename(payload.muestra, "SU", "CBR")
+        filename = build_formato_filename(payload.muestra, "SU37", "CBR")
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")

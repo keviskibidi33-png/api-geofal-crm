@@ -15,6 +15,6 @@ router = create_lab_router(
     request_model=TerronesFinoGruesoRequest,
     generate_excel=generate_terrones_fino_grueso_excel,
     build_numero_ensayo=lambda payload: f"{payload.numero_ot}-TERR",
-    build_download_filename=lambda payload: build_formato_filename(payload.muestra, "AG", "TERRONES FINO GRUESO"),
+    build_download_filename=lambda payload: build_formato_filename(payload.muestra, "AG30", "TERRONES FINO GRUESO"),
     payload_preprocessor=apply_footer_defaults,
 )

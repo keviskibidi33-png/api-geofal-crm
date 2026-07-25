@@ -413,7 +413,7 @@ def generar_excel_ge_grueso(
 
         today = date.today()
         tipo_muestra = _extract_muestra_tipo(payload.muestra)
-        filename = build_formato_filename(payload.muestra, tipo_muestra, "GE GRUESO")
+        filename = build_formato_filename(payload.muestra, "AG28", "GE GRUESO")
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")

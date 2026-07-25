@@ -523,7 +523,7 @@ def generar_excel_proctor(
         excel_bytes = generate_proctor_excel(payload)
 
         today = date.today()
-        filename = build_formato_filename(payload.muestra, "SU", "PROCTOR")
+        filename = build_formato_filename(payload.muestra, "SU19", "PROCTOR")
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")

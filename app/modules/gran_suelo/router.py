@@ -401,7 +401,7 @@ def generar_excel_gran_suelo(
         excel_bytes = generate_gran_suelo_excel(payload)
 
         today = date.today()
-        filename = build_formato_filename(payload.muestra, "SU", "GR. SUELO")
+        filename = build_formato_filename(payload.muestra, "SU24", "GR. SUELO")
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")

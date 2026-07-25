@@ -398,7 +398,7 @@ def generar_excel_tamiz(
         excel_bytes = generate_tamiz_excel(payload)
 
         today = date.today()
-        filename = build_formato_filename(payload.muestra, "AG", "TAMIZ")
+        filename = build_formato_filename(payload.muestra, "AG23", "TAMIZ")
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")

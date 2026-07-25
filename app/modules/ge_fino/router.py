@@ -397,7 +397,7 @@ def generar_excel_ge_fino(
         excel_bytes = generate_ge_fino_excel(payload)
 
         today = date.today()
-        filename = build_formato_filename(payload.muestra, "AG", "GE FINO")
+        filename = build_formato_filename(payload.muestra, "AG18", "GE FINO")
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")

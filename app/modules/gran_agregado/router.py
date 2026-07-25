@@ -390,7 +390,7 @@ def generar_excel_gran_agregado(
         excel_bytes = generate_gran_agregado_excel(payload, db=db)
 
         today = date.today()
-        filename = build_formato_filename(payload.muestra, "AG", "GR. AGREGADO")
+        filename = build_formato_filename(payload.muestra, "AG19", "GR. AGREGADO")
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")

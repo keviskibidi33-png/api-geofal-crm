@@ -406,7 +406,7 @@ def generar_excel_caras(
         excel_bytes = generate_caras_excel(payload, db=db)
 
         today = date.today()
-        filename = build_formato_filename(payload.muestra, "AG", "CARAS")
+        filename = build_formato_filename(payload.muestra, "AG35", "CARAS")
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")

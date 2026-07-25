@@ -16,5 +16,5 @@ router = create_lab_router(
     payload_preprocessor=apply_footer_defaults,
     generate_excel=generate_azul_metileno_excel,
     build_numero_ensayo=lambda payload: f"{payload.numero_ot}-AM",
-    build_download_filename=lambda payload: build_formato_filename(payload.muestra, "AG", "AZUL METILENO"),
+    build_download_filename=lambda payload: build_formato_filename(payload.muestra, "AG29", "AZUL METILENO"),
 )

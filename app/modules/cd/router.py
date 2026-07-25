@@ -385,7 +385,7 @@ def generar_excel(
         excel_bytes = generate_cd_excel(payload)
 
         today = date.today()
-        filename = build_formato_filename(payload.muestra, "SU", "CD")
+        filename = build_formato_filename(payload.muestra, "SU05", "CD")
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")

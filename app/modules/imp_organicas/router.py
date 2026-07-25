@@ -16,5 +16,5 @@ router = create_lab_router(
     payload_preprocessor=apply_footer_defaults,
     generate_excel=generate_imp_organicas_excel,
     build_numero_ensayo=lambda payload: f"{payload.numero_ot}-IMPORG",
-    build_download_filename=lambda payload: build_formato_filename(payload.muestra, "AG", "IMPUREZAS ORGANICAS"),
+    build_download_filename=lambda payload: build_formato_filename(payload.muestra, "AG13", "IMPUREZAS ORGANICAS"),
 )

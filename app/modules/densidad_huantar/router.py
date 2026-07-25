@@ -16,5 +16,5 @@ router = create_lab_router(
     payload_preprocessor=apply_footer_defaults,
     generate_excel=generate_densidad_huantar_excel,
     build_numero_ensayo=lambda payload: f"{payload.numero_ot}-DH",
-    build_download_filename=lambda payload: build_formato_filename(payload.muestra, "SU", "DENSIDAD HUANTAR"),
+    build_download_filename=lambda payload: build_formato_filename(payload.muestra, "SU06", "DENSIDAD HUANTAR"),
 )

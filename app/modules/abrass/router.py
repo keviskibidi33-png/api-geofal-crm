@@ -409,7 +409,7 @@ def generar_excel_abrass(
         excel_bytes = generate_abrass_excel(payload, db=db)
 
         today = date.today()
-        filename = build_formato_filename(payload.muestra, "AG", "ABRASS")
+        filename = build_formato_filename(payload.muestra, "AG26", "ABRASS")
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")

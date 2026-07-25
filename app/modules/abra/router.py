@@ -396,7 +396,7 @@ def generar_excel_abra(
         excel_bytes = generate_abra_excel(payload, db=db)
 
         today = date.today()
-        filename = build_formato_filename(payload.muestra, "AG", "ABRA")
+        filename = build_formato_filename(payload.muestra, "AG36", "ABRA")
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")

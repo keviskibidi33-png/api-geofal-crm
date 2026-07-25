@@ -15,6 +15,6 @@ router = create_lab_router(
     request_model=SulMagnesioRequest,
     generate_excel=generate_sul_magnesio_excel,
     build_numero_ensayo=lambda payload: f"{payload.numero_ot}-SM",
-    build_download_filename=lambda payload: build_formato_filename(payload.muestra, "AG", "SULFATO MAGNESIO"),
+    build_download_filename=lambda payload: build_formato_filename(payload.muestra, "AG08", "SULFATO MAGNESIO"),
     payload_preprocessor=apply_footer_defaults,
 )

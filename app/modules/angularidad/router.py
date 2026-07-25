@@ -15,6 +15,6 @@ router = create_lab_router(
     request_model=AngularidadRequest,
     generate_excel=generate_angularidad_excel,
     build_numero_ensayo=lambda payload: f"{payload.numero_ot}-ANG",
-    build_download_filename=lambda payload: build_formato_filename(payload.muestra, "AG", "ANGULARIDAD"),
+    build_download_filename=lambda payload: build_formato_filename(payload.muestra, "AG37", "ANGULARIDAD"),
     payload_preprocessor=apply_footer_defaults,
 )

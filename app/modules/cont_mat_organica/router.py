@@ -16,5 +16,5 @@ router = create_lab_router(
     payload_preprocessor=apply_footer_defaults,
     generate_excel=generate_cont_mat_organica_excel,
     build_numero_ensayo=lambda payload: f"{payload.numero_ot}-CMO",
-    build_download_filename=lambda payload: build_formato_filename(payload.muestra, "AG", "CONTENIDO MATERIA ORGANICA"),
+    build_download_filename=lambda payload: build_formato_filename(payload.muestra, "AG15", "CONTENIDO MATERIA ORGANICA"),
 )
