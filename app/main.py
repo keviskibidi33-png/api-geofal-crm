@@ -193,6 +193,41 @@ try:
     except Exception as seg_err:
         logger.warning("Could not add costo_cotiz_sin_igv column: %s", seg_err)
 
+    try:
+        from sqlalchemy import text
+        with engine.begin() as conn:
+            # Migration 047: Allow '-' and non-numeric OT in programacion_lab
+            conn.execute(text("""
+                CREATE OR REPLACE FUNCTION public.ensure_programacion_lab_item_numero()
+                RETURNS trigger
+                LANGUAGE plpgsql
+                SECURITY DEFINER
+                SET search_path = public
+                AS $$
+                DECLARE
+                    matches text[];
+                    max_item integer;
+                BEGIN
+                    matches := regexp_match(COALESCE(NEW.ot, ''), '(\\d+)');
+                    
+                    IF matches IS NOT NULL AND matches[1] <> '' THEN
+                        NEW.item_numero := matches[1]::integer;
+                    ELSE
+                        IF NEW.item_numero IS NULL THEN
+                            SELECT COALESCE(MAX(item_numero), 0) + 1 INTO max_item FROM public.programacion_lab;
+                            NEW.item_numero := max_item;
+                        END IF;
+                    END IF;
+
+                    RETURN NEW;
+                END;
+                $$;
+            """))
+            conn.execute(text("NOTIFY pgrst, 'reload schema';"))
+            logger.info("Programmatic migration 047 applied successfully.")
+    except Exception as ot_err:
+        logger.warning("Could not apply migration 047: %s", ot_err)
+
     # Programmatic startup migrations for Huanta removed - migrated to manual execution.
 
     # Migración de limpieza de trazabilidades obsoletas y no canónicas
