@@ -38,11 +38,11 @@ PREDEFINED_ESTADOS = [
     "DESCARTO EL SERVICIO",
 ]
 PREDEFINED_SERVICIOS = [
-    "Ensayos de Laboratorio",
-    "Densidades",
-    "Probetas",
-    "Laboratorio en Obra",
-    "Estudios de Suelos",
+    "DEN",
+    "PROB",
+    "EMS",
+    "ALQ",
+    "ENS.V.",
 ]
 REMOVED_SERVICIOS_CATALOG = {
     "MORTEROS",
@@ -53,11 +53,13 @@ REMOVED_SERVICIOS_CATALOG = {
     "ESTUDIOS GEOTECNICOS",
 }
 PREDEFINED_ESTADOS_SEGUIMIENTO = [
-    "En Negociación",
-    "Se Genero una Versión",
-    "Cotización Rechazada",
-    "Se Genero Venta",
-    "Anulado",
+    "Leads",
+    "Contactado",
+    "Cotización enviada",
+    "Negociación",
+    "Venta",
+    "Perdido",
+    "Seguimiento futuro",
 ]
 
 STATE_ALIASES = {
@@ -317,8 +319,10 @@ class SeguimientoClienteComercialService:
                         "CONTACTO": "CONTACTO",
                         "RUBRO": "RUBRO",
                         "ESTADO CLIENTE": "ESTADO CLIENTE",
-                        "SERVICIO SOLICITADO": "SERVICIO SOLICITADO",
-                        "F ULTIMO CONTACTO": "F ULTIMO CONTACTO",
+            "SERVICIO SOLICITADO": "SERVICIO SOLICITADO",
+            "TIPO SERVICIO": "SERVICIO SOLICITADO",
+            "CATEGORIA SERVICIO": "SERVICIO SOLICITADO",
+            "F ULTIMO CONTACTO": "F ULTIMO CONTACTO",
                         "OBSERVACIONES": "OBSERVACIONES",
                         "N COTIZACION": "N COTIZACION",
                         "ESTADO SEGUIMIENTO": "ESTADO SEGUIMIENTO",
