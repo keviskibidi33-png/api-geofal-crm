@@ -18,6 +18,7 @@ class SeguimientoClienteComercialBase(BaseModel):
     categoria_servicio: Optional[str] = None
     fecha_ultimo_contacto: Optional[date] = None
     comentarios_asistente: Optional[str] = None
+    comentarios_asesor: Optional[str] = None
     numero_cotizacion: Optional[str] = None
     costo_cotiz_sin_igv: Optional[str] = None
     estado_seguimiento: Optional[str] = None
@@ -52,6 +53,7 @@ class SeguimientoClienteComercialPatch(BaseModel):
     categoria_servicio: Optional[str] = None
     fecha_ultimo_contacto: Optional[date] = None
     comentarios_asistente: Optional[str] = None
+    comentarios_asesor: Optional[str] = None
     numero_cotizacion: Optional[str] = None
     costo_cotiz_sin_igv: Optional[str] = None
     estado_seguimiento: Optional[str] = None

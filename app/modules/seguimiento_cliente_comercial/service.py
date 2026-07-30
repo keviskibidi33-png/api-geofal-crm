@@ -277,6 +277,7 @@ class SeguimientoClienteComercialService:
             categoria_servicio=SeguimientoClienteComercialService._normalize_catalog_value(values.get("categoria_servicio"), PREDEFINED_CATEGORIAS_SERVICIO),
             fecha_ultimo_contacto=SeguimientoClienteComercialService._parse_date_value(values.get("fecha_ultimo_contacto")) or SeguimientoClienteComercialService._parse_text_date(values.get("fecha_ultimo_contacto")),
             comentarios_asistente=to_str(values.get("comentarios_asistente")),
+            comentarios_asesor=to_str(values.get("comentarios_asesor")),
             numero_cotizacion=to_str(values.get("numero_cotizacion")),
             costo_cotiz_sin_igv=to_str(values.get("costo_cotiz_sin_igv")),
             estado_seguimiento=SeguimientoClienteComercialService._normalize_catalog_value(values.get("estado_seguimiento"), PREDEFINED_ESTADOS_SEGUIMIENTO),
@@ -373,6 +374,7 @@ class SeguimientoClienteComercialService:
                 "categoria_servicio": get_value(row, "TIPO SERVICIO"),
                 "fecha_ultimo_contacto": get_value(row, "F ULTIMO CONTACTO"),
                 "comentarios_asistente": get_value(row, "COMENTARIOS ASISTENTE"),
+                "comentarios_asesor": get_value(row, "COMENTARIOS ASESOR"),
                 "numero_cotizacion": get_value(row, "N COTIZACION"),
                 "estado_seguimiento": get_value(row, "ESTADO SEGUIMIENTO"),
             }

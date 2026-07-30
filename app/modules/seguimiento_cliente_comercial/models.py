@@ -24,6 +24,7 @@ class SeguimientoClienteComercial(Base):
     categoria_servicio = Column(String(20), nullable=True, index=True)
     fecha_ultimo_contacto = Column(Date, nullable=True)
     comentarios_asistente = Column(Text, nullable=True)
+    comentarios_asesor = Column(Text, nullable=True)
     numero_cotizacion = Column(String(100), nullable=True, index=True)
     costo_cotiz_sin_igv = Column(String(100), nullable=True)
     estado_seguimiento = Column(Text, nullable=True)

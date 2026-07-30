@@ -189,8 +189,9 @@ try:
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE public.seguimiento_cliente_comercial ADD COLUMN IF NOT EXISTS costo_cotiz_sin_igv VARCHAR(100);"))
             conn.execute(text("ALTER TABLE public.seguimiento_cliente_comercial ADD COLUMN IF NOT EXISTS categoria_servicio VARCHAR(20);"))
+            conn.execute(text("ALTER TABLE public.seguimiento_cliente_comercial ADD COLUMN IF NOT EXISTS comentarios_asesor TEXT;"))
             conn.execute(text("NOTIFY pgrst, 'reload schema';"))
-            logger.info("Migration: ensured costo_cotiz_sin_igv and categoria_servicio on seguimiento_cliente_comercial.")
+            logger.info("Migration: ensured costo_cotiz_sin_igv, categoria_servicio and comentarios_asesor on seguimiento_cliente_comercial.")
     except Exception as seg_err:
         logger.warning("Could not add seguimiento_cliente_comercial columns: %s", seg_err)
 
