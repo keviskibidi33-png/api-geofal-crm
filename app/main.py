@@ -69,6 +69,7 @@ from app.modules.ingenieria_archivos.router import router as ingenieria_archivos
 from app.modules.correlativos.router import router as correlativos_router
 from app.modules.control_informes.router import router as control_informes_router
 from app.modules.seguimiento_cliente_comercial.router import router as seguimiento_comercial_router
+from app.modules.seguimiento_cliente_comercial_2.router import router as seguimiento_comercial_2_router
 from app.modules.publicidad_geofal.router import router as publicidad_geofal_router
 from app.modules.control_probetas.router import router as control_probetas_router
 from app.modules.densidad_huantar.router import router as densidad_huantar_router
@@ -117,6 +118,7 @@ from app.modules.control_informes.models import (
     ControlInformeDetalle,
 )
 from app.modules.seguimiento_cliente_comercial.models import SeguimientoClienteComercial
+from app.modules.seguimiento_cliente_comercial_2.models import SeguimientoClienteComercial as SeguimientoClienteComercial2
 from app.modules.publicidad_geofal.models import PublicidadGeofal
 from app.database import engine
 from app.auth import JWTAuthMiddleware
@@ -131,6 +133,8 @@ try:
     # Compression tables will be created via migration or explicitly:
     from app.database import Base as MainBase
     MainBase.metadata.create_all(bind=engine)
+    SeguimientoClienteComercial.__table__.create(bind=engine, checkfirst=True)
+    SeguimientoClienteComercial2.__table__.create(bind=engine, checkfirst=True)
     
     # Programmatic migrations to ensure database schema alignment in all environments
     try:
@@ -724,6 +728,7 @@ app.include_router(ingenieria_archivos_router)
 app.include_router(correlativos_router)
 app.include_router(control_informes_router)
 app.include_router(seguimiento_comercial_router)
+app.include_router(seguimiento_comercial_2_router)
 app.include_router(publicidad_geofal_router)
 app.include_router(control_probetas_router)
 app.include_router(densidad_huantar_router)
