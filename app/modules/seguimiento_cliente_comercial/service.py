@@ -536,6 +536,7 @@ class SeguimientoClienteComercialService:
             categoria_servicio=data.categoria_servicio,
             fecha_ultimo_contacto=data.fecha_ultimo_contacto,
             comentarios_asistente=data.comentarios_asistente,
+            comentarios_asesor=data.comentarios_asesor,
             numero_cotizacion=data.numero_cotizacion,
             costo_cotiz_sin_igv=data.costo_cotiz_sin_igv,
             estado_seguimiento=data.estado_seguimiento,
@@ -585,7 +586,7 @@ class SeguimientoClienteComercialService:
             "no", "fecha_contacto", "persona_contacto", "numero_celular",
             "email", "razon_social", "ruc", "asesor", "contacto", "rubro",
             "estado_cliente", "servicio_solicitado", "fecha_ultimo_contacto",
-            "categoria_servicio", "comentarios_asistente",
+            "categoria_servicio", "comentarios_asistente", "comentarios_asesor",
             "numero_cotizacion", "costo_cotiz_sin_igv", "estado_seguimiento"
         }
         
