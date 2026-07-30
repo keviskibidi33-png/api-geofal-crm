@@ -44,6 +44,13 @@ PREDEFINED_SERVICIOS = [
     "ALQ",
     "ENS.V.",
 ]
+PREDEFINED_CATEGORIAS_SERVICIO = [
+    "DEN",
+    "PROB",
+    "EMS",
+    "ALQ",
+    "ENS.V.",
+]
 REMOVED_SERVICIOS_CATALOG = {
     "MORTEROS",
     "EXTRACCION DE DIAMANTINA",
@@ -90,6 +97,7 @@ SEG_CLIENTE_HEADERS = [
     "RUBRO",
     "ESTADO CLIENTE",
     "SERVICIO SOLICITADO",
+    "TIPO SERVICIO",
     "F. ÚLTIMO CONTACTO",
     "N° COTIZACIÓN",
     "ESTADO SEGUIMIENTO",
@@ -266,9 +274,9 @@ class SeguimientoClienteComercialService:
             rubro=SeguimientoClienteComercialService._normalize_catalog_value(values.get("rubro"), PREDEFINED_RUBROS),
             estado_cliente=SeguimientoClienteComercialService._normalize_catalog_value(values.get("estado_cliente"), PREDEFINED_ESTADOS, STATE_ALIASES),
             servicio_solicitado=SeguimientoClienteComercialService._normalize_catalog_value(values.get("servicio_solicitado"), PREDEFINED_SERVICIOS),
+            categoria_servicio=SeguimientoClienteComercialService._normalize_catalog_value(values.get("categoria_servicio"), PREDEFINED_CATEGORIAS_SERVICIO),
             fecha_ultimo_contacto=SeguimientoClienteComercialService._parse_date_value(values.get("fecha_ultimo_contacto")) or SeguimientoClienteComercialService._parse_text_date(values.get("fecha_ultimo_contacto")),
             comentarios_asistente=to_str(values.get("comentarios_asistente")),
-            comentarios_asesor=to_str(values.get("comentarios_asesor")),
             numero_cotizacion=to_str(values.get("numero_cotizacion")),
             costo_cotiz_sin_igv=to_str(values.get("costo_cotiz_sin_igv")),
             estado_seguimiento=SeguimientoClienteComercialService._normalize_catalog_value(values.get("estado_seguimiento"), PREDEFINED_ESTADOS_SEGUIMIENTO),
@@ -320,8 +328,8 @@ class SeguimientoClienteComercialService:
                         "RUBRO": "RUBRO",
                         "ESTADO CLIENTE": "ESTADO CLIENTE",
             "SERVICIO SOLICITADO": "SERVICIO SOLICITADO",
-            "TIPO SERVICIO": "SERVICIO SOLICITADO",
-            "CATEGORIA SERVICIO": "SERVICIO SOLICITADO",
+            "TIPO SERVICIO": "TIPO SERVICIO",
+            "CATEGORIA SERVICIO": "TIPO SERVICIO",
             "F ULTIMO CONTACTO": "F ULTIMO CONTACTO",
                         "OBSERVACIONES": "OBSERVACIONES",
                         "N COTIZACION": "N COTIZACION",
@@ -362,9 +370,9 @@ class SeguimientoClienteComercialService:
                 "rubro": get_value(row, "RUBRO"),
                 "estado_cliente": get_value(row, "ESTADO CLIENTE"),
                 "servicio_solicitado": get_value(row, "SERVICIO SOLICITADO"),
+                "categoria_servicio": get_value(row, "TIPO SERVICIO"),
                 "fecha_ultimo_contacto": get_value(row, "F ULTIMO CONTACTO"),
                 "comentarios_asistente": get_value(row, "COMENTARIOS ASISTENTE"),
-                "comentarios_asesor": get_value(row, "COMENTARIOS ASESOR"),
                 "numero_cotizacion": get_value(row, "N COTIZACION"),
                 "estado_seguimiento": get_value(row, "ESTADO SEGUIMIENTO"),
             }
@@ -510,9 +518,9 @@ class SeguimientoClienteComercialService:
             rubro=data.rubro,
             estado_cliente=data.estado_cliente,
             servicio_solicitado=data.servicio_solicitado,
+            categoria_servicio=data.categoria_servicio,
             fecha_ultimo_contacto=data.fecha_ultimo_contacto,
             comentarios_asistente=data.comentarios_asistente,
-            comentarios_asesor=data.comentarios_asesor,
             numero_cotizacion=data.numero_cotizacion,
             costo_cotiz_sin_igv=data.costo_cotiz_sin_igv,
             estado_seguimiento=data.estado_seguimiento,
@@ -562,7 +570,7 @@ class SeguimientoClienteComercialService:
             "no", "fecha_contacto", "persona_contacto", "numero_celular",
             "email", "razon_social", "ruc", "asesor", "contacto", "rubro",
             "estado_cliente", "servicio_solicitado", "fecha_ultimo_contacto",
-            "comentarios_asistente", "comentarios_asesor",
+            "categoria_servicio", "comentarios_asistente",
             "numero_cotizacion", "costo_cotiz_sin_igv", "estado_seguimiento"
         }
         
@@ -605,6 +613,7 @@ class SeguimientoClienteComercialService:
             db_rubros = db.query(SeguimientoClienteComercial.rubro).distinct().all()
             db_estados = db.query(SeguimientoClienteComercial.estado_cliente).distinct().all()
             db_servicios = db.query(SeguimientoClienteComercial.servicio_solicitado).distinct().all()
+            db_categorias = db.query(SeguimientoClienteComercial.categoria_servicio).distinct().all()
             db_estados_seguimiento = db.query(SeguimientoClienteComercial.estado_seguimiento).distinct().all()
         except Exception as e:
             import logging
@@ -616,6 +625,7 @@ class SeguimientoClienteComercialService:
             db_rubros = []
             db_estados = []
             db_servicios = []
+            db_categorias = []
             db_estados_seguimiento = []
 
         # Merge utility helper
@@ -664,6 +674,7 @@ class SeguimientoClienteComercialService:
                 db_servicios,
                 excluded_values=REMOVED_SERVICIOS_CATALOG,
             ),
+            "categorias_servicio": merge_catalogs(PREDEFINED_CATEGORIAS_SERVICIO, db_categorias),
             "estados_seguimiento": merge_catalogs(PREDEFINED_ESTADOS_SEGUIMIENTO, db_estados_seguimiento),
         }
 
@@ -728,9 +739,10 @@ class SeguimientoClienteComercialService:
             rubro_val = sheet.cell(row=r, column=10).value
             estado_cliente_val = sheet.cell(row=r, column=11).value
             servicio_val = sheet.cell(row=r, column=12).value
-            fecha_ultimo_val = sheet.cell(row=r, column=13).value
-            cotizacion_val = sheet.cell(row=r, column=14).value
-            estado_seg_val = sheet.cell(row=r, column=15).value
+            categoria_val = sheet.cell(row=r, column=13).value
+            fecha_ultimo_val = sheet.cell(row=r, column=14).value
+            cotizacion_val = sheet.cell(row=r, column=15).value
+            estado_seg_val = sheet.cell(row=r, column=16).value
             
             # If the row is entirely empty, skip it. Specifically check if crucial fields are missing
             if not any([no_val, fecha_contacto_val, persona_contacto_val, razon_social_val, ruc_val]):
@@ -750,6 +762,7 @@ class SeguimientoClienteComercialService:
                     "rubro": rubro_val,
                     "estado_cliente": estado_cliente_val,
                     "servicio_solicitado": servicio_val,
+                    "categoria_servicio": categoria_val,
                     "fecha_ultimo_contacto": fecha_ultimo_val,
                     "numero_cotizacion": cotizacion_val,
                     "estado_seguimiento": estado_seg_val,
@@ -773,7 +786,7 @@ class SeguimientoClienteComercialService:
     @staticmethod
     def exportar_excel(db: Session, template_path: str) -> io.BytesIO:
         """
-        Loads the template file, populates columns A-P starting from row 5 with database records,
+        Loads the template file, populates columns A-Q starting from row 5 with database records,
         and returns the result as a BytesIO file.
         """
         if not os.path.exists(template_path):
@@ -795,7 +808,7 @@ class SeguimientoClienteComercialService:
         
         # Clean existing template data rows (from row 5 onwards, up to sheet.max_row)
         for r in range(5, max(sheet.max_row + 1, len(records) + 10)):
-            for col in range(1, 16):
+            for col in range(1, 18):
                 sheet.cell(row=r, column=col).value = None
 
         # Write data keeping styles
@@ -813,10 +826,11 @@ class SeguimientoClienteComercialService:
             sheet.cell(row=r, column=10).value = rec.rubro
             sheet.cell(row=r, column=11).value = rec.estado_cliente
             sheet.cell(row=r, column=12).value = rec.servicio_solicitado
-            sheet.cell(row=r, column=13).value = rec.fecha_ultimo_contacto
-            sheet.cell(row=r, column=14).value = rec.numero_cotizacion
-            sheet.cell(row=r, column=15).value = rec.estado_seguimiento
-            sheet.cell(row=r, column=16).value = rec.costo_cotiz_sin_igv
+            sheet.cell(row=r, column=13).value = rec.categoria_servicio
+            sheet.cell(row=r, column=14).value = rec.fecha_ultimo_contacto
+            sheet.cell(row=r, column=15).value = rec.numero_cotizacion
+            sheet.cell(row=r, column=16).value = rec.estado_seguimiento
+            sheet.cell(row=r, column=17).value = rec.costo_cotiz_sin_igv
 
         # Save workbook to BytesIO
         output = io.BytesIO()

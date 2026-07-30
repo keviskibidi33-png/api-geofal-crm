@@ -21,9 +21,9 @@ class SeguimientoClienteComercial(Base):
     rubro = Column(String(100), nullable=True)
     estado_cliente = Column(String(100), nullable=True, index=True)
     servicio_solicitado = Column(Text, nullable=True)
+    categoria_servicio = Column(String(20), nullable=True, index=True)
     fecha_ultimo_contacto = Column(Date, nullable=True)
     comentarios_asistente = Column(Text, nullable=True)
-    comentarios_asesor = Column(Text, nullable=True)
     numero_cotizacion = Column(String(100), nullable=True, index=True)
     costo_cotiz_sin_igv = Column(String(100), nullable=True)
     estado_seguimiento = Column(Text, nullable=True)
@@ -33,4 +33,3 @@ class SeguimientoClienteComercial(Base):
     creado_por = Column(String(100), nullable=True)
     fecha_creacion = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     fecha_actualizacion = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
-
