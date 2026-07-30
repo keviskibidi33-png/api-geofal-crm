@@ -188,10 +188,11 @@ try:
         from sqlalchemy import text
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE public.seguimiento_cliente_comercial ADD COLUMN IF NOT EXISTS costo_cotiz_sin_igv VARCHAR(100);"))
+            conn.execute(text("ALTER TABLE public.seguimiento_cliente_comercial ADD COLUMN IF NOT EXISTS categoria_servicio VARCHAR(20);"))
             conn.execute(text("NOTIFY pgrst, 'reload schema';"))
-            logger.info("Migration: added costo_cotiz_sin_igv to seguimiento_cliente_comercial.")
+            logger.info("Migration: ensured costo_cotiz_sin_igv and categoria_servicio on seguimiento_cliente_comercial.")
     except Exception as seg_err:
-        logger.warning("Could not add costo_cotiz_sin_igv column: %s", seg_err)
+        logger.warning("Could not add seguimiento_cliente_comercial columns: %s", seg_err)
 
     try:
         from sqlalchemy import text
