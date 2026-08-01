@@ -543,17 +543,20 @@ async def update_quote(quote_id: str, payload: QuoteExportRequest):
 
 # Plantillas Endpoints
 @router.get("/plantillas")
-async def get_plantillas(vendedor_id: str):
+async def get_plantillas(vendedor_id: str, incluir_compartidas: bool = False):
     conn = _get_connection()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("""
+            owner_filter = "" if incluir_compartidas else " AND vendedor_id = %s"
+            params = (vendedor_id,) if incluir_compartidas else (vendedor_id, vendedor_id)
+            cur.execute(f"""
                 SELECT id, nombre, descripcion, items_json, condiciones_ids,
-                       plazo_dias, condicion_pago, veces_usada, created_at, updated_at
+                       plazo_dias, condicion_pago, veces_usada, created_at, updated_at,
+                       vendedor_id, (vendedor_id = %s) AS es_propia
                 FROM plantillas_cotizacion
-                WHERE vendedor_id = %s AND activo = true
-                ORDER BY veces_usada DESC, nombre ASC
-            """, (vendedor_id,))
+                WHERE activo = true{owner_filter}
+                ORDER BY es_propia DESC, veces_usada DESC, nombre ASC
+            """, params)
             return [dict(p) for p in cur.fetchall()]
     finally:
         conn.close()
