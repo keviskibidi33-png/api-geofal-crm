@@ -14,10 +14,15 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.modules.programacion.excel import export_programacion_xlsx
+from app.modules.programacion.excel import calculate_dias_atraso_lab, export_programacion_xlsx
 
 
 class TestProgramacionExcelIntegrity(unittest.TestCase):
+    def test_lab_delay_calculation_matches_excel_formula_for_blank_real_date(self):
+        self.assertEqual(calculate_dias_atraso_lab("2026-08-01", ""), -46235)
+        self.assertEqual(calculate_dias_atraso_lab("2026-07-31", "2026-07-30"), -1)
+        self.assertEqual(calculate_dias_atraso_lab("2026-07-31", "2026-08-03"), 3)
+
     def test_lab_export_keeps_sheet_rows_unique_and_within_excel_limit(self):
         from app.modules.common.excel_xml import find_template_path
         template_path = find_template_path("Template_Programacion.xlsx")
@@ -93,6 +98,8 @@ class TestProgramacionExcelIntegrity(unittest.TestCase):
             self.assertIn("LABORATORIO", wb.sheetnames)
             self.assertEqual(wb["LABORATORIO"]["A9"].value, "1")
             self.assertEqual(wb["LABORATORIO"]["A10"].value, "2")
+            self.assertEqual(wb["LABORATORIO"]["Q9"].value, -46154)
+            self.assertEqual(wb["LABORATORIO"]["Q10"].value, -46154)
         finally:
             tmp_path.unlink(missing_ok=True)
 

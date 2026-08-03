@@ -3,12 +3,14 @@ import zipfile
 import unicodedata
 from typing import Any
 from lxml import etree
-from datetime import date
+from datetime import date, datetime
 from app.xlsx_direct_v2 import (
     NAMESPACES, _parse_cell_ref, _col_letter_to_num, _find_or_create_row, 
     _find_or_create_cell, _set_cell_value, _duplicate_row,
     _shift_rows, _shift_merged_cells
 )
+
+EXCEL_EPOCH = date(1899, 12, 30)
 
 
 def calculate_dias_atraso_com(solicitud: Any, entrega: Any) -> int | None:
@@ -40,25 +42,25 @@ def calculate_dias_atraso_lab(estimated: Any, real: Any) -> int | None:
     if not estimated:
         return None
     try:
-        from datetime import date, datetime
-        
         def to_date(val: Any) -> date | None:
-            if isinstance(val, date):
-                return val
             if isinstance(val, datetime):
                 return val.date()
+            if isinstance(val, date):
+                return val
             if isinstance(val, str):
                 cleaned = val.strip().split('T')[0]
                 return datetime.strptime(cleaned, "%Y-%m-%d").date()
             return None
             
         d_est = to_date(estimated)
-        d_real = to_date(real) if real else date.today()
-        if d_est and d_real:
-            diff_days = (d_real - d_est).days
-            if not real and diff_days <= 0:
-                return 0
-            return diff_days
+        if not d_est:
+            return None
+
+        d_real = to_date(real) if real else None
+        if not d_real:
+            return -((d_est - EXCEL_EPOCH).days)
+
+        return (d_real - d_est).days
     except Exception:
         pass
     return None
@@ -422,10 +424,9 @@ def export_programacion_xlsx(template_path: str, items: list[dict]) -> io.BytesI
             _set_cell_value(sheet_data, f'P{row}', item.get('nota_lab', ''), ns, get_string_idx=string_idx_getter)
             # Q: DIAS ATE
             d_atraso_lab = item.get('dias_atraso_lab')
-            if d_atraso_lab is None or d_atraso_lab == '' or d_atraso_lab == 0:
-                calculated_lab = calculate_dias_atraso_lab(item.get('fecha_entrega_estimada'), item.get('entrega_real'))
-                if calculated_lab is not None:
-                    d_atraso_lab = calculated_lab
+            calculated_lab = calculate_dias_atraso_lab(item.get('fecha_entrega_estimada'), item.get('entrega_real'))
+            if calculated_lab is not None:
+                d_atraso_lab = calculated_lab
             _set_cell_value(sheet_data, f'Q{row}', d_atraso_lab, ns, is_number=True)
             # R: MOTIVO
             _set_cell_value(sheet_data, f'R{row}', item.get('motivo_dias_atraso_lab', ''), ns, get_string_idx=string_idx_getter)
