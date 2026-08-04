@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db_session
 from app.utils.export_filename import build_formato_filename
-from .excel import generate_proctor_excel
+from .excel import TEMPLATE_FILENAME, generate_proctor_excel
 from .models import ProctorEnsayo
 from .schemas import (
     ProctorDetalleResponse,
@@ -523,7 +523,7 @@ def generar_excel_proctor(
         excel_bytes = generate_proctor_excel(payload)
 
         today = date.today()
-        filename = build_formato_filename(payload.muestra, "SU19", "PROCTOR")
+        filename = build_formato_filename(payload.muestra, "SU19", "PROCTOR", template_filename=TEMPLATE_FILENAME)
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")

@@ -33,7 +33,8 @@ NS_DRAW = "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"
 NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
 
-TEMPLATE_PATH = str(find_template_path("1-INF.-N-000-26-SU37-CBR-ASTM-D1883-V03.xlsx"))
+TEMPLATE_FILENAME = "1-INF.-N-000-26-SU37-CBR-ASTM-D1883-V03.xlsx"
+TEMPLATE_PATH = str(find_template_path(TEMPLATE_FILENAME))
 
 MOLD_CODE_TO_CHAR = {
     "INS-173": "D", "D": "D",

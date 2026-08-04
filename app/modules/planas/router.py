@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db_session
 from app.utils.export_filename import build_formato_filename
 
-from .excel import generate_planas_excel
+from .excel import TEMPLATE_FILENAME, generate_planas_excel
 from .models import PlanasEnsayo
 from .schemas import (
     PlanasDetalleResponse,
@@ -407,7 +407,7 @@ def generar_excel_planas(
         excel_bytes = generate_planas_excel(payload)
 
         today = date.today()
-        filename = build_formato_filename(payload.muestra, "AG34", "PLANAS")
+        filename = build_formato_filename(payload.muestra, "AG34", "PLANAS", template_filename=TEMPLATE_FILENAME)
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")

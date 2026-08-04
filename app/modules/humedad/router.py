@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db_session
 from app.utils.export_filename import build_formato_filename
-from .excel import generate_humedad_excel
+from .excel import TEMPLATE_FILENAME, generate_humedad_excel
 from .models import HumedadEnsayo
 from .schemas import (
     HumedadDetalleResponse,
@@ -45,7 +45,7 @@ def _safe_filename(base_name: str, extension: str = "xlsx") -> str:
 
 
 def _build_humedad_export_filename(payload: HumedadRequest) -> str:
-    return build_formato_filename(payload.muestra, "SU20", "HUMEDAD")
+    return build_formato_filename(payload.muestra, "SU20", "HUMEDAD", template_filename=TEMPLATE_FILENAME)
 
 
 def _upload_to_supabase_storage(file_bytes: bytes, bucket: str, object_path: str) -> str | None:

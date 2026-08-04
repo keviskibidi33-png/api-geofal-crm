@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db_session
 from app.utils.export_filename import build_formato_filename
-from .excel import generate_ge_grueso_excel
+from .excel import TEMPLATE_FILENAME, generate_ge_grueso_excel
 from .models import GeGruesoEnsayo
 from .schemas import (
     GeGruesoDetalleResponse,
@@ -413,7 +413,7 @@ def generar_excel_ge_grueso(
 
         today = date.today()
         tipo_muestra = _extract_muestra_tipo(payload.muestra)
-        filename = build_formato_filename(payload.muestra, "AG28", "GE GRUESO")
+        filename = build_formato_filename(payload.muestra, "AG28", "GE GRUESO", template_filename=TEMPLATE_FILENAME)
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")

@@ -21,6 +21,8 @@ from app.utils.excel_footer import fill_standard_footer_shapes
 
 from .schemas import PHRequest
 
+TEMPLATE_FILENAME = "1-INF.-N-001-26-SU03-PH-V01.xlsx"
+
 logger = logging.getLogger(__name__)
 
 NS_SHEET = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
@@ -318,7 +320,7 @@ def generate_ph_excel(payload: PHRequest) -> bytes:
     """
     logger.info("Generating PH Excel - NTP 339.176")
 
-    template_bytes = _get_template_bytes("1-INF.-N-001-26-SU03-PH-V01.xlsx")
+    template_bytes = _get_template_bytes(TEMPLATE_FILENAME)
 
     in_zip = zipfile.ZipFile(io.BytesIO(template_bytes), "r")
     out_buffer = io.BytesIO()

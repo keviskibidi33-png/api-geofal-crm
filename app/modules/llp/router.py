@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db_session
 from app.utils.export_filename import build_formato_filename
-from .excel import generate_llp_excel
+from .excel import TEMPLATE_FILENAME, generate_llp_excel
 from .models import LLPEnsayo
 from .schemas import LLPDetalleResponse, LLPEnsayoResponse, LLPRequest, LLPSaveResponse
 
@@ -477,7 +477,7 @@ def generar_excel_llp(
         excel_bytes = generate_llp_excel(payload)
 
         today = date.today()
-        filename = build_formato_filename(payload.muestra, "SU23", "LLP")
+        filename = build_formato_filename(payload.muestra, "SU23", "LLP", template_filename=TEMPLATE_FILENAME)
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")

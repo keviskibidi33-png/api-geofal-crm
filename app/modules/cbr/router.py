@@ -16,8 +16,8 @@ from sqlalchemy import desc, text
 from sqlalchemy.orm import Session
 
 from app.database import get_db_session
-from app.utils.export_filename import build_formato_filename
-from .excel import generate_cbr_excel
+from app.utils.export_filename import build_filename_from_template
+from .excel import TEMPLATE_FILENAME, generate_cbr_excel
 from .models import CBREnsayo
 from .schemas import (
     CBRDetalleResponse,
@@ -434,7 +434,7 @@ def generar_excel_cbr(
         excel_bytes = generate_cbr_excel(payload)
 
         today = date.today()
-        filename = build_formato_filename(payload.muestra, "SU37", "CBR")
+        filename = build_filename_from_template(TEMPLATE_FILENAME, payload.muestra)
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")

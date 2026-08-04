@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db_session
 from app.utils.export_filename import build_formato_filename
 
-from .excel import generate_abra_excel
+from .excel import TEMPLATE_FILENAME, generate_abra_excel
 from .models import AbraEnsayo
 from .schemas import (
     AbraDetalleResponse,
@@ -396,7 +396,7 @@ def generar_excel_abra(
         excel_bytes = generate_abra_excel(payload, db=db)
 
         today = date.today()
-        filename = build_formato_filename(payload.muestra, "AG36", "ABRA")
+        filename = build_formato_filename(payload.muestra, "AG26", "ABRA", template_filename=TEMPLATE_FILENAME)
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")

@@ -8,6 +8,7 @@ from datetime import date, datetime
 from typing import Any, Callable, Sequence
 
 from app.database import get_db_session
+from app.utils.export_filename import build_filename_from_template
 from app.utils.http_client import http_delete, http_get, http_post
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
@@ -144,6 +145,17 @@ def normalize_footer_text(value: Any, fallback: str) -> str:
     return text_value or fallback
 
 
+def resolve_download_filename(
+    payload: Any,
+    template_filename: str | None,
+    legacy_builder: Callable[[Any], str],
+) -> str:
+    """Resolve a download name from the actual template when configured."""
+    if template_filename:
+        return build_filename_from_template(template_filename, payload.muestra)
+    return legacy_builder(payload)
+
+
 def apply_footer_defaults(payload: Any) -> None:
     fecha_base = normalize_footer_text(getattr(payload, "fecha_ensayo", None), "")
     if hasattr(payload, "revisado_por"):
@@ -168,6 +180,7 @@ def create_lab_router(
     generate_excel: Callable[[Any], bytes],
     build_numero_ensayo: Callable[[Any], str],
     build_download_filename: Callable[[Any], str],
+    template_filename: str | None = None,
     required_fields: Sequence[str] = ("muestra", "numero_ot", "fecha_ensayo", "realizado_por"),
     payload_preprocessor: Callable[[Any], None] | None = None,
 ) -> APIRouter:
@@ -337,7 +350,7 @@ def create_lab_router(
 
             excel_bytes = generate_excel(payload)
             today = date.today()
-            filename = build_download_filename(payload)
+            filename = resolve_download_filename(payload, template_filename, build_download_filename)
 
             safe_ot = safe_filename(payload.numero_ot, extension="")
             safe_muestra = safe_filename(payload.muestra, extension="")

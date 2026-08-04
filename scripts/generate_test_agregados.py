@@ -1,4 +1,5 @@
 import sys
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -6,37 +7,48 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app.modules.ge_fino.excel import generate_ge_fino_excel
+from app.modules.ge_fino.excel import TEMPLATE_FILENAME as GE_FIN0_TEMPLATE
 from app.modules.ge_fino.schemas import GeFinoRequest
 
 from app.modules.gran_agregado.excel import generate_gran_agregado_excel
+from app.modules.gran_agregado.excel import TEMPLATE_FILENAME as GRAN_AGREGADO_TEMPLATE
 from app.modules.gran_agregado.schemas import GranAgregadoRequest
 
 from app.modules.cont_humedad.excel import generate_cont_humedad_excel
+from app.modules.cont_humedad.excel import TEMPLATE_FILENAME as CONT_HUMEDAD_TEMPLATE
 from app.modules.cont_humedad.schemas import ContHumedadRequest
 
 from app.modules.peso_unitario.excel import generate_peso_unitario_excel
+from app.modules.peso_unitario.excel import TEMPLATE_FILENAME as PESO_UNITARIO_TEMPLATE
 from app.modules.peso_unitario.schemas import PesoUnitarioRequest
 
 from app.modules.tamiz.excel import generate_tamiz_excel
+from app.modules.tamiz.excel import TEMPLATE_FILENAME as TAMIZ_TEMPLATE
 from app.modules.tamiz.schemas import TamizRequest
 
 from app.modules.abrass.excel import generate_abrass_excel
+from app.modules.abrass.excel import TEMPLATE_FILENAME as ABRASS_TEMPLATE
 from app.modules.abrass.schemas import AbrassRequest
 
 from app.modules.ge_grueso.excel import generate_ge_grueso_excel
+from app.modules.ge_grueso.excel import TEMPLATE_FILENAME as GE_GRUESO_TEMPLATE
 from app.modules.ge_grueso.schemas import GeGruesoRequest
 
 from app.modules.planas.excel import generate_planas_excel
+from app.modules.planas.excel import TEMPLATE_FILENAME as PLANAS_TEMPLATE
 from app.modules.planas.schemas import PlanasRequest, PlanasGradacionRow, PlanasMetodoRow
 
 from app.modules.caras.excel import generate_caras_excel
+from app.modules.caras.excel import TEMPLATE_FILENAME as CARAS_TEMPLATE
 from app.modules.caras.schemas import CarasRequest
 
 from app.modules.abra.excel import generate_abra_excel
+from app.modules.abra.excel import TEMPLATE_FILENAME as ABRA_TEMPLATE
+from report_test_helpers import write_report_export
 from app.modules.abra.schemas import AbraRequest
 
 def main():
-    out_dir = ROOT / "suelos verifiacon" / "informes agregados"
+    out_dir = Path(os.environ.get("GEOFAL_TEST_OUTPUT_DIR", ROOT / "suelos verifiacon" / "informes agregados"))
     out_dir.mkdir(parents=True, exist_ok=True)
     print(f"Directorio de destino: {out_dir}")
 
@@ -72,7 +84,7 @@ def main():
         absorcion_pct=2.04,
         seco_horno_110_si_no="SI"
     )
-    (out_dir / "test_ge_fino.xlsx").write_bytes(generate_ge_fino_excel(fino_req))
+    write_report_export(out_dir, GE_FIN0_TEMPLATE, fino_req.muestra, generate_ge_fino_excel(fino_req))
 
     # 2. Gran Agregado
     print("Generando Gran Agregado...")
@@ -100,7 +112,7 @@ def main():
         horno_codigo="HOR-110",
         observaciones="Granulometría limpia."
     )
-    (out_dir / "test_gran_agregado.xlsx").write_bytes(generate_gran_agregado_excel(gran_req))
+    write_report_export(out_dir, GRAN_AGREGADO_TEMPLATE, gran_req.muestra, generate_gran_agregado_excel(gran_req))
 
     # 3. Cont Humedad
     print("Generando Cont Humedad Agregados...")
@@ -135,7 +147,7 @@ def main():
         balanza_001g_codigo="BAL-001",
         horno_110c_codigo="HOR-110"
     )
-    (out_dir / "test_cont_humedad.xlsx").write_bytes(generate_cont_humedad_excel(ch_req))
+    write_report_export(out_dir, CONT_HUMEDAD_TEMPLATE, ch_req.muestra, generate_cont_humedad_excel(ch_req))
 
     # 4. Peso Unitario
     print("Generando Peso Unitario...")
@@ -166,7 +178,7 @@ def main():
         vacios_k_porcentaje=[40.5, 40.1, 40.3],
         vacios_promedio_pct=40.3
     )
-    (out_dir / "test_peso_unitario.xlsx").write_bytes(generate_peso_unitario_excel(pu_req))
+    write_report_export(out_dir, PESO_UNITARIO_TEMPLATE, pu_req.muestra, generate_peso_unitario_excel(pu_req))
 
     # 5. Tamiz (ASTM C117)
     print("Generando Tamiz...")
@@ -194,7 +206,7 @@ def main():
         tamiz_no_200_codigo="INS-200",
         tamiz_no_16_codigo="INS-16"
     )
-    (out_dir / "test_tamiz.xlsx").write_bytes(generate_tamiz_excel(tamiz_req))
+    write_report_export(out_dir, TAMIZ_TEMPLATE, tamiz_req.muestra, generate_tamiz_excel(tamiz_req))
 
     # 6. Abrass (C131)
     print("Generando Abrass (C131)...")
@@ -224,7 +236,7 @@ def main():
         item_e_perdida_abrasion_pct=[24.0, 0, 0, 0],
         item_f_perdida_lavado_pct=[1.0, 0, 0, 0]
     )
-    (out_dir / "test_abrass.xlsx").write_bytes(generate_abrass_excel(abrass_req))
+    write_report_export(out_dir, ABRASS_TEMPLATE, abrass_req.muestra, generate_abrass_excel(abrass_req))
 
     # 7. Ge Grueso (C127)
     print("Generando Ge Grueso...")
@@ -267,7 +279,7 @@ def main():
         fr2_d_g=0.0,
         fr2_masa_total_g=0.0
     )
-    (out_dir / "test_ge_grueso.xlsx").write_bytes(generate_ge_grueso_excel(grueso_req))
+    write_report_export(out_dir, GE_GRUESO_TEMPLATE, grueso_req.muestra, generate_ge_grueso_excel(grueso_req))
 
     # 8. Planas (D4791)
     print("Generando Planas...")
@@ -298,7 +310,7 @@ def main():
         horno_codigo="EQP-0150",
         nota="Prueba local"
     )
-    (out_dir / "test_planas.xlsx").write_bytes(generate_planas_excel(planas_req))
+    write_report_export(out_dir, PLANAS_TEMPLATE, planas_req.muestra, generate_planas_excel(planas_req))
 
     # 9. Caras (D5821)
     print("Generando Caras...")
@@ -335,7 +347,7 @@ def main():
         tamiz_especificado_codigo="EQP-TAMIZ",
         nota="Prueba local de caras"
     )
-    (out_dir / "test_caras.xlsx").write_bytes(generate_caras_excel(caras_req))
+    write_report_export(out_dir, CARAS_TEMPLATE, caras_req.muestra, generate_caras_excel(caras_req))
 
     # 10. Abra (C535)
     print("Generando Abra (C535)...")
@@ -371,7 +383,7 @@ def main():
         malla_no_4_codigo="INS-0053",
         observaciones="Prueba local de abrasión"
     )
-    (out_dir / "test_abra.xlsx").write_bytes(generate_abra_excel(abra_req))
+    write_report_export(out_dir, ABRA_TEMPLATE, abra_req.muestra, generate_abra_excel(abra_req))
 
     print("[SUCCESS] Se generaron los 10 archivos de prueba exitosamente.")
 

@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db_session
 from app.modules.common.recepcion_codes import resolve_codigo_muestra_lem
-from app.utils.export_filename import build_formato_filename
+from app.utils.export_filename import build_filename_from_template
 from .schemas import (
     EnsayoCompresionCreate, 
     EnsayoCompresionUpdate, 
@@ -12,7 +12,7 @@ from .schemas import (
     CompressionExportRequest,
     CompressionCustomReportRequest
 )
-from .service import CompresionService
+from .service import CompresionService, build_concrete_template_filename
 from .exceptions import DuplicateEnsayoError
 from .excel import generate_compression_excel
 from app.modules.common.notifications import notify_laboratory_essay_event, resolve_actor_identity
@@ -235,7 +235,11 @@ def generar_excel_ensayo(
         if not excel_buffer:
             raise HTTPException(status_code=500, detail="Error generando Excel")
         
-        filename = build_formato_filename(_resolve_compresion_recepcion_code(ensayo) or ensayo.numero_recepcion, "SU", "COMPRESION")
+        template_filename = build_concrete_template_filename(len(ensayo.items or []))
+        filename = build_filename_from_template(
+            template_filename,
+            _resolve_compresion_recepcion_code(ensayo) or ensayo.numero_recepcion,
+        )
         
         return Response(
             content=excel_buffer.getvalue(),
@@ -340,7 +344,11 @@ def export_compression(payload: CompressionExportRequest):
     """Export compression directly without DB (backwards compatible)"""
     try:
         excel_file = generate_compression_excel(payload)
-        filename = build_formato_filename(_resolve_compresion_recepcion_code(payload) or payload.recepcion_numero, "SU", "COMPRESION")
+        template_filename = build_concrete_template_filename(len(payload.items or []))
+        filename = build_filename_from_template(
+            template_filename,
+            _resolve_compresion_recepcion_code(payload) or payload.recepcion_numero,
+        )
         return StreamingResponse(
             excel_file,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

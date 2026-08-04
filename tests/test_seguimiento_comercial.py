@@ -172,6 +172,11 @@ class TestSeguimientoComercialEndpoints(unittest.TestCase):
             self.assertNotIn(servicio, data["servicios"])
         self.assertIn("Ensayos de Laboratorio", data["servicios"])
         self.assertIn("Estudios de Suelos", data["servicios"])
+        self.assertIn("Densidades", data["servicios"])
+        self.assertIn("Probetas", data["servicios"])
+        self.assertIn("Alquiler", data["servicios"])
+        for internal_code in ["DEN", "PROB", "EMS", "ALQ", "ENS.V."]:
+            self.assertNotIn(internal_code, data["servicios"])
 
     def test_create_record(self):
         payload = {
@@ -195,6 +200,7 @@ class TestSeguimientoComercialEndpoints(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
         data = response.json()
         self.assertEqual(data["persona_contacto"], "New Contact")
+        self.assertEqual(data["servicio_solicitado"], "Estudios de Suelos")
         self.assertEqual(data["no"], 2) # Auto-increment 'no'
         self.assertEqual(data["creado_por"], "Test Operator")
 

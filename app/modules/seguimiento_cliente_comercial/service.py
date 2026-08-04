@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from .models import SeguimientoClienteComercial
 from .schemas import SeguimientoClienteComercialCreate, SeguimientoClienteComercialUpdate, SeguimientoClienteComercialPatch
+from .catalog import PREDEFINED_SERVICIOS, REMOVED_SERVICIOS_CATALOG, SERVICE_ALIASES
 
 # Predefined catalogs from the LISTA sheet to merge with dynamic values
 PREDEFINED_ASESORES = ["Silvia Peralta", "Juan Garcia", "Yerly Yanela Infante"]
@@ -37,13 +38,6 @@ PREDEFINED_ESTADOS = [
     "NO ENVIÓ LA INFORMACIÓN",
     "DESCARTO EL SERVICIO",
 ]
-PREDEFINED_SERVICIOS = [
-    "DEN",
-    "PROB",
-    "EMS",
-    "ALQ",
-    "ENS.V.",
-]
 PREDEFINED_CATEGORIAS_SERVICIO = [
     "CLIENTE 1 (DEN)",
     "CLIENTE 2 (PROB)",
@@ -51,14 +45,6 @@ PREDEFINED_CATEGORIAS_SERVICIO = [
     "CLIENTE 4 (ALQ)",
     "CLIENTE 5 (ENS.V.)",
 ]
-REMOVED_SERVICIOS_CATALOG = {
-    "MORTEROS",
-    "EXTRACCION DE DIAMANTINA",
-    "EMS CIMENTACION",
-    "EMS PAVIMENTACION",
-    "EMS ALCANTARILLADO",
-    "ESTUDIOS GEOTECNICOS",
-}
 PREDEFINED_ESTADOS_SEGUIMIENTO = [
     "Leads",
     "Contactado",
@@ -273,7 +259,7 @@ class SeguimientoClienteComercialService:
             contacto=SeguimientoClienteComercialService._normalize_catalog_value(values.get("contacto"), PREDEFINED_CONTACTOS),
             rubro=SeguimientoClienteComercialService._normalize_catalog_value(values.get("rubro"), PREDEFINED_RUBROS),
             estado_cliente=SeguimientoClienteComercialService._normalize_catalog_value(values.get("estado_cliente"), PREDEFINED_ESTADOS, STATE_ALIASES),
-            servicio_solicitado=SeguimientoClienteComercialService._normalize_catalog_value(values.get("servicio_solicitado"), PREDEFINED_SERVICIOS),
+            servicio_solicitado=SeguimientoClienteComercialService._normalize_catalog_value(values.get("servicio_solicitado"), PREDEFINED_SERVICIOS, SERVICE_ALIASES),
             categoria_servicio=SeguimientoClienteComercialService._normalize_catalog_value(values.get("categoria_servicio"), PREDEFINED_CATEGORIAS_SERVICIO, {
                 "DEN": "CLIENTE 1 (DEN)",
                 "PROB": "CLIENTE 2 (PROB)",
@@ -532,7 +518,11 @@ class SeguimientoClienteComercialService:
             contacto=data.contacto,
             rubro=data.rubro,
             estado_cliente=data.estado_cliente,
-            servicio_solicitado=data.servicio_solicitado,
+            servicio_solicitado=SeguimientoClienteComercialService._normalize_catalog_value(
+                data.servicio_solicitado,
+                PREDEFINED_SERVICIOS,
+                SERVICE_ALIASES,
+            ),
             categoria_servicio=data.categoria_servicio,
             fecha_ultimo_contacto=data.fecha_ultimo_contacto,
             comentarios_asistente=data.comentarios_asistente,
@@ -561,6 +551,12 @@ class SeguimientoClienteComercialService:
             return None
             
         update_data = data.dict(exclude_unset=True)
+        if "servicio_solicitado" in update_data:
+            update_data["servicio_solicitado"] = SeguimientoClienteComercialService._normalize_catalog_value(
+                update_data["servicio_solicitado"],
+                PREDEFINED_SERVICIOS,
+                SERVICE_ALIASES,
+            )
         for key, val in update_data.items():
             setattr(db_item, key, val)
             
@@ -599,6 +595,12 @@ class SeguimientoClienteComercialService:
                             val = datetime.strptime(val.split("T")[0], "%Y-%m-%d").date()
                         except ValueError:
                             val = None
+                if key == "servicio_solicitado":
+                    val = SeguimientoClienteComercialService._normalize_catalog_value(
+                        val,
+                        PREDEFINED_SERVICIOS,
+                        SERVICE_ALIASES,
+                    )
                 setattr(db_item, key, val)
                 
         db.commit()
@@ -688,6 +690,7 @@ class SeguimientoClienteComercialService:
             "servicios": merge_catalogs(
                 PREDEFINED_SERVICIOS,
                 db_servicios,
+                SERVICE_ALIASES,
                 excluded_values=REMOVED_SERVICIOS_CATALOG,
             ),
             "categorias_servicio": merge_catalogs(PREDEFINED_CATEGORIAS_SERVICIO, db_categorias),

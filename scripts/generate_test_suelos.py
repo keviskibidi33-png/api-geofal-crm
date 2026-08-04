@@ -1,4 +1,5 @@
 import sys
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -6,21 +7,22 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import openpyxl
-from app.modules.proctor.excel import generate_proctor_excel
+from app.modules.proctor.excel import TEMPLATE_FILENAME as PROCTOR_TEMPLATE, generate_proctor_excel
 from app.modules.proctor.schemas import ProctorRequest
-from app.modules.humedad.excel import generate_humedad_excel
+from app.modules.humedad.excel import TEMPLATE_FILENAME as HUMEDAD_TEMPLATE, generate_humedad_excel
 from app.modules.humedad.schemas import HumedadRequest
-from app.modules.equi_arena.excel import generate_equi_arena_excel
+from app.modules.equi_arena.excel import TEMPLATE_FILENAME as EQUI_ARENA_TEMPLATE, generate_equi_arena_excel
 from app.modules.equi_arena.schemas import EquiArenaRequest
-from app.modules.llp.excel import generate_llp_excel
+from app.modules.llp.excel import TEMPLATE_FILENAME as LLP_TEMPLATE, generate_llp_excel
 from app.modules.llp.schemas import LLPRequest
-from app.modules.gran_suelo.excel import generate_gran_suelo_excel
+from app.modules.gran_suelo.excel import TEMPLATE_FILENAME as GRAN_SUELO_TEMPLATE, generate_gran_suelo_excel
 from app.modules.gran_suelo.schemas import GranSueloRequest
-from app.modules.cbr.excel import generate_cbr_excel
+from app.modules.cbr.excel import TEMPLATE_FILENAME as CBR_TEMPLATE, generate_cbr_excel
+from report_test_helpers import write_report_export
 from app.modules.cbr.schemas import CBRRequest
 
 def main():
-    out_dir = ROOT / "suelos verifiacon"
+    out_dir = Path(os.environ.get("GEOFAL_TEST_OUTPUT_DIR", ROOT / "suelos verifiacon"))
     out_dir.mkdir(parents=True, exist_ok=True)
     print(f"Directorio de pruebas locales: {out_dir}")
 
@@ -50,7 +52,7 @@ def main():
         tamiz_masa_retenida_g=[100, 200, 300, 400, 1000]
     )
     res_proctor = generate_proctor_excel(payload_proctor)
-    (out_dir / "test_proctor.xlsx").write_bytes(res_proctor)
+    write_report_export(out_dir, PROCTOR_TEMPLATE, payload_proctor.muestra, res_proctor)
 
     # 2. Humedad
     print("Generando test Humedad...")
@@ -84,7 +86,7 @@ def main():
         aprobado_fecha="2026/06/24"
     )
     res_humedad = generate_humedad_excel(payload_humedad)
-    (out_dir / "test_humedad.xlsx").write_bytes(res_humedad)
+    write_report_export(out_dir, HUMEDAD_TEMPLATE, payload_humedad.muestra, res_humedad)
 
     # 3. Equivalente de Arena
     print("Generando test Equivalente de Arena...")
@@ -121,7 +123,7 @@ def main():
         aprobado_fecha="2026/06/24"
     )
     res_ea = generate_equi_arena_excel(payload_ea)
-    (out_dir / "test_equivalente_arena.xlsx").write_bytes(res_ea)
+    write_report_export(out_dir, EQUI_ARENA_TEMPLATE, payload_ea.muestra, res_ea)
 
     # 4. LLP
     print("Generando test LLP...")
@@ -160,7 +162,7 @@ def main():
         aprobado_fecha="2026/06/24"
     )
     res_llp = generate_llp_excel(payload_llp)
-    (out_dir / "test_llp.xlsx").write_bytes(res_llp)
+    write_report_export(out_dir, LLP_TEMPLATE, payload_llp.muestra, res_llp)
 
     # 5. GranSuelo
     print("Generando test GranSuelo...")
@@ -207,7 +209,7 @@ def main():
         aprobado_fecha="2026/06/24"
     )
     res_gran = generate_gran_suelo_excel(payload_gran)
-    (out_dir / "test_gran_suelo.xlsx").write_bytes(res_gran)
+    write_report_export(out_dir, GRAN_SUELO_TEMPLATE, payload_gran.muestra, res_gran)
 
     # 6. CBR
     print("Generando test CBR...")
@@ -260,7 +262,7 @@ def main():
         aprobado_fecha="2026/06/24"
     )
     res_cbr = generate_cbr_excel(payload_cbr)
-    (out_dir / "test_cbr.xlsx").write_bytes(res_cbr)
+    write_report_export(out_dir, CBR_TEMPLATE, payload_cbr.muestra, res_cbr)
 
     # 7. Densidad (SU06)
     print("Generando test Densidad (SU06)...")
@@ -271,7 +273,7 @@ def main():
     ws_den["C10"] = "CLIENTE PRUEBA LOCAL"
     ws_den["K11"] = "OT-DEN-26"
     
-    wb.save(out_dir / "test_densidad.xlsx")
+    wb.save(out_dir / "1-INF.-N-110-26-SU06-DEN-V05.xlsx")
 
     print("[COMPLETED] Todos los 7 informes de prueba han sido generados en 'suelos verifiacon/'")
 

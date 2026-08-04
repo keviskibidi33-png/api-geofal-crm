@@ -1,10 +1,15 @@
 import json
+import os
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
 from app.modules.caras.schemas import CarasRequest
-from app.modules.caras.excel import generate_caras_excel
+from app.modules.caras.excel import TEMPLATE_FILENAME, generate_caras_excel
+from report_test_helpers import write_report_export
 
 # Create a mock CarasRequest payload
 payload_data = {
-    "muestra": "TEST-AG-26",
+    "muestra": "147-AG-26",
     "numero_ot": "OT-0001",
     "fecha_ensayo": "2026-06-15",
     "realizado_por": "TECNICO TEST",
@@ -40,6 +45,7 @@ payload_data = {
 payload = CarasRequest.model_validate(payload_data)
 excel_bytes = generate_caras_excel(payload)
 
-with open("test_caras.xlsx", "wb") as f:
-    f.write(excel_bytes)
-print("test_caras.xlsx generated successfully.")
+output_dir = Path(os.environ.get("GEOFAL_TEST_OUTPUT_DIR", ROOT / "test_exports"))
+output_dir.mkdir(parents=True, exist_ok=True)
+write_report_export(output_dir, TEMPLATE_FILENAME, payload.muestra, excel_bytes)
+print("CARAS report generated successfully.")

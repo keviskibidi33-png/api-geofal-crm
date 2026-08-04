@@ -30,7 +30,8 @@ NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 PRUEBA_COLS = ["G", "H", "J"]
 
 
-TEMPLATE_PATH = str(find_template_path("1-INF.-N-000-26-AG22-P.UNIT.-V07.xlsx"))
+TEMPLATE_FILENAME = "1-INF.-N-000-26-AG22-P.UNIT.-V07.xlsx"
+TEMPLATE_PATH = str(find_template_path(TEMPLATE_FILENAME))
 
 
 def _parse_cell_ref(ref: str) -> tuple[str, int]:

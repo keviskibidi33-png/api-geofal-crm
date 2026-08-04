@@ -19,6 +19,15 @@ logger = logging.getLogger(__name__)
 LIMA_TZ = ZoneInfo("America/Lima")
 
 
+def build_concrete_template_filename(n_muestras: int) -> str:
+    """Return the concrete report template name for the selected cylinders."""
+    if n_muestras < 1 or n_muestras > 6:
+        raise ValueError(f"La plantilla de concreto admite entre 1 y 6 probetas: {n_muestras}")
+
+    template_prefix = os.getenv("CONCRETE_TEMPLATE_PREFIX", "1-INF.-N-000-26-CO12-COM-V04")
+    return f"{template_prefix} -{n_muestras}.xlsx"
+
+
 def _get_safe_filename(base_name: str, extension: str = "xlsx") -> str:
     """Sanitize filename for storage"""
     # Remove accents
@@ -745,8 +754,7 @@ class CompresionService:
 
         # 2. Plantilla Configurable Dinámicamente (Evita Acoplamiento Estricto / Hardcoding)
         # Prefijo base configurable por variable de entorno, por defecto la versión de producción actual V04
-        template_prefix = os.getenv("CONCRETE_TEMPLATE_PREFIX", "1-INF.-N-000-26-CO12-COM-V04")
-        template_name = f"{template_prefix} -{n_muestras}.xlsx"
+        template_name = build_concrete_template_filename(n_muestras)
         
         template_path = find_template_path(template_name)
         if not template_path.exists():
@@ -875,5 +883,4 @@ class CompresionService:
             transaction_sp.rollback()
             logger.error(f"Fallo atómico al generar Excel o persistir en DB: {e}")
             raise e
-
 

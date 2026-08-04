@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db_session
 from app.utils.export_filename import build_formato_filename
-from .excel import generate_ge_fino_excel
+from .excel import TEMPLATE_FILENAME, generate_ge_fino_excel
 from .models import GeFinoEnsayo
 from .schemas import (
     GeFinoDetalleResponse,
@@ -397,7 +397,7 @@ def generar_excel_ge_fino(
         excel_bytes = generate_ge_fino_excel(payload)
 
         today = date.today()
-        filename = build_formato_filename(payload.muestra, "AG18", "GE FINO")
+        filename = build_formato_filename(payload.muestra, "AG18", "GE FINO", template_filename=TEMPLATE_FILENAME)
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")

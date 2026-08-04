@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db_session
 from app.utils.export_filename import build_formato_filename
-from .excel import generate_gran_agregado_excel
+from .excel import TEMPLATE_FILENAME, generate_gran_agregado_excel
 from .models import GranAgregadoEnsayo
 from .schemas import (
     GranAgregadoDetalleResponse,
@@ -390,7 +390,7 @@ def generar_excel_gran_agregado(
         excel_bytes = generate_gran_agregado_excel(payload, db=db)
 
         today = date.today()
-        filename = build_formato_filename(payload.muestra, "AG19", "GR. AGREGADO")
+        filename = build_formato_filename(payload.muestra, "AG19", "GR. AGREGADO", template_filename=TEMPLATE_FILENAME)
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")

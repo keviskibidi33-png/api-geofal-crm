@@ -17,9 +17,9 @@ from sqlalchemy import desc, text
 from sqlalchemy.orm import Session
 
 from app.database import get_db_session
-from app.utils.export_filename import build_formato_filename
+from app.utils.export_filename import build_filename_from_template
 
-from .excel import generate_caras_excel
+from .excel import TEMPLATE_FILENAME, generate_caras_excel
 from .models import CarasEnsayo
 from .schemas import (
     CarasDetalleResponse,
@@ -406,7 +406,7 @@ def generar_excel_caras(
         excel_bytes = generate_caras_excel(payload, db=db)
 
         today = date.today()
-        filename = build_formato_filename(payload.muestra, "AG35", "CARAS")
+        filename = build_filename_from_template(TEMPLATE_FILENAME, payload.muestra)
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")

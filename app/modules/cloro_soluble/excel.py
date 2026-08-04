@@ -26,6 +26,7 @@ SECADO_AIRE_BOUNDS = (4, 15, 5, 16)
 SECADO_HORNO_BOUNDS = (4, 16, 5, 18)
 SIG_REVISADO_BOUNDS = (1, 43, 4, 47)
 SIG_APROBADO_BOUNDS = (4, 43, 7, 47)
+TEMPLATE_FILENAME = "1-INF.-N-001-26-SU14-CLORUROS-V01.xlsx"
 
 
 
@@ -457,7 +458,7 @@ def _fill_drawing(drawing_xml: bytes, payload: CloroSolubleRequest) -> bytes:
 
 def generate_cloro_soluble_excel(payload: CloroSolubleRequest) -> bytes:
     """Generate Excel from template preserving styles, merges and drawings."""
-    template_bytes = _get_template_bytes("1-INF.-N-001-26-SU14-CLORUROS-V01.xlsx")
+    template_bytes = _get_template_bytes(TEMPLATE_FILENAME)
 
     output = io.BytesIO()
     with zipfile.ZipFile(io.BytesIO(template_bytes), "r") as zin, \

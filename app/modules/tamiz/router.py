@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db_session
 from app.utils.export_filename import build_formato_filename
 
-from .excel import generate_tamiz_excel
+from .excel import TEMPLATE_FILENAME, generate_tamiz_excel
 from .models import TamizEnsayo
 from .schemas import (
     TamizDetalleResponse,
@@ -398,7 +398,7 @@ def generar_excel_tamiz(
         excel_bytes = generate_tamiz_excel(payload)
 
         today = date.today()
-        filename = build_formato_filename(payload.muestra, "AG23", "TAMIZ")
+        filename = build_formato_filename(payload.muestra, "AG23", "TAMIZ", template_filename=TEMPLATE_FILENAME)
 
         safe_ot = _safe_filename(payload.numero_ot, extension="")
         safe_muestra = _safe_filename(payload.muestra, extension="")

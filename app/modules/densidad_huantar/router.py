@@ -1,7 +1,7 @@
 from app.modules.common.router_factory import apply_footer_defaults, create_lab_router
 from app.utils.export_filename import build_formato_filename
 
-from .excel import generate_densidad_huantar_excel
+from .excel import TEMPLATE_FILE, generate_densidad_huantar_excel
 from .models import DensidadHuantarEnsayo
 from .schemas import DensidadHuantarRequest
 
@@ -17,4 +17,5 @@ router = create_lab_router(
     generate_excel=generate_densidad_huantar_excel,
     build_numero_ensayo=lambda payload: f"{payload.numero_ot}-DH",
     build_download_filename=lambda payload: build_formato_filename(payload.muestra, "SU06", "DENSIDAD HUANTAR"),
+    template_filename=TEMPLATE_FILE,
 )
