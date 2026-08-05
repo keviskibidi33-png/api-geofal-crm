@@ -867,20 +867,12 @@ class CompresionService:
                         else:
                             z_out.writestr(item_name, z_in.read(item_name))
 
-            # Actualizar base de datos de manera atómica
-            for m in muestras:
-                m.status_entrega = "GENERADO"
-                m.fecha_entrega = date.today().strftime('%Y-%m-%d')
-            
-            # Confirmar transacción anidada si todo fue exitoso
-            transaction_sp.commit()
-            
             output.seek(0)
             return output
 
         except Exception as e:
             # Rollback inmediato a nivel de base de datos para no dejar estados parciales inconsistentes
             transaction_sp.rollback()
-            logger.error(f"Fallo atómico al generar Excel o persistir en DB: {e}")
+            logger.error(f"Fallo atómico al generar Excel: {e}")
             raise e
 
