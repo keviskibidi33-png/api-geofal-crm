@@ -488,8 +488,8 @@ def get_control_probetas(
     # 5. Apply Status Filter in memory
     if estado:
         target_status = estado.lower().strip()
-        if target_status == "faltas":
-            mapped_items = [x for x in mapped_items if x.status_ensayo == "FALTA"]
+        if target_status in ("faltas", "vencido", "falta"):
+            mapped_items = [x for x in mapped_items if x.status_ensayo == "FALTA" or x.estado_probeta == "vencido"]
         else:
             mapped_items = [x for x in mapped_items if x.estado_probeta == target_status]
         
