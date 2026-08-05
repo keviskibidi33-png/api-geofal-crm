@@ -251,11 +251,18 @@ def build_probeta_response(
 def calculate_status(muestra: MuestraConcreto, item_comp: Optional[ItemCompresion]) -> str:
     """
     Calculates specimen lifecycle status:
-    - ensayado: Compression test has recorded carga_maxima > 0.
+    - anulado: Explicitly marked as ANULADO in status_ensayo or status_entrega.
+    - ensayado: Compression test has recorded carga_maxima > 0, or status_ensayo == 'ENSAYADO'.
     - pendiente: Due today (fecha_rotura == today).
     - vencido: Overdue (fecha_rotura < today).
     - curado: In curing pool (fecha_rotura > today).
     """
+    status_ensayo_raw = str(muestra.status_ensayo or "").strip().upper()
+    status_entrega_raw = str(muestra.status_entrega or "").strip().upper()
+
+    if status_ensayo_raw == "ANULADO" or status_entrega_raw in ("ANULADO", "ANULADAS"):
+        return "anulado"
+
     has_results = False
     if item_comp:
         carga = item_comp.carga_maxima
@@ -265,7 +272,7 @@ def calculate_status(muestra: MuestraConcreto, item_comp: Optional[ItemCompresio
         if has_carga:
             has_results = True
             
-    if has_results:
+    if has_results or status_ensayo_raw == "ENSAYADO":
         return "ensayado"
         
     rotura_date = normalize_date_string(muestra.fecha_rotura)
@@ -717,9 +724,11 @@ def update_probeta(
                 normalized_status = str(val or "").strip().upper()
                 if normalized_status == "ANULADO":
                     setattr(muestra, key, "ANULADO")
+                    muestra.status_entrega = "ANULADAS"
                 elif normalized_status in {"", "-", "PENDIENTE", "FALTA", "ENSAYADO"}:
-                    # keep as auto-managed unless the user explicitly marks ANULADO
-                    setattr(muestra, key, "")
+                    setattr(muestra, key, "ENSAYADO" if normalized_status == "ENSAYADO" else "")
+                    if str(muestra.status_entrega or "").strip().upper() in ("ANULADO", "ANULADAS"):
+                        muestra.status_entrega = "-"
             elif key == "status_entrega":
                 normalized_status_entrega = str(val or "").strip().upper()
                 if normalized_status_entrega in {"ROTAS", "ANULADAS", "ENTREGADO", "INFORME", "FALTA", "PENDIENTE", "-"}:
