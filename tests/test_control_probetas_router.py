@@ -183,6 +183,26 @@ class TestControlProbetasRouter(unittest.TestCase):
         self.assertEqual(response.total, 1)
         self.assertEqual(response.items[0].muestra_id, self.muestra_vencido.id)
 
+    def test_update_status_entrega_entregado(self):
+        from app.modules.control_probetas.router import update_probeta
+        from unittest.mock import MagicMock
+        req = MagicMock()
+        req.state.user = {}
+        req.headers = {}
+        # Mark the overdue specimen as ENTREGADO
+        updated = update_probeta(
+            muestra_id=self.muestra_vencido.id,
+            payload={"status_entrega": "ENTREGADO", "status_ensayo": "ENSAYADO", "fecha_entrega": "2026/08/05"},
+            request=req,
+            db=self.db
+        )
+        self.assertEqual(updated.estado_probeta, "ensayado")
+        self.assertEqual(updated.status_ensayo, "ENSAYADO")
+
+        kpis = get_control_probetas_kpis(db=self.db)
+        self.assertEqual(kpis.vencido, 0)
+        self.assertEqual(kpis.ensayado, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

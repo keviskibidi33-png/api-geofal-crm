@@ -192,6 +192,11 @@ def _compute_status_ensayo(muestra: MuestraConcreto, item_comp: Optional[ItemCom
     if carga is not None and carga > 0:
         return "ENSAYADO"
 
+    status_ensayo_raw = str(muestra.status_ensayo or "").strip().upper()
+    status_entrega_raw = str(muestra.status_entrega or "").strip().upper()
+    if status_ensayo_raw == "ENSAYADO" or status_entrega_raw in ("ENTREGADO", "INFORME"):
+        return "ENSAYADO"
+
     rotura_date = normalize_date_string(muestra.fecha_rotura)
     if not rotura_date:
         rotura_date = _parse_recepcion_date(recep)
@@ -252,7 +257,7 @@ def calculate_status(muestra: MuestraConcreto, item_comp: Optional[ItemCompresio
     """
     Calculates specimen lifecycle status:
     - anulado: Explicitly marked as ANULADO in status_ensayo or status_entrega.
-    - ensayado: Compression test has recorded carga_maxima > 0, or status_ensayo == 'ENSAYADO'.
+    - ensayado: Compression test has recorded carga_maxima > 0, status_ensayo == 'ENSAYADO', or status_entrega in ('ENTREGADO', 'INFORME').
     - pendiente: Due today (fecha_rotura == today).
     - vencido: Overdue (fecha_rotura < today).
     - curado: In curing pool (fecha_rotura > today).
@@ -272,7 +277,7 @@ def calculate_status(muestra: MuestraConcreto, item_comp: Optional[ItemCompresio
         if has_carga:
             has_results = True
             
-    if has_results or status_ensayo_raw == "ENSAYADO":
+    if has_results or status_ensayo_raw == "ENSAYADO" or status_entrega_raw in ("ENTREGADO", "INFORME"):
         return "ensayado"
         
     rotura_date = normalize_date_string(muestra.fecha_rotura)
@@ -733,6 +738,8 @@ def update_probeta(
                 normalized_status_entrega = str(val or "").strip().upper()
                 if normalized_status_entrega in {"ROTAS", "ANULADAS", "ENTREGADO", "INFORME", "FALTA", "PENDIENTE", "-"}:
                     setattr(muestra, key, normalize_option(val, ALLOWED_STATUS_ENTREGA))
+                    if normalized_status_entrega in {"ENTREGADO", "INFORME"}:
+                        muestra.status_ensayo = "ENSAYADO"
             elif key in {"fecha_rotura", "fecha_entrega", "fecha_moldeo"}:
                 setattr(muestra, key, normalize_date_payload(val) or ("-" if key == "fecha_entrega" else ""))
             else:
