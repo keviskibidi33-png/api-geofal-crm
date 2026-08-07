@@ -189,6 +189,25 @@ try:
     try:
         from sqlalchemy import text
         with engine.begin() as conn:
+            # Migration 048: Add show_kpi flag to perfiles for per-user KPI tab visibility
+            # Defaults to true (all users see KPI tab unless explicitly disabled).
+            # Yerly (asistente comercial) is set to false — she accesses seguimiento_1 but not the KPI panel.
+            conn.execute(text("""
+                ALTER TABLE public.perfiles ADD COLUMN IF NOT EXISTS show_kpi BOOLEAN NOT NULL DEFAULT true;
+            """))
+            conn.execute(text("""
+                UPDATE public.perfiles
+                SET show_kpi = false
+                WHERE email ILIKE '%yerly%' AND show_kpi = true;
+            """))
+            conn.execute(text("NOTIFY pgrst, 'reload schema';"))
+            logger.info("Migration 048: show_kpi column added to perfiles (Yerly set to false).")
+    except Exception as kpi_err:
+        logger.warning("Could not apply migration 048 (show_kpi on perfiles): %s", kpi_err)
+
+    try:
+        from sqlalchemy import text
+        with engine.begin() as conn:
             # Migration 047: Allow '-' and non-numeric OT in programacion_lab
             conn.execute(text("""
                 CREATE OR REPLACE FUNCTION public.ensure_programacion_lab_item_numero()
