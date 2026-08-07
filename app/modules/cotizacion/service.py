@@ -379,6 +379,54 @@ def register_quote_in_db(cotizacion_numero: str, year: int, cliente: str, filepa
             proyecto_id = payload.proyecto_id if payload.proyecto_id and payload.proyecto_id.strip() else None
             vendedor_id = user_id
             
+            # Client Auto-Resolution / Auto-Creation
+            cliente_id = payload.cliente_id if payload.cliente_id and payload.cliente_id.strip() else None
+            cliente_name = (payload.cliente or '').strip()
+            cliente_ruc = (payload.ruc or '').strip()
+
+            if not cliente_id and cliente_name:
+                if cliente_ruc:
+                    cur.execute("SELECT id FROM clientes WHERE ruc = %s AND deleted_at IS NULL LIMIT 1", (cliente_ruc,))
+                    existing = cur.fetchone()
+                    if existing:
+                        cliente_id = str(existing[0])
+                
+                if not cliente_id:
+                    cur.execute("SELECT id FROM clientes WHERE empresa ILIKE %s AND deleted_at IS NULL LIMIT 1", (cliente_name,))
+                    existing = cur.fetchone()
+                    if existing:
+                        cliente_id = str(existing[0])
+
+                if not cliente_id:
+                    try:
+                        contacto_val = (payload.contacto or '').strip() or cliente_name
+                        email_val = (payload.correo or '').strip()
+                        phone_val = (payload.telefono_contacto or '').strip()
+                        cur.execute("""
+                            INSERT INTO clientes (nombre, email, telefono, empresa, ruc, estado, sector, direccion, vendedor_id)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            RETURNING id
+                        """, (
+                            contacto_val,
+                            email_val,
+                            phone_val,
+                            cliente_name,
+                            cliente_ruc,
+                            'prospecto',
+                            'General',
+                            (payload.ubicacion or '').strip(),
+                            vendedor_id
+                        ))
+                        new_row = cur.fetchone()
+                        if new_row:
+                            cliente_id = str(new_row[0])
+                            cur.execute("""
+                                INSERT INTO contactos (cliente_id, nombre, email, telefono, cargo, es_principal)
+                                VALUES (%s, %s, %s, %s, 'Contacto Principal', true)
+                            """, (cliente_id, contacto_val, email_val, phone_val))
+                    except Exception as auto_c_err:
+                        print(f"Auto client creation warning: {auto_c_err}")
+
             cur.execute("""
                 INSERT INTO cotizaciones (
                     numero, year, cliente_nombre, cliente_ruc, cliente_contacto, 
@@ -428,7 +476,7 @@ def register_quote_in_db(cotizacion_numero: str, year: int, cliente: str, filepa
                 subtotal, igv_amount, total, payload.include_igv, 'borrador', 'PEN', 
                 str(filepath), items_json, template_id, items_count, vendedor_nombre, 
                 user_id, proyecto_id, vendedor_id, object_key,
-                payload.cliente_id, 
+                cliente_id, 
                 payload.plazo_dias if payload.plazo_dias is not None else 0, 
                 payload.condicion_pago or "", 
                 [str(x) for x in payload.condiciones_ids] if payload.condiciones_ids else [], 
