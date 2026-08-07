@@ -49,6 +49,16 @@ def _current_user(request: Request) -> tuple[str | None, str | None]:
 
     return user_id, user_name
 
+def _current_user_info(request: Request) -> tuple[str | None, str | None, str | None]:
+    """
+    Extracts the user ID, display name, and role from JWT payload or fallback dev headers.
+    """
+    user_id, user_name = _current_user(request)
+    payload = getattr(request.state, "user", {}) or {}
+    header_role = str(request.headers.get("x-dev-user-role") or request.headers.get("x-user-role") or "").strip()
+    role = header_role or str(payload.get("role") or payload.get("user_metadata", {}).get("role") or "").strip() or None
+    return user_id, user_name, role
+
 def _require_current_user(request: Request) -> tuple[str, str | None]:
     """
     Asserts that there is an authenticated user session, falling back to local-dev in development.
@@ -65,6 +75,7 @@ def _require_current_user(request: Request) -> tuple[str, str | None]:
 
 @router.get("", response_model=dict)
 def listar_seguimientos(
+    request: Request,
     search: Optional[str] = Query(default=None),
     asesor: Optional[str] = Query(default=None),
     estado_cliente: Optional[str] = Query(default=None),
@@ -73,10 +84,15 @@ def listar_seguimientos(
     db: Session = Depends(get_db_session)
 ):
     try:
+        user_id, user_name, role = _current_user_info(request)
+        effective_asesor = asesor
+        if not effective_asesor and role and role.lower() in ("auxiliar_comercial", "asesor_b2b", "auxiliar comercial", "asesor b2b"):
+            effective_asesor = user_name
+
         total, items = SeguimientoClienteComercialService.listar_seguimientos(
             db,
             search=search,
-            asesor=asesor,
+            asesor=effective_asesor,
             estado_cliente=estado_cliente,
             limit=limit,
             offset=offset

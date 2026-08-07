@@ -25,6 +25,14 @@ ADVISOR_ALIASES = {
     "YERLY YANELA INFANTE": "Yerly Yanela Infante",
     "YERLY INFANTE": "Yerly Yanela Infante",
 }
+ADVISOR_TEAM_MAPPING = {
+    "YERLY": "Silvia Peralta",
+    "YERLY INFANTE": "Silvia Peralta",
+    "YERLY YANELA": "Silvia Peralta",
+    "YERLY YANELA INFANTE": "Silvia Peralta",
+    "SILVIA": "Silvia Peralta",
+    "SILVIA PERALTA": "Silvia Peralta",
+}
 PREDEFINED_CONTACTOS = ["WHATSAPP", "LLAMADA", "CORREO"]
 PREDEFINED_RUBROS = ["LABORATORIO", "INGENIERÍA", "ALQUILER", "EN ESPERA"]
 PREDEFINED_ESTADOS = [
@@ -470,7 +478,15 @@ class SeguimientoClienteComercialService:
             
         # Apply advisor filter
         if asesor:
-            query = query.filter(SeguimientoClienteComercial.asesor.ilike(asesor.strip()))
+            asesor_clean = asesor.strip()
+            mapped = ADVISOR_TEAM_MAPPING.get(asesor_clean.upper())
+            target_asesor = mapped or asesor_clean
+            query = query.filter(
+                or_(
+                    SeguimientoClienteComercial.asesor.ilike(f"%{target_asesor}%"),
+                    SeguimientoClienteComercial.asesor.ilike(f"%{asesor_clean}%")
+                )
+            )
             
         # Apply state filter
         if estado_cliente:
