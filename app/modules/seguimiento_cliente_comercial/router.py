@@ -92,7 +92,9 @@ def listar_seguimientos(
             effective_asesor = None if (asesor == "ALL" or not asesor) else asesor
         else:
             mapped_advisor = SeguimientoClienteComercialService.resolve_advisor_for_user(user_name)
-            effective_asesor = mapped_advisor or user_name or "Silvia Peralta"
+            # If not in the team mapping, use the user's own display name/email as their scope.
+            # This ensures new advisors (asesorcomercial2, asesorcomercial3, etc.) see only their own data.
+            effective_asesor = mapped_advisor or user_name
 
         total, items = SeguimientoClienteComercialService.listar_seguimientos(
             db,
