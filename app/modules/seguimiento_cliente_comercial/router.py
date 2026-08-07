@@ -85,9 +85,14 @@ def listar_seguimientos(
 ):
     try:
         user_id, user_name, role = _current_user_info(request)
-        effective_asesor = asesor
-        if not effective_asesor and role and role.lower() in ("auxiliar_comercial", "asesor_b2b", "auxiliar comercial", "asesor b2b"):
-            effective_asesor = user_name
+        role_lower = str(role or "").lower()
+        is_admin_user = any(r in role_lower for r in ("admin", "gerencia", "administrador"))
+
+        if is_admin_user:
+            effective_asesor = None if (asesor == "ALL" or not asesor) else asesor
+        else:
+            mapped_advisor = SeguimientoClienteComercialService.resolve_advisor_for_user(user_name)
+            effective_asesor = mapped_advisor or user_name or "Silvia Peralta"
 
         total, items = SeguimientoClienteComercialService.listar_seguimientos(
             db,

@@ -99,6 +99,16 @@ SEG_CLIENTE_HEADERS = [
 
 class SeguimientoClienteComercialService:
     @staticmethod
+    def resolve_advisor_for_user(user_name_or_email: str | None) -> Optional[str]:
+        if not user_name_or_email:
+            return None
+        raw = str(user_name_or_email).strip().upper()
+        for key, target_advisor in ADVISOR_TEAM_MAPPING.items():
+            if key in raw:
+                return target_advisor
+        return None
+
+    @staticmethod
     def _normalize_catalog_key(value: object) -> str:
         raw_value = str(value or "").strip()
         if not raw_value:
