@@ -17,6 +17,7 @@ class SeguimientoClienteComercial(Base):
     razon_social = Column(String(255), nullable=True)
     ruc = Column(String(20), nullable=True, index=True)
     asesor = Column(String(100), nullable=True, index=True)
+    asesor_email = Column(String(255), nullable=True, index=True)
     contacto = Column(String(100), nullable=True)
     rubro = Column(String(100), nullable=True)
     estado_cliente = Column(String(100), nullable=True, index=True)

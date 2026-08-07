@@ -438,6 +438,186 @@ class SeguimientoClienteComercialService:
         workbook.save(output)
         output.seek(0)
         return output
+            categoria_servicio=SeguimientoClienteComercialService._normalize_catalog_value(values.get("categoria_servicio"), PREDEFINED_CATEGORIAS_SERVICIO, {
+                "DEN": "CLIENTE 1 (DEN)",
+                "PROB": "CLIENTE 2 (PROB)",
+                "EMS": "CLIENTE 3 (EMS)",
+                "ALQ": "CLIENTE 4 (ALQ)",
+                "ENS.V.": "CLIENTE 5 (ENS.V.)",
+                "ENS.V": "CLIENTE 5 (ENS.V.)",
+                "ENS V": "CLIENTE 5 (ENS.V.)",
+                "CLIENTE 1 DEN": "CLIENTE 1 (DEN)",
+                "CLIENTE 2 PROB": "CLIENTE 2 (PROB)",
+                "CLIENTE 3 EMS": "CLIENTE 3 (EMS)",
+                "CLIENTE 4 ALQ": "CLIENTE 4 (ALQ)",
+                "CLIENTE 5 ENS V": "CLIENTE 5 (ENS.V.)",
+            }),
+            fecha_ultimo_contacto=SeguimientoClienteComercialService._parse_date_value(values.get("fecha_ultimo_contacto")) or SeguimientoClienteComercialService._parse_text_date(values.get("fecha_ultimo_contacto")),
+            comentarios_asistente=to_str(values.get("comentarios_asistente")),
+            comentarios_asesor=to_str(values.get("comentarios_asesor")),
+            numero_cotizacion=to_str(values.get("numero_cotizacion")),
+            costo_cotiz_sin_igv=to_str(values.get("costo_cotiz_sin_igv")),
+            estado_seguimiento=SeguimientoClienteComercialService._normalize_catalog_value(values.get("estado_seguimiento"), PREDEFINED_ESTADOS_SEGUIMIENTO),
+            creado_por=creado_por,
+        )
+
+    @staticmethod
+    def _import_from_text_tsv(db: Session, file_content: bytes, creado_por: Optional[str] = None) -> int:
+        text = file_content.decode("utf-8-sig", errors="replace")
+        
+        # Detect delimiter dynamically
+        first_lines = text.splitlines()[:5]
+        delimiter = "\t"
+        if first_lines:
+            counts = {
+                "\t": sum(line.count("\t") for line in first_lines),
+                ";": sum(line.count(";") for line in first_lines),
+                ",": sum(line.count(",") for line in first_lines),
+            }
+            best_delim = max(counts, key=counts.get)
+            if counts[best_delim] > 0:
+                delimiter = best_delim
+
+        reader = csv.reader(io.StringIO(text), delimiter=delimiter)
+        rows = list(reader)
+
+        if not rows:
+            return 0
+
+        header_map: dict[str, int] = {}
+        data_start_index = 0
+        for index, row in enumerate(rows):
+            normalized_row = [SeguimientoClienteComercialService._normalize_tsv_header(cell) for cell in row]
+            if any(cell == "FECHA CONTACTO" for cell in normalized_row) and any(cell == "ESTADO CLIENTE" for cell in normalized_row):
+                for column_index, cell in enumerate(normalized_row):
+                    if not cell:
+                        continue
+                    canonical_header = {
+                        "N": "NO",
+                        "NO": "NO",
+                        "FECHA CONTACTO": "FECHA CONTACTO",
+                        "PERSONA CONTACTO": "PERSONA CONTACTO",
+                        "CELULAR": "CELULAR",
+                        "EMAIL": "EMAIL",
+                        "RAZON SOCIAL": "RAZON SOCIAL",
+                        "RUC": "RUC",
+                        "ASESOR": "ASESOR",
+                        "ASESOR EMAIL": "ASESOR EMAIL",
+                        "CONTACTO": "CONTACTO",
+                        "RUBRO": "RUBRO",
+                        "ESTADO CLIENTE": "ESTADO CLIENTE",
+            "SERVICIO SOLICITADO": "SERVICIO SOLICITADO",
+            "TIPO SERVICIO": "TIPO SERVICIO",
+            "CATEGORIA SERVICIO": "TIPO SERVICIO",
+            "F ULTIMO CONTACTO": "F ULTIMO CONTACTO",
+                        "OBSERVACIONES": "OBSERVACIONES",
+                        "N COTIZACION": "N COTIZACION",
+                        "ESTADO SEGUIMIENTO": "ESTADO SEGUIMIENTO",
+                    }.get(cell, cell)
+                    header_map[canonical_header] = column_index
+                data_start_index = index + 1
+                break
+
+        if not header_map:
+            raise ValueError("El TXT no contiene una fila de encabezados válida para Seguimiento Comercial.")
+
+        def get_value(row: list[str], header: str) -> Optional[str]:
+            column_index = header_map.get(header)
+            if column_index is None or column_index >= len(row):
+                return None
+            value = row[column_index].strip()
+            return value or None
+
+        db.query(SeguimientoClienteComercial).delete()
+        db.commit()
+
+        inserted_count = 0
+        for row in rows[data_start_index:]:
+            if not any(cell.strip() for cell in row if cell):
+                continue
+
+            values = {
+                "no": inserted_count + 1,
+                "fecha_contacto": get_value(row, "FECHA CONTACTO"),
+                "persona_contacto": get_value(row, "PERSONA CONTACTO"),
+                "numero_celular": get_value(row, "CELULAR"),
+                "email": get_value(row, "EMAIL"),
+                "razon_social": get_value(row, "RAZON SOCIAL"),
+                "ruc": get_value(row, "RUC"),
+                "asesor": get_value(row, "ASESOR"),
+                "asesor_email": get_value(row, "ASESOR EMAIL"),
+                "contacto": get_value(row, "CONTACTO"),
+                "rubro": get_value(row, "RUBRO"),
+                "estado_cliente": get_value(row, "ESTADO CLIENTE"),
+                "servicio_solicitado": get_value(row, "SERVICIO SOLICITADO"),
+                "categoria_servicio": get_value(row, "TIPO SERVICIO") or get_value(row, "CATEGORIA CLIENTE"),
+                "fecha_ultimo_contacto": get_value(row, "F ULTIMO CONTACTO"),
+                "comentarios_asistente": get_value(row, "COMENTARIOS ASISTENTE"),
+                "comentarios_asesor": get_value(row, "COMENTARIOS ASESOR"),
+                "numero_cotizacion": get_value(row, "N COTIZACION"),
+                "estado_seguimiento": get_value(row, "ESTADO SEGUIMIENTO"),
+            }
+
+            db_item = SeguimientoClienteComercialService._build_seguimiento_item_from_values(values, creado_por=creado_por)
+            if not db_item:
+                continue
+
+            db_item.no = inserted_count + 1
+            db.add(db_item)
+            inserted_count += 1
+            if inserted_count % 100 == 0:
+                db.flush()
+
+        db.commit()
+        return inserted_count
+
+    @staticmethod
+    def crear_plantilla_excel_defecto() -> io.BytesIO:
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "SEG.CLIENTE"
+
+        sheet.cell(row=1, column=1).value = "SEGUIMIENTO CLIENTE COMERCIAL"
+        sheet.cell(row=2, column=1).value = "Plantilla generada automáticamente"
+
+        for index, header in enumerate(SEG_CLIENTE_HEADERS, start=1):
+            sheet.cell(row=4, column=index).value = header
+
+        lista_sheet = workbook.create_sheet("LISTA")
+        lista_sheet.cell(row=1, column=1).value = "ASESORES"
+        lista_sheet.cell(row=1, column=2).value = "CONTACTOS"
+        lista_sheet.cell(row=1, column=3).value = "RUBROS"
+        lista_sheet.cell(row=1, column=4).value = "ESTADOS"
+        lista_sheet.cell(row=1, column=5).value = "SERVICIOS"
+        lista_sheet.cell(row=1, column=6).value = "ESTADOS_SEGUIMIENTO"
+
+        max_len = max(
+            len(PREDEFINED_ASESORES),
+            len(PREDEFINED_CONTACTOS),
+            len(PREDEFINED_RUBROS),
+            len(PREDEFINED_ESTADOS),
+            len(PREDEFINED_SERVICIOS),
+            len(PREDEFINED_ESTADOS_SEGUIMIENTO),
+        )
+
+        for row_index in range(max_len):
+            if row_index < len(PREDEFINED_ASESORES):
+                lista_sheet.cell(row=row_index + 2, column=1).value = PREDEFINED_ASESORES[row_index]
+            if row_index < len(PREDEFINED_CONTACTOS):
+                lista_sheet.cell(row=row_index + 2, column=2).value = PREDEFINED_CONTACTOS[row_index]
+            if row_index < len(PREDEFINED_RUBROS):
+                lista_sheet.cell(row=row_index + 2, column=3).value = PREDEFINED_RUBROS[row_index]
+            if row_index < len(PREDEFINED_ESTADOS):
+                lista_sheet.cell(row=row_index + 2, column=4).value = PREDEFINED_ESTADOS[row_index]
+            if row_index < len(PREDEFINED_SERVICIOS):
+                lista_sheet.cell(row=row_index + 2, column=5).value = PREDEFINED_SERVICIOS[row_index]
+            if row_index < len(PREDEFINED_ESTADOS_SEGUIMIENTO):
+                lista_sheet.cell(row=row_index + 2, column=6).value = PREDEFINED_ESTADOS_SEGUIMIENTO[row_index]
+
+        output = io.BytesIO()
+        workbook.save(output)
+        output.seek(0)
+        return output
 
     @staticmethod
     def listar_seguimientos(
@@ -445,6 +625,7 @@ class SeguimientoClienteComercialService:
         *,
         search: Optional[str] = None,
         asesor: Optional[str] = None,
+        asesor_email: Optional[str] = None,
         estado_cliente: Optional[str] = None,
         limit: int = 100,
         offset: int = 0
@@ -468,9 +649,15 @@ class SeguimientoClienteComercialService:
                 )
             )
             
-        # Apply advisor filter
-        if asesor:
-            query = query.filter(SeguimientoClienteComercial.asesor.ilike(asesor.strip()))
+        # Apply advisor filter (support matching by advisor display name AND exact user email)
+        if asesor or asesor_email:
+            conditions = []
+            if asesor:
+                asesor_clean = asesor.strip()
+                conditions.append(SeguimientoClienteComercial.asesor.ilike(f"%{asesor_clean}%"))
+            if asesor_email:
+                conditions.append(SeguimientoClienteComercial.asesor_email.ilike(asesor_email.strip()))
+            query = query.filter(or_(*conditions))
             
         # Apply state filter
         if estado_cliente:
@@ -498,7 +685,8 @@ class SeguimientoClienteComercialService:
         db: Session,
         *,
         data: SeguimientoClienteComercialCreate,
-        creado_por: Optional[str] = None
+        creado_por: Optional[str] = None,
+        asesor_email: Optional[str] = None
     ) -> SeguimientoClienteComercial:
         """
         Creates a new tracking record.
@@ -515,6 +703,7 @@ class SeguimientoClienteComercialService:
             razon_social=data.razon_social,
             ruc=data.ruc,
             asesor=data.asesor,
+            asesor_email=data.asesor_email or asesor_email,
             contacto=data.contacto,
             rubro=data.rubro,
             estado_cliente=data.estado_cliente,
@@ -580,7 +769,7 @@ class SeguimientoClienteComercialService:
         # Define allowed fields for patching (excluding metadata)
         allowed_fields = {
             "no", "fecha_contacto", "persona_contacto", "numero_celular",
-            "email", "razon_social", "ruc", "asesor", "contacto", "rubro",
+            "email", "razon_social", "ruc", "asesor", "asesor_email", "contacto", "rubro",
             "estado_cliente", "servicio_solicitado", "fecha_ultimo_contacto",
             "categoria_servicio", "comentarios_asistente", "comentarios_asesor",
             "numero_cotizacion", "costo_cotiz_sin_igv", "estado_seguimiento"

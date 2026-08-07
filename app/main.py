@@ -153,21 +153,6 @@ try:
                 WHERE role_id IN ('oficina_tecnica', 'oficina_tecnica_humedad', 'oficina_tecnica_humedad_tipificador', 'oficina_tecnica_sup');
             """))
             logger.info("Programmatic migration 044 applied successfully (or was already applied).")
-    except Exception as perm_err:
-        logger.warning("Could not apply migration 044 permissions: %s", perm_err)
-
-    try:
-        from sqlalchemy import text
-        with engine.begin() as conn:
-            # Migration 045: Add control probetas columns to muestras_concreto table
-            conn.execute(text("ALTER TABLE public.muestras_concreto ADD COLUMN IF NOT EXISTS elemento VARCHAR(50) DEFAULT '-';"))
-            conn.execute(text("ALTER TABLE public.muestras_concreto ADD COLUMN IF NOT EXISTS fosa VARCHAR(20) DEFAULT '-';"))
-            conn.execute(text("ALTER TABLE public.muestras_concreto ADD COLUMN IF NOT EXISTS densidad VARCHAR(50) DEFAULT '-';"))
-            conn.execute(text("ALTER TABLE public.muestras_concreto ADD COLUMN IF NOT EXISTS status_ensayo VARCHAR(50) DEFAULT '-';"))
-            conn.execute(text("ALTER TABLE public.muestras_concreto ADD COLUMN IF NOT EXISTS status_entrega VARCHAR(50) DEFAULT '-';"))
-            conn.execute(text("ALTER TABLE public.muestras_concreto ADD COLUMN IF NOT EXISTS fecha_entrega VARCHAR(50) DEFAULT '-';"))
-            conn.execute(text("ALTER TABLE public.muestras_concreto ADD COLUMN IF NOT EXISTS es_control_probetas BOOLEAN DEFAULT FALSE;"))
-            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_muestras_concreto_es_control_probetas ON public.muestras_concreto (es_control_probetas);"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_muestras_concreto_fecha_rotura ON public.muestras_concreto (fecha_rotura);"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_muestras_concreto_recepcion_id ON public.muestras_concreto (recepcion_id);"))
             conn.execute(text("NOTIFY pgrst, 'reload schema';"))
@@ -194,8 +179,10 @@ try:
             conn.execute(text("ALTER TABLE public.seguimiento_cliente_comercial ADD COLUMN IF NOT EXISTS costo_cotiz_sin_igv VARCHAR(100);"))
             conn.execute(text("ALTER TABLE public.seguimiento_cliente_comercial ADD COLUMN IF NOT EXISTS categoria_servicio VARCHAR(20);"))
             conn.execute(text("ALTER TABLE public.seguimiento_cliente_comercial ADD COLUMN IF NOT EXISTS comentarios_asesor TEXT;"))
+            conn.execute(text("ALTER TABLE public.seguimiento_cliente_comercial ADD COLUMN IF NOT EXISTS asesor_email VARCHAR(255);"))
+            conn.execute(text("ALTER TABLE public.seguimiento_cliente_comercial_2 ADD COLUMN IF NOT EXISTS asesor_email VARCHAR(255);"))
             conn.execute(text("NOTIFY pgrst, 'reload schema';"))
-            logger.info("Migration: ensured costo_cotiz_sin_igv, categoria_servicio and comentarios_asesor on seguimiento_cliente_comercial.")
+            logger.info("Migration: ensured costo_cotiz_sin_igv, categoria_servicio, comentarios_asesor and asesor_email on tracking tables.")
     except Exception as seg_err:
         logger.warning("Could not add seguimiento_cliente_comercial columns: %s", seg_err)
 

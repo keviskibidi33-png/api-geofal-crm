@@ -463,6 +463,7 @@ class SeguimientoClienteComercialService:
         *,
         search: Optional[str] = None,
         asesor: Optional[str] = None,
+        asesor_email: Optional[str] = None,
         estado_cliente: Optional[str] = None,
         limit: int = 100,
         offset: int = 0
@@ -486,17 +487,18 @@ class SeguimientoClienteComercialService:
                 )
             )
             
-        # Apply advisor filter
-        if asesor:
-            asesor_clean = asesor.strip()
-            mapped = ADVISOR_TEAM_MAPPING.get(asesor_clean.upper())
-            target_asesor = mapped or asesor_clean
-            query = query.filter(
-                or_(
-                    SeguimientoClienteComercial.asesor.ilike(f"%{target_asesor}%"),
-                    SeguimientoClienteComercial.asesor.ilike(f"%{asesor_clean}%")
-                )
-            )
+        # Apply advisor filter (support matching by advisor display name AND exact user email)
+        if asesor or asesor_email:
+            conditions = []
+            if asesor:
+                asesor_clean = asesor.strip()
+                mapped = ADVISOR_TEAM_MAPPING.get(asesor_clean.upper())
+                target_asesor = mapped or asesor_clean
+                conditions.append(SeguimientoClienteComercial.asesor.ilike(f"%{target_asesor}%"))
+                conditions.append(SeguimientoClienteComercial.asesor.ilike(f"%{asesor_clean}%"))
+            if asesor_email:
+                conditions.append(SeguimientoClienteComercial.asesor_email.ilike(asesor_email.strip()))
+            query = query.filter(or_(*conditions))
             
         # Apply state filter
         if estado_cliente:
@@ -524,7 +526,8 @@ class SeguimientoClienteComercialService:
         db: Session,
         *,
         data: SeguimientoClienteComercialCreate,
-        creado_por: Optional[str] = None
+        creado_por: Optional[str] = None,
+        asesor_email: Optional[str] = None
     ) -> SeguimientoClienteComercial:
         """
         Creates a new tracking record.
@@ -541,6 +544,7 @@ class SeguimientoClienteComercialService:
             razon_social=data.razon_social,
             ruc=data.ruc,
             asesor=data.asesor,
+            asesor_email=data.asesor_email or asesor_email,
             contacto=data.contacto,
             rubro=data.rubro,
             estado_cliente=data.estado_cliente,
@@ -606,7 +610,7 @@ class SeguimientoClienteComercialService:
         # Define allowed fields for patching (excluding metadata)
         allowed_fields = {
             "no", "fecha_contacto", "persona_contacto", "numero_celular",
-            "email", "razon_social", "ruc", "asesor", "contacto", "rubro",
+            "email", "razon_social", "ruc", "asesor", "asesor_email", "contacto", "rubro",
             "estado_cliente", "servicio_solicitado", "fecha_ultimo_contacto",
             "categoria_servicio", "comentarios_asistente", "comentarios_asesor",
             "numero_cotizacion", "costo_cotiz_sin_igv", "estado_seguimiento"

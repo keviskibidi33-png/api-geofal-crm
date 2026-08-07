@@ -65,6 +65,7 @@ def _require_current_user(request: Request) -> tuple[str, str | None]:
 
 @router.get("", response_model=dict)
 def listar_seguimientos(
+    request: Request,
     search: Optional[str] = Query(default=None),
     asesor: Optional[str] = Query(default=None),
     estado_cliente: Optional[str] = Query(default=None),
@@ -73,10 +74,25 @@ def listar_seguimientos(
     db: Session = Depends(get_db_session)
 ):
     try:
+        user_id, user_name, role = _current_user_info(request)
+        role_lower = str(role or "").lower()
+        is_admin_user = any(r in role_lower for r in ("admin", "gerencia", "administrador"))
+
+        payload_user = getattr(request.state, "user", {}) or {}
+        user_email = str(payload_user.get("email") or "").strip().lower() or None
+
+        if is_admin_user:
+            effective_asesor = None if (asesor == "ALL" or not asesor) else asesor
+            effective_email = None
+        else:
+            effective_asesor = asesor or user_name
+            effective_email = user_email
+
         total, items = SeguimientoClienteComercialService.listar_seguimientos(
             db,
             search=search,
-            asesor=asesor,
+            asesor=effective_asesor,
+            asesor_email=effective_email,
             estado_cliente=estado_cliente,
             limit=limit,
             offset=offset
@@ -106,8 +122,12 @@ def crear_seguimiento(
     db: Session = Depends(get_db_session)
 ):
     _, user_name = _require_current_user(request)
+    payload_user = getattr(request.state, "user", {}) or {}
+    user_email = str(payload_user.get("email") or "").strip().lower() or None
     try:
-        new_item = SeguimientoClienteComercialService.crear_seguimiento(db, data=payload, creado_por=user_name)
+        new_item = SeguimientoClienteComercialService.crear_seguimiento(
+            db, data=payload, creado_por=user_name, asesor_email=user_email
+        )
         try:
             if request is not None:
                 actor = resolve_actor_identity(db, request)

@@ -11,6 +11,7 @@ class SeguimientoClienteComercialBase(BaseModel):
     razon_social: Optional[str] = None
     ruc: Optional[str] = None
     asesor: Optional[str] = None
+    asesor_email: Optional[str] = None
     contacto: Optional[str] = None
     rubro: Optional[str] = None
     estado_cliente: Optional[str] = None
@@ -46,6 +47,7 @@ class SeguimientoClienteComercialPatch(BaseModel):
     razon_social: Optional[str] = None
     ruc: Optional[str] = None
     asesor: Optional[str] = None
+    asesor_email: Optional[str] = None
     contacto: Optional[str] = None
     rubro: Optional[str] = None
     estado_cliente: Optional[str] = None

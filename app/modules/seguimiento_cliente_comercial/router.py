@@ -88,18 +88,22 @@ def listar_seguimientos(
         role_lower = str(role or "").lower()
         is_admin_user = any(r in role_lower for r in ("admin", "gerencia", "administrador"))
 
+        payload_user = getattr(request.state, "user", {}) or {}
+        user_email = str(payload_user.get("email") or "").strip().lower() or None
+
         if is_admin_user:
             effective_asesor = None if (asesor == "ALL" or not asesor) else asesor
+            effective_email = None
         else:
             mapped_advisor = SeguimientoClienteComercialService.resolve_advisor_for_user(user_name)
-            # If not in the team mapping, use the user's own display name/email as their scope.
-            # This ensures new advisors (asesorcomercial2, asesorcomercial3, etc.) see only their own data.
             effective_asesor = mapped_advisor or user_name
+            effective_email = user_email
 
         total, items = SeguimientoClienteComercialService.listar_seguimientos(
             db,
             search=search,
             asesor=effective_asesor,
+            asesor_email=effective_email,
             estado_cliente=estado_cliente,
             limit=limit,
             offset=offset
@@ -129,8 +133,12 @@ def crear_seguimiento(
     db: Session = Depends(get_db_session)
 ):
     _, user_name = _require_current_user(request)
+    payload_user = getattr(request.state, "user", {}) or {}
+    user_email = str(payload_user.get("email") or "").strip().lower() or None
     try:
-        new_item = SeguimientoClienteComercialService.crear_seguimiento(db, data=payload, creado_por=user_name)
+        new_item = SeguimientoClienteComercialService.crear_seguimiento(
+            db, data=payload, creado_por=user_name, asesor_email=user_email
+        )
         try:
             if request is not None:
                 actor = resolve_actor_identity(db, request)
