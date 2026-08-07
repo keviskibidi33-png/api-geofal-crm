@@ -115,9 +115,10 @@ def listar_seguimientos(
             effective_asesor = None if (asesor == "ALL" or not asesor) else asesor
             effective_email = None
         else:
-            mapped_advisor = SeguimientoClienteComercialService.resolve_advisor_for_user(user_name)
-            effective_asesor = mapped_advisor or user_name
-            effective_email = user_email
+            # Tabla 1 is the historical tracking table shared by Yerly and Silvia.
+            # When no specific advisor query param is sent by the frontend, return all Tabla 1 rows.
+            effective_asesor = asesor if (asesor and asesor != "ALL") else None
+            effective_email = None
 
         total, items = SeguimientoClienteComercialService.listar_seguimientos(
             db,
