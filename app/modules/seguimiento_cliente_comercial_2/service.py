@@ -438,28 +438,6 @@ class SeguimientoClienteComercialService:
         workbook.save(output)
         output.seek(0)
         return output
-            categoria_servicio=SeguimientoClienteComercialService._normalize_catalog_value(values.get("categoria_servicio"), PREDEFINED_CATEGORIAS_SERVICIO, {
-                "DEN": "CLIENTE 1 (DEN)",
-                "PROB": "CLIENTE 2 (PROB)",
-                "EMS": "CLIENTE 3 (EMS)",
-                "ALQ": "CLIENTE 4 (ALQ)",
-                "ENS.V.": "CLIENTE 5 (ENS.V.)",
-                "ENS.V": "CLIENTE 5 (ENS.V.)",
-                "ENS V": "CLIENTE 5 (ENS.V.)",
-                "CLIENTE 1 DEN": "CLIENTE 1 (DEN)",
-                "CLIENTE 2 PROB": "CLIENTE 2 (PROB)",
-                "CLIENTE 3 EMS": "CLIENTE 3 (EMS)",
-                "CLIENTE 4 ALQ": "CLIENTE 4 (ALQ)",
-                "CLIENTE 5 ENS V": "CLIENTE 5 (ENS.V.)",
-            }),
-            fecha_ultimo_contacto=SeguimientoClienteComercialService._parse_date_value(values.get("fecha_ultimo_contacto")) or SeguimientoClienteComercialService._parse_text_date(values.get("fecha_ultimo_contacto")),
-            comentarios_asistente=to_str(values.get("comentarios_asistente")),
-            comentarios_asesor=to_str(values.get("comentarios_asesor")),
-            numero_cotizacion=to_str(values.get("numero_cotizacion")),
-            costo_cotiz_sin_igv=to_str(values.get("costo_cotiz_sin_igv")),
-            estado_seguimiento=SeguimientoClienteComercialService._normalize_catalog_value(values.get("estado_seguimiento"), PREDEFINED_ESTADOS_SEGUIMIENTO),
-            creado_por=creado_por,
-        )
 
     @staticmethod
     def _import_from_text_tsv(db: Session, file_content: bytes, creado_por: Optional[str] = None) -> int:
