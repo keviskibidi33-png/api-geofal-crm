@@ -107,8 +107,8 @@ def listar_seguimientos(
         user_email = str(payload_user.get("email") or "").strip().lower()
 
         is_admin_user = (
-            any(r in role_lower for r in ("admin", "gerencia", "administrador"))
-            or any(kw in user_email for kw in ("admin", "speralta"))
+            role_lower in ("admin", "admin_general", "gerencia", "administrador")
+            or user_email in ("admin@geofal.com.pe", "speralta@geofal.com.pe", "gerencia@geofal.com.pe")
         )
 
         if is_admin_user:
