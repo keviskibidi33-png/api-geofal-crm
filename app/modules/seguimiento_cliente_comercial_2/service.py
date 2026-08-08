@@ -1017,7 +1017,7 @@ class SeguimientoClienteComercialService:
             sheet.cell(row=r, column=10).value = rec.rubro
             sheet.cell(row=r, column=11).value = rec.estado_cliente
             sheet.cell(row=r, column=12).value = rec.servicio_solicitado
-            sheet.cell(row=r, column=13).value = rec.categoria_servicio or rec.categoria_cliente
+            sheet.cell(row=r, column=13).value = getattr(rec, "categoria_servicio", None) or getattr(rec, "categoria_cliente", None)
             sheet.cell(row=r, column=14).value = rec.fecha_ultimo_contacto
             sheet.cell(row=r, column=15).value = rec.numero_cotizacion
             sheet.cell(row=r, column=16).value = rec.estado_seguimiento
