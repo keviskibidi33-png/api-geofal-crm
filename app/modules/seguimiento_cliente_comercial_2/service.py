@@ -39,11 +39,11 @@ PREDEFINED_ESTADOS = [
     "DESCARTO EL SERVICIO",
 ]
 PREDEFINED_CATEGORIAS_SERVICIO = [
-    "CLIENTE 1 (DEN)",
-    "CLIENTE 2 (PROB)",
-    "CLIENTE 3 (EMS)",
-    "CLIENTE 4 (ALQ)",
-    "CLIENTE 5 (ENS.V.)",
+    "Categoría 1 (DEN)",
+    "Categoría 2 (PROB)",
+    "Categoría 3 (EMS)",
+    "Categoría 4 (ALQ)",
+    "Categoría 5 (ENS.V.)",
 ]
 PREDEFINED_ESTADOS_SEGUIMIENTO = [
     "Leads",
@@ -260,19 +260,24 @@ class SeguimientoClienteComercialService:
             rubro=SeguimientoClienteComercialService._normalize_catalog_value(values.get("rubro"), PREDEFINED_RUBROS),
             estado_cliente=SeguimientoClienteComercialService._normalize_catalog_value(values.get("estado_cliente"), PREDEFINED_ESTADOS, STATE_ALIASES),
             servicio_solicitado=SeguimientoClienteComercialService._normalize_catalog_value(values.get("servicio_solicitado"), PREDEFINED_SERVICIOS, SERVICE_ALIASES),
-            categoria_servicio=SeguimientoClienteComercialService._normalize_catalog_value(values.get("categoria_servicio"), PREDEFINED_CATEGORIAS_SERVICIO, {
-                "DEN": "CLIENTE 1 (DEN)",
-                "PROB": "CLIENTE 2 (PROB)",
-                "EMS": "CLIENTE 3 (EMS)",
-                "ALQ": "CLIENTE 4 (ALQ)",
-                "ENS.V.": "CLIENTE 5 (ENS.V.)",
-                "ENS.V": "CLIENTE 5 (ENS.V.)",
-                "ENS V": "CLIENTE 5 (ENS.V.)",
-                "CLIENTE 1 DEN": "CLIENTE 1 (DEN)",
-                "CLIENTE 2 PROB": "CLIENTE 2 (PROB)",
-                "CLIENTE 3 EMS": "CLIENTE 3 (EMS)",
-                "CLIENTE 4 ALQ": "CLIENTE 4 (ALQ)",
-                "CLIENTE 5 ENS V": "CLIENTE 5 (ENS.V.)",
+            categoria_servicio=SeguimientoClienteComercialService._normalize_catalog_value(values.get("categoria_servicio") or values.get("categoria_cliente"), PREDEFINED_CATEGORIAS_SERVICIO, {
+                "DEN": "Categoría 1 (DEN)",
+                "PROB": "Categoría 2 (PROB)",
+                "EMS": "Categoría 3 (EMS)",
+                "ALQ": "Categoría 4 (ALQ)",
+                "ENS.V.": "Categoría 5 (ENS.V.)",
+                "ENS.V": "Categoría 5 (ENS.V.)",
+                "ENS V": "Categoría 5 (ENS.V.)",
+                "CLIENTE 1 (DEN)": "Categoría 1 (DEN)",
+                "CLIENTE 2 (PROB)": "Categoría 2 (PROB)",
+                "CLIENTE 3 (EMS)": "Categoría 3 (EMS)",
+                "CLIENTE 4 (ALQ)": "Categoría 4 (ALQ)",
+                "CLIENTE 5 (ENS.V.)": "Categoría 5 (ENS.V.)",
+                "CLIENTE 1 DEN": "Categoría 1 (DEN)",
+                "CLIENTE 2 PROB": "Categoría 2 (PROB)",
+                "CLIENTE 3 EMS": "Categoría 3 (EMS)",
+                "CLIENTE 4 ALQ": "Categoría 4 (ALQ)",
+                "CLIENTE 5 ENS V": "Categoría 5 (ENS.V.)",
             }),
             fecha_ultimo_contacto=SeguimientoClienteComercialService._parse_date_value(values.get("fecha_ultimo_contacto")) or SeguimientoClienteComercialService._parse_text_date(values.get("fecha_ultimo_contacto")),
             comentarios_asistente=to_str(values.get("comentarios_asistente")),
@@ -1012,7 +1017,7 @@ class SeguimientoClienteComercialService:
             sheet.cell(row=r, column=10).value = rec.rubro
             sheet.cell(row=r, column=11).value = rec.estado_cliente
             sheet.cell(row=r, column=12).value = rec.servicio_solicitado
-            sheet.cell(row=r, column=13).value = rec.categoria_servicio
+            sheet.cell(row=r, column=13).value = rec.categoria_servicio or rec.categoria_cliente
             sheet.cell(row=r, column=14).value = rec.fecha_ultimo_contacto
             sheet.cell(row=r, column=15).value = rec.numero_cotizacion
             sheet.cell(row=r, column=16).value = rec.estado_seguimiento
