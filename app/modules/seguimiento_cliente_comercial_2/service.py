@@ -880,10 +880,8 @@ class SeguimientoClienteComercialService:
         except Exception:
             return SeguimientoClienteComercialService._import_from_text_tsv(db, file_content, creado_por=creado_por)
 
-        if 'SEG.CLIENTE' not in wb.sheetnames:
-            raise ValueError("La hoja 'SEG.CLIENTE' no fue encontrada en el archivo de Excel.")
-            
-        sheet = wb['SEG.CLIENTE']
+        sheet_name = 'COMERCIAL' if 'COMERCIAL' in wb.sheetnames else ('SEG.CLIENTE' if 'SEG.CLIENTE' in wb.sheetnames else wb.sheetnames[0])
+        sheet = wb[sheet_name]
         
         # Clear existing table data to prevent duplicate keys
         db.query(SeguimientoClienteComercial).delete()
@@ -916,8 +914,16 @@ class SeguimientoClienteComercialService:
         def to_date(val) -> Optional[date]:
             return SeguimientoClienteComercialService._parse_date_value(val) or SeguimientoClienteComercialService._parse_text_date(val)
 
-        # Parse rows starting from row 5
-        for r in range(5, sheet.max_row + 1):
+        header_row = 4
+        for r in range(1, 15):
+            row_cells = [sheet.cell(row=r, column=c).value for c in range(1, 20)]
+            normalized_row = [SeguimientoClienteComercialService._normalize_tsv_header(cell) for cell in row_cells]
+            if any(cell == "FECHA CONTACTO" for cell in normalized_row) and any(cell == "ESTADO CLIENTE" for cell in normalized_row):
+                header_row = r
+                break
+
+        # Parse rows starting from header_row + 1
+        for r in range(header_row + 1, sheet.max_row + 1):
             no_val = sheet.cell(row=r, column=1).value
             fecha_contacto_val = sheet.cell(row=r, column=2).value
             persona_contacto_val = sheet.cell(row=r, column=3).value
@@ -930,7 +936,7 @@ class SeguimientoClienteComercialService:
             rubro_val = sheet.cell(row=r, column=10).value
             estado_cliente_val = sheet.cell(row=r, column=11).value
             servicio_val = sheet.cell(row=r, column=12).value
-            categoria_val = sheet.cell(row=r, column=13).value
+            categoria_val = sheet.cell(row=r, column=13).value or sheet.cell(row=r, column=17).value
             fecha_ultimo_val = sheet.cell(row=r, column=14).value
             cotizacion_val = sheet.cell(row=r, column=15).value
             estado_seg_val = sheet.cell(row=r, column=16).value
@@ -977,34 +983,50 @@ class SeguimientoClienteComercialService:
     @staticmethod
     def exportar_excel(db: Session, template_path: str) -> io.BytesIO:
         """
-        Loads the template file, populates columns A-Q starting from row 5 with database records,
+        Loads the template file (Seguimiento.xlsx), populates columns A-Q starting from row 9 with database records,
         and returns the result as a BytesIO file.
         """
+        if not os.path.exists(template_path):
+            try:
+                from app.modules.common.excel_xml import find_template_path
+                found = str(find_template_path("Seguimiento.xlsx"))
+                if os.path.exists(found):
+                    template_path = found
+            except Exception:
+                pass
+
         if not os.path.exists(template_path):
             workbook_io = SeguimientoClienteComercialService.crear_plantilla_excel_defecto()
             workbook = openpyxl.load_workbook(workbook_io, data_only=False)
         else:
             workbook = openpyxl.load_workbook(template_path, data_only=False)
             
-        if 'SEG.CLIENTE' not in workbook.sheetnames:
-            raise ValueError("La hoja 'SEG.CLIENTE' no fue encontrada en el template de Excel.")
-            
-        sheet = workbook['SEG.CLIENTE']
+        sheet_name = 'COMERCIAL' if 'COMERCIAL' in workbook.sheetnames else ('SEG.CLIENTE' if 'SEG.CLIENTE' in workbook.sheetnames else workbook.sheetnames[0])
+        sheet = workbook[sheet_name]
         
+        header_row = 8
+        for r in range(1, 15):
+            row_vals = [str(sheet.cell(row=r, column=c).value or "").upper() for c in range(1, 20)]
+            if any("FECHA CONTACTO" in v for v in row_vals) or any("ESTADO CLIENTE" in v for v in row_vals):
+                header_row = r
+                break
+
+        start_row = header_row + 1
+
         # Get all records sorted by 'no' ascending
         records = db.query(SeguimientoClienteComercial).order_by(
             SeguimientoClienteComercial.no.asc().nullslast(),
             SeguimientoClienteComercial.id.asc()
         ).all()
         
-        # Clean existing template data rows (from row 5 onwards, up to sheet.max_row)
-        for r in range(5, max(sheet.max_row + 1, len(records) + 10)):
-            for col in range(1, 18):
+        # Clean existing template data rows
+        for r in range(start_row, max(sheet.max_row + 1, len(records) + start_row + 10)):
+            for col in range(1, 20):
                 sheet.cell(row=r, column=col).value = None
 
         # Write data keeping styles
         for idx, rec in enumerate(records):
-            r = 5 + idx
+            r = start_row + idx
             sheet.cell(row=r, column=1).value = rec.no
             sheet.cell(row=r, column=2).value = rec.fecha_contacto
             sheet.cell(row=r, column=3).value = rec.persona_contacto
@@ -1021,7 +1043,7 @@ class SeguimientoClienteComercialService:
             sheet.cell(row=r, column=14).value = rec.fecha_ultimo_contacto
             sheet.cell(row=r, column=15).value = rec.numero_cotizacion
             sheet.cell(row=r, column=16).value = rec.estado_seguimiento
-            sheet.cell(row=r, column=17).value = rec.costo_cotiz_sin_igv
+            sheet.cell(row=r, column=17).value = getattr(rec, "categoria_servicio", None) or getattr(rec, "categoria_cliente", None)
 
         # Save workbook to BytesIO
         output = io.BytesIO()

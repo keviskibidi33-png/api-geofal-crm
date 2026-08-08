@@ -17,19 +17,13 @@ from .schemas import (
 )
 from .service import SeguimientoClienteComercialService
 
+from app.modules.common.excel_xml import find_template_path
+
 router = APIRouter(prefix="/api/seguimiento-comercial-2", tags=["Seguimiento Cliente Comercial 2"])
 logger = logging.getLogger(__name__)
 
 # Template path resolution
-TEMPLATE_PATH = os.path.abspath(
-    os.path.join(
-        os.path.dirname(__file__),
-        "..",
-        "..",
-        "templates",
-        "template_Seguimiento cliente 2.xlsx"
-    )
-)
+TEMPLATE_PATH = str(find_template_path("Seguimiento.xlsx"))
 
 def _current_user(request: Request) -> tuple[str | None, str | None]:
     """
