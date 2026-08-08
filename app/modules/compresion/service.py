@@ -4,8 +4,13 @@ import io
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import desc, or_
 from typing import Any, List, Optional
-from datetime import date, datetime
-from zoneinfo import ZoneInfo
+from datetime import date, datetime, timezone, timedelta
+try:
+    from zoneinfo import ZoneInfo
+    LIMA_TZ = ZoneInfo("America/Lima")
+except Exception:
+    LIMA_TZ = timezone(timedelta(hours=-5))
+
 from .models import EnsayoCompresion, ItemCompresion
 from .schemas import EnsayoCompresionCreate, EnsayoCompresionUpdate, CompressionExportRequest, CompressionItem
 from .exceptions import DuplicateEnsayoError, EnsayoNotFoundError
@@ -16,7 +21,6 @@ import unicodedata
 from app.utils.http_client import http_post
 
 logger = logging.getLogger(__name__)
-LIMA_TZ = ZoneInfo("America/Lima")
 
 
 def build_concrete_template_filename(n_muestras: int) -> str:

@@ -4,9 +4,14 @@ import math
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
-from datetime import datetime, date
+from datetime import datetime, date, timezone, timedelta
 from typing import List, Optional
-from zoneinfo import ZoneInfo
+try:
+    from zoneinfo import ZoneInfo
+    LIMA_TZ = ZoneInfo("America/Lima")
+except Exception:
+    LIMA_TZ = timezone(timedelta(hours=-5))
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -21,8 +26,6 @@ from app.modules.common.notifications import resolve_actor_identity, log_audit_a
 
 router = APIRouter(prefix="/api/control-probetas", tags=["Control Probetas"])
 logger = logging.getLogger(__name__)
-
-LIMA_TZ = ZoneInfo("America/Lima")
 
 class ProbetaListItem(BaseModel):
     muestra_id: int

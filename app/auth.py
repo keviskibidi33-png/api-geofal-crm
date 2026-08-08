@@ -44,7 +44,6 @@ def _allow_insecure_dev_auth() -> bool:
 PUBLIC_PATHS = {
     "/",
     "/health",
-    "/debug-db",
     "/docs",
     "/openapi.json",
     "/redoc",
