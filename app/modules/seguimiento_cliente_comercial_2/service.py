@@ -48,11 +48,11 @@ PREDEFINED_CATEGORIAS_SERVICIO = [
 PREDEFINED_ESTADOS_SEGUIMIENTO = [
     "Leads",
     "Contactado",
-    "Cotización enviada",
-    "Negociación",
-    "Venta",
-    "Perdido",
-    "Seguimiento futuro",
+    "En Negociación",
+    "Se Genero una Versión",
+    "Cotización Rechazada",
+    "Se Genero Venta",
+    "Seguimiento Futuro",
 ]
 
 STATE_ALIASES = {
