@@ -19,8 +19,16 @@ def _short_err(err: Exception) -> str:
     return re.sub(r"\[SQL:.*", "", first_line).strip()
 
 
+_MIGRATIONS_RUN = False
+
+
 def run_startup_migrations(engine) -> None:
     """Execute all pending in-code migrations against the database."""
+    global _MIGRATIONS_RUN
+    if _MIGRATIONS_RUN:
+        logger.debug("Startup migrations already executed for this process.")
+        return
+
     from sqlalchemy import text
 
     # ── Migration 044: control_probetas permissions ──────────────────
@@ -117,6 +125,8 @@ def run_startup_migrations(engine) -> None:
             logger.info("Migration 049 applied.")
     except Exception as err:
         logger.warning("Migration 049 skipped: %s", _short_err(err))
+
+    _MIGRATIONS_RUN = True
 
 
 def run_startup_cleanup(engine) -> None:

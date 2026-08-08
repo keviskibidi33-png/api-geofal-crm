@@ -263,71 +263,67 @@ class RecepcionService:
         safe_page = min(requested_page, total_pages) if total > 0 else 1
         offset = (safe_page - 1) * safe_page_size
 
-        muestras_count_subquery = (
-            db.query(
-                MuestraConcreto.recepcion_id.label("recepcion_id"),
-                func.count(MuestraConcreto.id).label("muestras_count"),
-            )
-            .group_by(MuestraConcreto.recepcion_id)
-            .subquery()
-        )
-
-        # Fallbacks para recepciones históricas cuyos datos están en verificación/compresión
-        from app.modules.verificacion.models import VerificacionMuestras, MuestraVerificada
-        verif_count_subquery = (
-            db.query(
-                VerificacionMuestras.numero_verificacion.label("numero_verificacion"),
-                func.count(MuestraVerificada.id).label("verif_count"),
-            )
-            .join(MuestraVerificada, MuestraVerificada.verificacion_id == VerificacionMuestras.id)
-            .group_by(VerificacionMuestras.numero_verificacion)
-            .subquery()
-        )
-
-        from app.modules.compresion.models import EnsayoCompresion, ItemCompresion
-        comp_count_subquery = (
-            db.query(
-                EnsayoCompresion.numero_recepcion.label("numero_recepcion"),
-                func.count(ItemCompresion.id).label("comp_count"),
-            )
-            .join(ItemCompresion, ItemCompresion.ensayo_id == EnsayoCompresion.id)
-            .group_by(EnsayoCompresion.numero_recepcion)
-            .subquery()
-        )
-
-        rows_query = db.query(
-            RecepcionMuestra.id.label("id"),
-            RecepcionMuestra.numero_ot.label("numero_ot"),
-            RecepcionMuestra.numero_recepcion.label("numero_recepcion"),
-            RecepcionMuestra.cliente.label("cliente"),
-            RecepcionMuestra.proyecto.label("proyecto"),
-            RecepcionMuestra.fecha_recepcion.label("fecha_recepcion"),
-            RecepcionMuestra.estado.label("estado"),
-            func.coalesce(
-                muestras_count_subquery.c.muestras_count,
-                verif_count_subquery.c.verif_count,
-                comp_count_subquery.c.comp_count,
-                0,
-            ).label("muestras_count"),
-        ).outerjoin(
-            muestras_count_subquery,
-            muestras_count_subquery.c.recepcion_id == RecepcionMuestra.id,
-        ).outerjoin(
-            verif_count_subquery,
-            verif_count_subquery.c.numero_verificacion == RecepcionMuestra.numero_recepcion,
-        ).outerjoin(
-            comp_count_subquery,
-            comp_count_subquery.c.numero_recepcion == RecepcionMuestra.numero_recepcion,
-        )
-
-        rows_query = self._apply_recepcion_search_filters(rows_query, search)
-        rows = (
-            rows_query
+        base_query = db.query(RecepcionMuestra)
+        base_query = self._apply_recepcion_search_filters(base_query, search)
+        page_records = (
+            base_query
             .order_by(desc(RecepcionMuestra.fecha_creacion))
             .offset(offset)
             .limit(safe_page_size)
             .all()
         )
+
+        if not page_records:
+            return {
+                "items": [],
+                "total": total,
+                "page": safe_page,
+                "page_size": safe_page_size,
+                "total_pages": total_pages,
+            }
+
+        page_ids = [r.id for r in page_records]
+        page_num_recs = [r.numero_recepcion for r in page_records if r.numero_recepcion]
+
+        from app.modules.verificacion.models import VerificacionMuestras, MuestraVerificada
+        from app.modules.compresion.models import EnsayoCompresion, ItemCompresion
+
+        # Consultas de conteo acotadas exclusivamente a los registros de la página actual
+        muestras_dict = dict(
+            db.query(
+                MuestraConcreto.recepcion_id,
+                func.count(MuestraConcreto.id),
+            )
+            .filter(MuestraConcreto.recepcion_id.in_(page_ids))
+            .group_by(MuestraConcreto.recepcion_id)
+            .all()
+        )
+
+        verif_dict = {}
+        if page_num_recs:
+            verif_dict = dict(
+                db.query(
+                    VerificacionMuestras.numero_verificacion,
+                    func.count(MuestraVerificada.id),
+                )
+                .join(MuestraVerificada, MuestraVerificada.verificacion_id == VerificacionMuestras.id)
+                .filter(VerificacionMuestras.numero_verificacion.in_(page_num_recs))
+                .group_by(VerificacionMuestras.numero_verificacion)
+                .all()
+            )
+
+        comp_dict = {}
+        if page_num_recs:
+            comp_dict = dict(
+                db.query(
+                    EnsayoCompresion.numero_recepcion,
+                    func.count(ItemCompresion.id),
+                )
+                .join(ItemCompresion, ItemCompresion.ensayo_id == EnsayoCompresion.id)
+                .filter(EnsayoCompresion.numero_recepcion.in_(page_num_recs))
+                .group_by(EnsayoCompresion.numero_recepcion)
+                .all()
+            )
 
         items = [
             {
@@ -338,9 +334,14 @@ class RecepcionService:
                 "proyecto": row.proyecto,
                 "fecha_recepcion": row.fecha_recepcion,
                 "estado": row.estado,
-                "muestras_count": int(row.muestras_count or 0),
+                "muestras_count": (
+                    muestras_dict.get(row.id)
+                    or verif_dict.get(row.numero_recepcion)
+                    or comp_dict.get(row.numero_recepcion)
+                    or 0
+                ),
             }
-            for row in rows
+            for row in page_records
         ]
 
         return {
