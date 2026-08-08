@@ -56,11 +56,11 @@ PREDEFINED_CATEGORIAS_SERVICIO = [
 PREDEFINED_ESTADOS_SEGUIMIENTO = [
     "Leads",
     "Contactado",
-    "En Negociación",
-    "Se Genero una Versión",
-    "Cotización Rechazada",
-    "Se Genero Venta",
-    "Seguimiento Futuro",
+    "Cotización enviada",
+    "Negociación",
+    "Venta",
+    "Perdido",
+    "Seguimiento futuro",
 ]
 
 STATE_ALIASES = {
@@ -729,11 +729,7 @@ class SeguimientoClienteComercialService:
                 excluded_values=REMOVED_SERVICIOS_CATALOG,
             ),
             "categorias_servicio": merge_catalogs(PREDEFINED_CATEGORIAS_SERVICIO, db_categorias),
-            "estados_seguimiento": merge_catalogs(
-                PREDEFINED_ESTADOS_SEGUIMIENTO,
-                db_estados_seguimiento,
-                excluded_values={"COTIZACIÓN ENVIADA", "COTIZACION ENVIADA", "COTIZACIÓN EN PROCESO", "COTIZACION EN PROCESO"},
-            ),
+            "estados_seguimiento": merge_catalogs(PREDEFINED_ESTADOS_SEGUIMIENTO, db_estados_seguimiento),
         }
 
     @staticmethod
