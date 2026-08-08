@@ -27,8 +27,35 @@ IGNORED_AUDIT_TABLES = {
 
 _AUDIT_INSERT_SQL = text("""
     INSERT INTO auditoria (user_id, user_name, action, module, details, severity, created_at)
-    VALUES (:user_id, :user_name, :action, :module, CAST(:details AS jsonb), 'info', NOW())
+    VALUES (:user_id, :user_name, :action, :module, CAST(:details AS jsonb), :severity, NOW())
 """)
+
+
+def emit_audit_log(
+    db,
+    user_id: str | None,
+    user_name: str | None,
+    action: str,
+    module: str = "CONTROL_AMBIENTAL",
+    details: dict | None = None,
+    severity: str = "info",
+) -> None:
+    """Helper to emit custom audit logs to auditoria table."""
+    try:
+        details_json = json.dumps(details or {}, ensure_ascii=False)
+        db.execute(
+            _AUDIT_INSERT_SQL,
+            {
+                "user_id": user_id or "sistema",
+                "user_name": user_name or "Sistema",
+                "action": action,
+                "module": module,
+                "details": details_json,
+                "severity": severity,
+            },
+        )
+    except Exception as exc:
+        logger.warning("Error emitting audit log: %s", exc)
 
 
 def _audit_payload(target, action_prefix: str) -> dict:
