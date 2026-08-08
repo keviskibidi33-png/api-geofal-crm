@@ -272,6 +272,29 @@ class RecepcionService:
             .subquery()
         )
 
+        # Fallbacks para recepciones históricas cuyos datos están en verificación/compresión
+        from app.modules.verificacion.models import VerificacionMuestras, MuestraVerificada
+        verif_count_subquery = (
+            db.query(
+                VerificacionMuestras.numero_verificacion.label("numero_verificacion"),
+                func.count(MuestraVerificada.id).label("verif_count"),
+            )
+            .join(MuestraVerificada, MuestraVerificada.verificacion_id == VerificacionMuestras.id)
+            .group_by(VerificacionMuestras.numero_verificacion)
+            .subquery()
+        )
+
+        from app.modules.compresion.models import EnsayoCompresion, ItemCompresion
+        comp_count_subquery = (
+            db.query(
+                EnsayoCompresion.numero_recepcion.label("numero_recepcion"),
+                func.count(ItemCompresion.id).label("comp_count"),
+            )
+            .join(ItemCompresion, ItemCompresion.ensayo_id == EnsayoCompresion.id)
+            .group_by(EnsayoCompresion.numero_recepcion)
+            .subquery()
+        )
+
         rows_query = db.query(
             RecepcionMuestra.id.label("id"),
             RecepcionMuestra.numero_ot.label("numero_ot"),
@@ -280,10 +303,21 @@ class RecepcionService:
             RecepcionMuestra.proyecto.label("proyecto"),
             RecepcionMuestra.fecha_recepcion.label("fecha_recepcion"),
             RecepcionMuestra.estado.label("estado"),
-            func.coalesce(muestras_count_subquery.c.muestras_count, 0).label("muestras_count"),
+            func.coalesce(
+                muestras_count_subquery.c.muestras_count,
+                verif_count_subquery.c.verif_count,
+                comp_count_subquery.c.comp_count,
+                0,
+            ).label("muestras_count"),
         ).outerjoin(
             muestras_count_subquery,
             muestras_count_subquery.c.recepcion_id == RecepcionMuestra.id,
+        ).outerjoin(
+            verif_count_subquery,
+            verif_count_subquery.c.numero_verificacion == RecepcionMuestra.numero_recepcion,
+        ).outerjoin(
+            comp_count_subquery,
+            comp_count_subquery.c.numero_recepcion == RecepcionMuestra.numero_recepcion,
         )
 
         rows_query = self._apply_recepcion_search_filters(rows_query, search)
