@@ -428,7 +428,7 @@ def get_control_probetas(
     fecha_inicio: Optional[str] = None,
     fecha_fin: Optional[str] = None,
     sort_column: Optional[str] = None,
-    sort_direction: Optional[str] = Query("asc", regex="^(asc|desc)$"),
+    sort_direction: Optional[str] = Query("asc", pattern="^(asc|desc)$"),
     db: Session = Depends(get_db_session)
 ):
     """

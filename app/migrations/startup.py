@@ -12,6 +12,13 @@ import re
 logger = logging.getLogger(__name__)
 
 
+def _short_err(err: Exception) -> str:
+    """Return a single-line summary of an exception without SQL dump."""
+    msg = str(err).strip()
+    first_line = msg.splitlines()[0] if msg else "Error desconocido"
+    return re.sub(r"\[SQL:.*", "", first_line).strip()
+
+
 def run_startup_migrations(engine) -> None:
     """Execute all pending in-code migrations against the database."""
     from sqlalchemy import text
@@ -34,7 +41,7 @@ def run_startup_migrations(engine) -> None:
             conn.execute(text("NOTIFY pgrst, 'reload schema';"))
             logger.info("Migrations 044-045 applied.")
     except Exception as err:
-        logger.warning("Migration 044-045 skipped: %s", err)
+        logger.warning("Migration 044-045 skipped: %s", _short_err(err))
 
     # ── Migration 046: densidad_huantar permissions ──────────────────
     try:
@@ -50,7 +57,7 @@ def run_startup_migrations(engine) -> None:
             """))
             logger.info("Migration 046 applied.")
     except Exception as err:
-        logger.warning("Migration 046 skipped: %s", err)
+        logger.warning("Migration 046 skipped: %s", _short_err(err))
 
     # ── Migration 047: seguimiento_cliente_comercial columns ─────────
     try:
@@ -63,7 +70,7 @@ def run_startup_migrations(engine) -> None:
             conn.execute(text("NOTIFY pgrst, 'reload schema';"))
             logger.info("Migration 047 applied.")
     except Exception as err:
-        logger.warning("Migration 047 skipped: %s", err)
+        logger.warning("Migration 047 skipped: %s", _short_err(err))
 
     # ── Migration 048: show_kpi + tabla_seguimiento on perfiles ──────
     try:
@@ -77,7 +84,7 @@ def run_startup_migrations(engine) -> None:
             conn.execute(text("NOTIFY pgrst, 'reload schema';"))
             logger.info("Migration 048 applied.")
     except Exception as err:
-        logger.warning("Migration 048 skipped: %s", err)
+        logger.warning("Migration 048 skipped: %s", _short_err(err))
 
     # ── Migration 049: programacion_lab OT trigger ───────────────────
     try:
@@ -109,7 +116,7 @@ def run_startup_migrations(engine) -> None:
             conn.execute(text("NOTIFY pgrst, 'reload schema';"))
             logger.info("Migration 049 applied.")
     except Exception as err:
-        logger.warning("Migration 049 skipped: %s", err)
+        logger.warning("Migration 049 skipped: %s", _short_err(err))
 
 
 def run_startup_cleanup(engine) -> None:
@@ -124,9 +131,9 @@ def run_startup_cleanup(engine) -> None:
         from app.modules.tracing.models import Trazabilidad
 
         with Session(engine) as db_session:
-            logger.info("[STARTUP-CLEANUP] Saneamiento de duplicados en verificaciones...")
             resultado = TracingService.sanear_duplicados(db_session)
-            logger.info("[STARTUP-CLEANUP] Saneamiento completado: %s", resultado)
+            if resultado.get("eliminados", 0) > 0 or resultado.get("sincronizados", 0) > 0:
+                logger.info("[STARTUP-CLEANUP] Saneamiento completado: %s", resultado)
 
             trazas = db_session.query(Trazabilidad).all()
             import re as _re
@@ -139,12 +146,9 @@ def run_startup_cleanup(engine) -> None:
                             Trazabilidad.numero_recepcion == canonical
                         ).first()
                         if canonical_exists:
-                            logger.info("[STARTUP-CLEANUP] Eliminando trazabilidad obsoleta: '%s'", num)
                             db_session.delete(t)
                         else:
-                            logger.info("[STARTUP-CLEANUP] Normalizando trazabilidad: '%s' -> '%s'", num, canonical)
                             t.numero_recepcion = canonical
             db_session.commit()
-            logger.info("Startup trazabilidad cleanup finished.")
     except Exception as err:
-        logger.warning("Startup trazabilidad cleanup skipped: %s", err)
+        logger.warning("Startup trazabilidad cleanup skipped: %s", _short_err(err))
