@@ -73,6 +73,8 @@ from app.modules.dashboard.router import router as dashboard_router
 from app.modules.users.router import router as users_router
 from app.modules.control_ambiental.router import router as control_ambiental_router
 from app.modules.control_ambiental.models import Base as ControlAmbientalBase
+from app.modules.chat.router import router as chat_router
+from app.modules.chat.models import Base as ChatBase
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -89,6 +91,7 @@ try:
     RecepcionBase.metadata.create_all(bind=engine)
     VerificacionBase.metadata.create_all(bind=engine)
     ControlAmbientalBase.metadata.create_all(bind=engine)
+    ChatBase.metadata.create_all(bind=engine)
     MainBase.metadata.create_all(bind=engine)
     
     run_startup_migrations(engine)
@@ -228,6 +231,7 @@ app.include_router(notifications_router)
 app.include_router(dashboard_router)
 app.include_router(users_router)
 app.include_router(control_ambiental_router)
+app.include_router(chat_router)
 
 
 if __name__ == "__main__":

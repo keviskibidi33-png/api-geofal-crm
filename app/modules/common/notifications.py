@@ -235,6 +235,48 @@ def resolve_actor_identity(db: Session, request: Request) -> dict[str, str]:
     return actor
 
 
+def push_notification_to_chat(*, channel_id: str, sender_name: str, message_text: str, extra_data: dict | None = None) -> None:
+    """Dispatches a system notification directly into the internal Chat Communication Suite."""
+    try:
+        import uuid
+        msg_id = f"sys-msg-{uuid.uuid4().hex[:8]}"
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS chat_messages (
+                        id VARCHAR(50) PRIMARY KEY,
+                        channel_id VARCHAR(50) NOT NULL,
+                        sender_id VARCHAR(100),
+                        sender_name VARCHAR(150) NOT NULL,
+                        sender_avatar TEXT,
+                        content TEXT NOT NULL,
+                        attachments JSONB DEFAULT '[]'::jsonb,
+                        parent_id VARCHAR(50),
+                        created_at TIMESTAMPTZ DEFAULT NOW()
+                    );
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO chat_messages (id, channel_id, sender_id, sender_name, content, attachments, created_at)
+                    VALUES (:id, :channel_id, 'system-alert', :sender_name, :content, CAST(:attachments AS jsonb), NOW())
+                    """
+                ),
+                {
+                    "id": msg_id,
+                    "channel_id": channel_id,
+                    "sender_name": sender_name,
+                    "content": message_text,
+                    "attachments": json.dumps([extra_data] if extra_data else []),
+                }
+            )
+    except Exception as exc:
+        logger.warning("Could not push notification to chat channel %s: %s", channel_id, exc)
+
+
 def notify_laboratory_essay_event(
     *,
     module_key: str,
@@ -293,6 +335,14 @@ def notify_laboratory_essay_event(
         metadata=metadata,
     )
 
+    # Reconfiguración: Enviar alerta de sistema automáticamente al Canal de Chat de Laboratorio
+    push_notification_to_chat(
+        channel_id="laboratorio",
+        sender_name="🤖 Alerta de Laboratorio (CRM)",
+        message_text=f"📢 [{module_label.upper()}] {message} — Código: {record_code_clean}",
+        extra_data={"module": module_key, "record_id": record_id, "type": "lab_event"}
+    )
+
     log_audit_action(
         user_id=actor_user_id,
         user_name=actor_name,
@@ -348,6 +398,14 @@ def notify_commercial_tracking_event(
         title=title,
         message=message,
         metadata=metadata,
+    )
+
+    # Reconfiguración: Enviar alerta de sistema automáticamente al Canal de Chat Comercial
+    push_notification_to_chat(
+        channel_id="ventas",
+        sender_name="🤖 Alerta Comercial (CRM)",
+        message_text=f"📢 [COMERCIALL] {message}",
+        extra_data={"module": "seguimiento_comercial", "record_id": record_id, "type": "comercial_event"}
     )
 
     log_audit_action(
