@@ -175,10 +175,18 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             # Attach user info to request state for downstream use
             request.state.user = payload
             user_metadata = payload.get("user_metadata", {}) or {}
+            user_role = (
+                user_metadata.get("role")
+                or user_metadata.get("rol")
+                or payload.get("role")
+                or (payload.get("app_metadata") or {}).get("role")
+                or ""
+            )
             current_actor.set({
                 "user_id": payload.get("sub") or payload.get("id"),
                 "user_name": user_metadata.get("full_name") or payload.get("name") or payload.get("email") or "Usuario",
-                "email": payload.get("email")
+                "email": payload.get("email"),
+                "role": user_role,
             })
         except jwt.ExpiredSignatureError:
             return JSONResponse(
