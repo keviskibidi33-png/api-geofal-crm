@@ -111,6 +111,12 @@ async def list_chat_users(current_user=Depends(get_current_user)):
         res = http_get(f"{base_url}/perfiles?select=id,nombre,email,rol,avatar_url,last_seen_at", headers=headers, timeout=5)
         if res.status_code == 200:
             all_users = res.json()
+            is_admin = my_role in {"admin", "admin_general", "gerencia", "super_admin"} or (actor.get("email") or "").strip().lower() == "gerencia@geofal.com.pe"
+
+            if is_admin:
+                # User is Super Admin / Gerencia: Full unrestricted access ("libre albedrío") to message anyone!
+                return {"users": all_users}
+
             is_comercial = my_role in {"comercial", "auxiliar_comercial"}
 
             # Filter users: If current user is Comercial, block direct 1-on-1 DM with Laboratorio/Tecnico
