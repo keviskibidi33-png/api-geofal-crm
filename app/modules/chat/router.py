@@ -11,7 +11,7 @@ from app.modules.roles.service import _get_supabase_headers, _get_supabase_url
 from .schemas import ChannelCreateRequest, ChannelResponse, MessageCreateRequest, MessageResponse
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/chat", tags=["Chat"])
+router = APIRouter(prefix="/api/chat", tags=["Chat"])
 
 
 @router.get("/channels")

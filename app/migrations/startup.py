@@ -126,6 +126,53 @@ def run_startup_migrations(engine) -> None:
     except Exception as err:
         logger.warning("Migration 049 skipped: %s", _short_err(err))
 
+    # ── Migration 050: chat_channels & chat_messages tables ─────────
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS public.chat_channels (
+                    id VARCHAR(100) PRIMARY KEY,
+                    name VARCHAR(100) NOT NULL,
+                    description TEXT,
+                    is_private BOOLEAN DEFAULT false,
+                    created_by VARCHAR(100),
+                    allowed_roles TEXT[] DEFAULT '{}',
+                    allowed_emails TEXT[] DEFAULT '{}',
+                    category VARCHAR(50) DEFAULT 'general',
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                );
+            """))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS public.chat_messages (
+                    id VARCHAR(100) PRIMARY KEY,
+                    channel_id VARCHAR(100) NOT NULL,
+                    sender_id VARCHAR(100) NOT NULL,
+                    sender_name VARCHAR(200),
+                    sender_avatar TEXT,
+                    content TEXT NOT NULL,
+                    attachments JSONB DEFAULT '[]'::jsonb,
+                    parent_id VARCHAR(100),
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                );
+            """))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_chat_messages_channel_id ON public.chat_messages (channel_id);"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_chat_messages_created_at ON public.chat_messages (created_at);"))
+            conn.execute(text("""
+                INSERT INTO public.chat_channels (id, name, description, is_private, category)
+                VALUES 
+                  ('general', 'general', 'Comunicados e información de empresa', false, 'general'),
+                  ('ventas', 'comercial-ventas', 'Coordinación de cotizaciones y clientes', false, 'area'),
+                  ('laboratorio', 'laboratorio-ensayos', 'Ensayos de campo, muestras y probetas', false, 'area'),
+                  ('informes', 'informes-revision', 'Revisión y emisión de informes LEM', false, 'area'),
+                  ('alertas', 'alertas-gerencia', 'Notificaciones y clientes prioritarios', true, 'area')
+                ON CONFLICT (id) DO NOTHING;
+            """))
+            conn.execute(text("NOTIFY pgrst, 'reload schema';"))
+            logger.info("Migration 050 applied.")
+    except Exception as err:
+        logger.warning("Migration 050 skipped: %s", _short_err(err))
+
     _MIGRATIONS_RUN = True
 
 
