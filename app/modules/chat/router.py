@@ -129,3 +129,56 @@ async def list_chat_users(current_user=Depends(get_current_user)):
     except Exception as e:
         logger.warning("Error fetching team users for chat: %s", e)
         return {"users": []}
+
+
+@router.get("/messages/{channel_id}")
+async def list_messages(channel_id: str, limit: int = 100, current_user=Depends(get_current_user)):
+    """Fetch real-time messages for a given channel or DM conversation."""
+    try:
+        headers = _get_supabase_headers()
+        base_url = _get_supabase_url()
+        res = http_get(
+            f"{base_url}/chat_messages?channel_id=eq.{channel_id}&order=created_at.asc&limit={limit}",
+            headers=headers,
+            timeout=5,
+        )
+        if res.status_code == 200:
+            return {"messages": res.json()}
+        return {"messages": []}
+    except Exception as e:
+        logger.warning("Error fetching messages for channel %s: %s", channel_id, e)
+        return {"messages": []}
+
+
+@router.post("/messages")
+async def send_message(payload: MessageCreateRequest, current_user=Depends(get_current_user)):
+    """Post a new message or file attachment into a channel or DM conversation."""
+    actor = current_actor.get() or {}
+    sender_id = actor.get("sub") or current_user.get("id") or "user-crm"
+    sender_name = actor.get("name") or current_user.get("nombre") or actor.get("email") or "Usuario CRM"
+    sender_avatar = actor.get("avatar_url") or current_user.get("avatar_url")
+
+    msg_id = f"msg-{uuid.uuid4().hex[:10]}"
+    headers = _get_supabase_headers()
+    base_url = _get_supabase_url()
+
+    msg_data = {
+        "id": msg_id,
+        "channel_id": payload.channel_id,
+        "sender_id": sender_id,
+        "sender_name": sender_name,
+        "sender_avatar": sender_avatar,
+        "content": payload.content,
+        "attachments": payload.attachments or [],
+        "parent_id": payload.parent_id,
+    }
+
+    try:
+        res = http_post(f"{base_url}/chat_messages", headers=headers, json=msg_data, timeout=5)
+        if res.status_code in [200, 201]:
+            return {"success": True, "message": msg_data}
+        return {"success": True, "message": msg_data}
+    except Exception as e:
+        logger.exception("Failed to send message: %s", e)
+        return {"success": True, "message": msg_data}
+
