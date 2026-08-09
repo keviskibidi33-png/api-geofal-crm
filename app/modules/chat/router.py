@@ -101,37 +101,61 @@ async def create_channel(payload: ChannelCreateRequest, current_user=Depends(get
 
 @router.get("/users")
 async def list_chat_users(current_user=Depends(get_current_user)):
-    """List team users available for 1-on-1 direct messaging with Comercial vs Laboratorio DM block."""
+    """List real system team users available for 1-on-1 direct messaging."""
     actor = current_actor.get() or {}
     my_role = (actor.get("role") or "").strip().lower()
 
+    all_users = []
     try:
-        headers = _get_supabase_headers()
-        base_url = _get_supabase_url()
-        res = http_get(f"{base_url}/perfiles?select=id,nombre,email,rol,avatar_url,last_seen_at", headers=headers, timeout=5)
-        if res.status_code == 200:
-            all_users = res.json()
-            is_admin = my_role in {"admin", "admin_general", "gerencia", "super_admin"} or (actor.get("email") or "").strip().lower() == "gerencia@geofal.com.pe"
+        if _has_database_url():
+            conn = _get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT id::text, COALESCE(full_name, nombre, email, 'Usuario') AS nombre,
+                           email, COALESCE(role, rol, 'usuario') AS rol, avatar_url, last_seen_at
+                    FROM perfiles
+                    ORDER BY COALESCE(full_name, nombre) ASC
+                """)
+                raw_rows = cur.fetchall() or []
+                all_users = [dict(r) for r in raw_rows]
+                conn.close()
+        
+        if not all_users:
+            headers = _get_supabase_headers()
+            base_url = _get_supabase_url()
+            res = http_get(f"{base_url}/perfiles?select=id,full_name,nombre,email,role,rol,avatar_url,last_seen_at", headers=headers, timeout=5)
+            if res.status_code == 200:
+                raw_data = res.json()
+                for u in raw_data:
+                    all_users.append({
+                        "id": str(u.get("id")),
+                        "nombre": u.get("full_name") or u.get("nombre") or u.get("email") or "Usuario",
+                        "email": u.get("email") or "",
+                        "rol": u.get("role") or u.get("rol") or "usuario",
+                        "avatar_url": u.get("avatar_url"),
+                        "last_seen_at": u.get("last_seen_at")
+                    })
 
-            if is_admin:
-                # User is Super Admin / Gerencia: Full unrestricted access ("libre albedrío") to message anyone!
-                return {"users": all_users}
+        is_admin = my_role in {"admin", "admin_general", "gerencia", "super_admin"} or (actor.get("email") or "").strip().lower() == "gerencia@geofal.com.pe"
 
-            is_comercial = my_role in {"comercial", "auxiliar_comercial"}
+        if is_admin:
+            # User is Super Admin / Gerencia: Full unrestricted access ("libre albedrío") to message anyone!
+            return {"users": all_users}
 
-            # Filter users: If current user is Comercial, block direct 1-on-1 DM with Laboratorio/Tecnico
-            filtered_users = []
-            for u in all_users:
-                target_role = (u.get("rol") or u.get("role") or "").strip().lower()
-                is_lab_target = target_role in {"laboratorio", "tecnico", "laboratorio_tipificador", "tecnico_suelos"}
+        is_comercial = my_role in {"comercial", "auxiliar_comercial"}
 
-                if is_comercial and is_lab_target:
-                    # Block 1-on-1 DM: Comercial must interact with Lab ONLY via Project Channels
-                    continue
-                filtered_users.append(u)
+        # Filter users: If current user is Comercial, block direct 1-on-1 DM with Laboratorio/Tecnico
+        filtered_users = []
+        for u in all_users:
+            target_role = (u.get("rol") or u.get("role") or "").strip().lower()
+            is_lab_target = target_role in {"laboratorio", "tecnico", "laboratorio_tipificador", "tecnico_suelos"}
 
-            return {"users": filtered_users}
-        return {"users": []}
+            if is_comercial and is_lab_target:
+                # Block 1-on-1 DM: Comercial must interact with Lab ONLY via Project Channels
+                continue
+            filtered_users.append(u)
+
+        return {"users": filtered_users}
     except Exception as e:
         logger.warning("Error fetching team users for chat: %s", e)
         return {"users": []}
