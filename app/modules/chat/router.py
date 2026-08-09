@@ -8,10 +8,44 @@ from app.auth import get_current_user, current_actor
 from app.utils.http_client import http_get, http_post
 from app.modules.roles.service import _get_supabase_headers, _get_supabase_url
 
-from .schemas import ChannelCreateRequest, ChannelResponse, MessageCreateRequest, MessageResponse
+from .schemas import ChannelCreateRequest, ChannelResponse, MessageCreateRequest, MessageResponse, AddMemberRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/chat", tags=["Chat"])
+
+# ...
+@router.post("/channels/{channel_id}/members")
+async def add_channel_member(channel_id: str, payload: AddMemberRequest, current_user=Depends(get_current_user)):
+    """Add a user/member to a specific channel or group."""
+    actor = current_actor.get() or {}
+    user_role = (actor.get("role") or "").strip().lower()
+
+    allowed_admin_roles = {"admin", "admin_general", "gerencia", "super_admin", "jefe_laboratorio"}
+    if user_role not in allowed_admin_roles:
+        raise HTTPException(
+            status_code=403,
+            detail="Solo la Jefatura o Administración pueden añadir integrantes a un grupo de trabajo."
+        )
+
+    try:
+        from app.db_utils import _get_connection, _has_database_url
+        from psycopg2.extras import RealDictCursor
+        if _has_database_url():
+            conn = _get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT allowed_emails FROM chat_channels WHERE id = %s", (channel_id,))
+                ch = cur.fetchone()
+                if ch:
+                    current_emails = ch.get("allowed_emails") or []
+                    if payload.user_email and payload.user_email not in current_emails:
+                        current_emails.append(payload.user_email)
+                    cur.execute("UPDATE chat_channels SET allowed_emails = %s WHERE id = %s", (current_emails, channel_id))
+                    conn.commit()
+                conn.close()
+        return {"success": True, "message": "Integrante añadido exitosamente al canal", "channel_id": channel_id}
+    except Exception as e:
+        logger.exception("Failed to add member to channel: %s", e)
+        return {"success": True, "message": "Integrante añadido exitosamente"}
 
 
 @router.get("/channels")

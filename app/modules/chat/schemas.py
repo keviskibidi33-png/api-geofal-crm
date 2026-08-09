@@ -14,6 +14,11 @@ class ChannelCreateRequest(BaseModel):
     category: str = "general"
 
 
+class AddMemberRequest(BaseModel):
+    user_id: str
+    user_email: Optional[str] = None
+
+
 class ChannelResponse(BaseModel):
     id: str
     name: str
