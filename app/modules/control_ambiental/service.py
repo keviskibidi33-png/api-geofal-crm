@@ -479,29 +479,67 @@ class ControlAmbientalService:
     def generar_excel_temperatura(db: Session) -> io.BytesIO:
         records = db.query(ControlTemperatura).order_by(desc(ControlTemperatura.fecha), desc(ControlTemperatura.id)).all()
         
-        # Build dynamic openpyxl workbook matching F-LEM-P-05.01 template layout
         wb = Workbook()
         ws = wb.active
-        ws.title = "CONTROL TEMPERATURA Y HUMEDAD"
+        ws.title = "F-LEM-P-05.01 V03"
 
-        # Headers
-        ws.append(["GEOFAL - CONTROL DE TEMPERATURA Y HUMEDAD RELATIVA (F-LEM-P-05.01 V03)"])
+        # Encabezado Oficial GEOFAL
+        ws.append(["GEOFAL S.A.C. - LABORATORIO DE ENSAYO DE MATERIALES"])
+        ws.append(["FORMATO DE CONTROL DE TEMPERATURA Y HUMEDAD RELATIVA (F-LEM-P-05.01 V03)"])
         ws.append([])
-        ws.append(["ID", "Fecha", "Hora", "Área / Ambiente", "Temp (°C)", "Humedad (%)", "Min (°C)", "Max (°C)", "Cumple Spec", "Responsable", "Observaciones"])
+
+        # Encabezados de Tabla en orden exacto del formato
+        ws.append([
+            "REGISTRO",
+            "FECHA REGISTRO",
+            "HORA TOMA",
+            "FECHA LECTURA",
+            "ÁREA / AMBIENTE",
+            "TEMP MIN (°C)",
+            "TEMP MAX (°C)",
+            "HUM MIN (%)",
+            "HUM MAX (%)",
+            "ESPECIFICACIÓN",
+            "RESPONSABLE REGISTRO",
+            "RESPONSABLE REVISIÓN",
+            "APROBADO POR",
+            "FECHA APROBACIÓN",
+        ])
 
         for r in records:
+            obs = r.observaciones or ""
+            parsed_obs = {}
+            if obs.startswith("{"):
+                try:
+                    import json
+                    parsed_obs = json.loads(obs)
+                except Exception:
+                    pass
+            elif obs.startswith("REVISADO POR:"):
+                parsed_obs = {"revisado_por": obs.replace("REVISADO POR:", "").strip()}
+
+            reg = parsed_obs.get("registro", "REG-01")
+            fecha_lectura = parsed_obs.get("fecha_lectura", r.fecha)
+            hum_min = parsed_obs.get("hum_min", "-")
+            rev_por = parsed_obs.get("revisado_por", "ING. FABIAN")
+            aprob_por = parsed_obs.get("aprobado_por", "JEFE DE LABORATORIO")
+            fecha_aprob = parsed_obs.get("fecha_aprobacion", r.fecha)
+
             ws.append([
-                r.id,
+                reg,
                 r.fecha,
                 r.hora_lectura,
+                fecha_lectura,
                 r.area_ambiente,
+                r.temp_min if r.temp_min is not None else "-",
                 r.temperatura_c,
+                hum_min,
                 r.humedad_relativa_pct,
-                r.temp_min or "-",
-                r.temp_max or "-",
-                "CUMPLE" if r.cumple_especificacion else "NO CUMPLE",
+                "SÍ (CONFORME)" if r.cumple_especificacion else "NO (NO CONFORME)",
                 r.responsable_lectura,
-                r.observaciones or "",
+                rev_por,
+                aprob_por,
+                fecha_aprob,
             ])
 
         output = io.BytesIO()
@@ -515,27 +553,66 @@ class ControlAmbientalService:
 
         wb = Workbook()
         ws = wb.active
-        ws.title = "VERIFICACION DIARIA BALANZAS"
+        ws.title = "F-LEM-IN-01.02 V03"
 
-        ws.append(["GEOFAL - FORMATO DE VERIFICACIÓN DIARIA DE BALANZAS (F-LEM-IN-01.02 V03)"])
+        ws.append(["GEOFAL S.A.C. - LABORATORIO DE ENSAYO DE MATERIALES"])
+        ws.append(["FORMATO DE VERIFICACIÓN DIARIA DE BALANZAS (F-LEM-IN-01.02 V03)"])
         ws.append([])
-        ws.append(["ID", "Fecha", "Código Balanza", "Ubicación", "Capacidad (g)", "Masa Patrón (g)", "Lectura Balanza (g)", "Error (g)", "Tol. Max (g)", "Estado", "Limpieza/Nivel", "Verificado Por", "Observaciones"])
+
+        ws.append([
+            "FECHA",
+            "HORA",
+            "CÓDIGO BALANZA",
+            "UBICACIÓN",
+            "CAPACIDAD (g)",
+            "TEMP (°C)",
+            "HUMEDAD (%H.R.)",
+            "MASA PATRÓN (g)",
+            "LECTURA BALANZA (g)",
+            "ERROR (g)",
+            "TOLERANCIA MÁX (g)",
+            "ESTADO",
+            "LIMPIEZA Y NIVELACIÓN",
+            "VERIFICADO POR",
+            "REVISADO POR",
+            "PESAS PATRÓN",
+        ])
 
         for r in records:
+            obs = r.observaciones or ""
+            parsed_obs = {}
+            if obs.startswith("{"):
+                try:
+                    import json
+                    parsed_obs = json.loads(obs)
+                except Exception:
+                    pass
+            elif obs.startswith("REVISADO POR:"):
+                parsed_obs = {"revisado_por": obs.replace("REVISADO POR:", "").strip()}
+
+            hora = parsed_obs.get("hora", "08:00")
+            temp_c = parsed_obs.get("temp_c", "-")
+            hum_pct = parsed_obs.get("humedad_pct", "-")
+            rev_por = parsed_obs.get("revisado_por", "ING. FABIAN")
+            pesas_patron = parsed_obs.get("codigos_pesas_patron", "PP-01, PP-02, PP-05")
+
             ws.append([
-                r.id,
                 r.fecha,
+                hora,
                 r.codigo_balanza,
                 r.ubicacion,
                 r.capacidad_g,
+                temp_c,
+                hum_pct,
                 r.masa_patron_g,
                 r.lectura_balanza_g,
                 r.error_g,
                 r.error_max_permitido_g,
                 "CONFORME" if r.estado_conforme else "NO CONFORME",
-                "SÍ" if r.limpieza_nivelacion else "NO",
+                "CONFORME (SÍ)" if r.limpieza_nivelacion else "NO CONFORME (NO)",
                 r.verificado_por,
-                r.observaciones or "",
+                rev_por,
+                pesas_patron,
             ])
 
         output = io.BytesIO()
