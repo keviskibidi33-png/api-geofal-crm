@@ -186,11 +186,10 @@ def exportar_excel_temperatura(
     excel_stream = ControlAmbientalService.generar_excel_temperatura(
         db, area=area, fecha_inicio=fecha_inicio, fecha_fin=fecha_fin
     )
-    filename = "F-LEM-P-05.01 V03 CONTROL DE TEMPERATURA Y HUMEDAD RELATIVA.xlsx"
     return StreamingResponse(
         excel_stream,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": 'attachment; filename="F-LEM-P-05.01_V03_CONTROL_TEMPERATURA_Y_HUMEDAD.xlsx"'},
     )
 
 
@@ -204,9 +203,8 @@ def exportar_excel_balanzas(
     excel_stream = ControlAmbientalService.generar_excel_balanzas(
         db, codigo=codigo, fecha_inicio=fecha_inicio, fecha_fin=fecha_fin
     )
-    filename = "F-LEM-IN-01.02 V03 FORMATO DE VERIFICACIÓN DIARIA DE BALANZAS.xlsx"
     return StreamingResponse(
         excel_stream,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": 'attachment; filename="F-LEM-IN-01.02_V03_VERIFICACION_DIARIA_DE_BALANZAS.xlsx"'},
     )

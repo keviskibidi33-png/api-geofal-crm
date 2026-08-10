@@ -507,7 +507,39 @@ class ControlAmbientalService:
         )
 
         if template_path and os.path.exists(template_path):
-            if area:
+            if records:
+                first = records[0]
+                obs = first.observaciones or ""
+                parsed_obs = {}
+                if obs.startswith("{"):
+                    try:
+                        import json
+                        parsed_obs = json.loads(obs)
+                    except Exception:
+                        pass
+                elif obs.startswith("REVISADO POR:"):
+                    parsed_obs = {"revisado_por": obs.replace("REVISADO POR:", "").strip()}
+
+                reg_val = parsed_obs.get("registro", "REG-01")
+                mes_anio_val = parsed_obs.get("mes_anio", "")
+                aprob_por_val = parsed_obs.get("aprobado_por", "JEFE DE LABORATORIO")
+                fecha_aprob_val = parsed_obs.get("fecha_aprobacion", "")
+                area_val = area or first.area_ambiente
+
+                ws.cell(row=10, column=2, value=reg_val)
+                if mes_anio_val:
+                    ws.cell(row=10, column=5, value=mes_anio_val)
+                ws.cell(row=10, column=7, value=aprob_por_val)
+                if fecha_aprob_val:
+                    ws.cell(row=10, column=12, value=fecha_aprob_val)
+
+                ws.cell(row=15, column=4, value=area_val)
+
+                if "CÁMARA HÚMEDA" in area_val.upper() or "CURADO" in area_val.upper():
+                    ws.cell(row=17, column=4, value="23°C ± 2.0°C / ≥ 90%")
+                else:
+                    ws.cell(row=17, column=4, value="20°C ± 3.0°C / 45% - 80%")
+            elif area:
                 ws.cell(row=15, column=4, value=area)
 
             start_row = 24
@@ -602,8 +634,26 @@ class ControlAmbientalService:
         )
 
         if template_path and os.path.exists(template_path):
-            if codigo:
-                ws.cell(row=6, column=4, value=codigo)
+            if records:
+                first = records[0]
+                obs = first.observaciones or ""
+                parsed_obs = {}
+                if obs.startswith("{"):
+                    try:
+                        import json
+                        parsed_obs = json.loads(obs)
+                    except Exception:
+                        pass
+                elif obs.startswith("REVISADO POR:"):
+                    parsed_obs = {"revisado_por": obs.replace("REVISADO POR:", "").strip()}
+
+                codigo_bal_val = codigo or first.codigo_balanza
+                pesas_val = parsed_obs.get("codigos_pesas_patron", "PP-01, PP-02, PP-05")
+
+                ws.cell(row=6, column=5, value=codigo_bal_val)
+                ws.cell(row=8, column=6, value=pesas_val)
+            elif codigo:
+                ws.cell(row=6, column=5, value=codigo)
 
             start_row = 12
             for idx, r in enumerate(records):
