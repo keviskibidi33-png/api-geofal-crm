@@ -623,8 +623,9 @@ class ControlAmbientalService:
                 elif codigo:
                     set_cell(sheet_data, "E6", codigo)
 
-                start_row = 12
-                for idx, r in enumerate(records):
+                # Group records by (r.fecha, hora) so each verification test forms 1 horizontal row in Excel
+                grouped_rows = {}
+                for r in records:
                     obs = r.observaciones or ""
                     parsed_obs = {}
                     if obs.startswith("{"):
@@ -637,19 +638,41 @@ class ControlAmbientalService:
                         parsed_obs = {"revisado_por": obs.replace("REVISADO POR:", "").strip()}
 
                     hora = parsed_obs.get("hora", "08:00")
-                    temp_c = parsed_obs.get("temp_c", "-")
-                    hum_pct = parsed_obs.get("humedad_pct", "-")
-                    rev_por = parsed_obs.get("revisado_por", "ING. FABIAN")
-                    pesadas = parsed_obs.get("pesadas", [])
+                    pesadas_payload = parsed_obs.get("pesadas", [])
+                    key = (r.fecha, hora)
 
+                    if key not in grouped_rows:
+                        grouped_rows[key] = {
+                            "fecha": r.fecha,
+                            "hora": hora,
+                            "temp_c": parsed_obs.get("temp_c", "-"),
+                            "humedad_pct": parsed_obs.get("humedad_pct", "-"),
+                            "verificado_por": r.verificado_por,
+                            "revisado_por": parsed_obs.get("revisado_por", "ING. FABIAN"),
+                            "pesadas": []
+                        }
+
+                    if pesadas_payload and isinstance(pesadas_payload, list) and len(pesadas_payload) > 0:
+                        grouped_rows[key]["pesadas"] = pesadas_payload
+                    else:
+                        lectura_val = r.lectura_balanza_g or r.masa_patron_g or ""
+                        estado_val = "OK" if r.estado_conforme else "NO"
+                        grouped_rows[key]["pesadas"].append({
+                            "lectura_balanza_g": lectura_val,
+                            "estado": estado_val
+                        })
+
+                start_row = 12
+                for idx, row_data in enumerate(grouped_rows.values()):
                     row = start_row + idx
 
-                    set_cell(sheet_data, f"A{row}", r.fecha)
-                    set_cell(sheet_data, f"C{row}", hora)
-                    set_cell(sheet_data, f"E{row}", temp_c, is_number=isinstance(temp_c, (int, float)))
-                    set_cell(sheet_data, f"F{row}", hum_pct, is_number=isinstance(hum_pct, (int, float)))
+                    set_cell(sheet_data, f"A{row}", row_data["fecha"])
+                    set_cell(sheet_data, f"C{row}", row_data["hora"])
+                    set_cell(sheet_data, f"E{row}", row_data["temp_c"], is_number=isinstance(row_data["temp_c"], (int, float)))
+                    set_cell(sheet_data, f"F{row}", row_data["humedad_pct"], is_number=isinstance(row_data["humedad_pct"], (int, float)))
 
-                    if pesadas and isinstance(pesadas, list) and len(pesadas) > 0:
+                    pesadas = row_data["pesadas"]
+                    if pesadas and isinstance(pesadas, list):
                         for p_idx, p in enumerate(pesadas[:15]):
                             col_num_lectura = 7 + (p_idx * 2)
                             col_num_estado = 8 + (p_idx * 2)
@@ -663,12 +686,9 @@ class ControlAmbientalService:
                                 set_cell(sheet_data, f"{col_letter_lectura}{row}", lectura_val, is_number=isinstance(lectura_val, (int, float)))
                             if estado_val != "":
                                 set_cell(sheet_data, f"{col_letter_estado}{row}", estado_val)
-                    else:
-                        set_cell(sheet_data, f"G{row}", r.lectura_balanza_g, is_number=isinstance(r.lectura_balanza_g, (int, float)))
-                        set_cell(sheet_data, f"H{row}", "OK" if r.estado_conforme else "NO")
 
-                    set_cell(sheet_data, f"AK{row}", r.verificado_por)
-                    set_cell(sheet_data, f"AL{row}", rev_por)
+                    set_cell(sheet_data, f"AK{row}", row_data["verificado_por"])
+                    set_cell(sheet_data, f"AL{row}", row_data["revisado_por"])
 
                 return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
