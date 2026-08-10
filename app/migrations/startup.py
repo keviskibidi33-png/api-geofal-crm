@@ -173,6 +173,76 @@ def run_startup_migrations(engine) -> None:
     except Exception as err:
         logger.warning("Migration 050 skipped: %s", _short_err(err))
 
+    # ── Migration 051: control_ambiental tables for Supabase ──────────
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS public.control_verificacion_balanzas (
+                    id BIGSERIAL PRIMARY KEY,
+                    codigo_balanza VARCHAR(50) NOT NULL,
+                    nombre_balanza VARCHAR(150),
+                    mes_anio VARCHAR(50) NOT NULL,
+                    ubicacion VARCHAR(100) NOT NULL,
+                    codigos_pesas_patron VARCHAR(150) DEFAULT 'PP-01, PP-02, PP-05',
+                    capacidad_g NUMERIC(10,2),
+                    masa_patron_g NUMERIC(10,2),
+                    error_max_permitido_g NUMERIC(10,3),
+                    limpieza_nivelacion BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                );
+            """))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS public.control_verificacion_balanzas_filas (
+                    id BIGSERIAL PRIMARY KEY,
+                    header_id BIGINT REFERENCES public.control_verificacion_balanzas(id) ON DELETE CASCADE,
+                    fecha DATE NOT NULL DEFAULT CURRENT_DATE,
+                    hora TIME NOT NULL DEFAULT '08:00',
+                    temp_c NUMERIC(4,1),
+                    humedad_pct NUMERIC(4,1),
+                    pesadas JSONB DEFAULT '[]'::jsonb,
+                    verificado_por VARCHAR(100) NOT NULL DEFAULT 'BEATRIZ',
+                    revisado_por VARCHAR(100) NOT NULL DEFAULT 'ING. FABIAN',
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                );
+            """))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS public.control_temperatura_humedad (
+                    id BIGSERIAL PRIMARY KEY,
+                    registro_codigo VARCHAR(50) DEFAULT 'F-LEM-P-05.01',
+                    mes_anio VARCHAR(50) NOT NULL,
+                    area_ambiente VARCHAR(100) NOT NULL,
+                    aprobado_por VARCHAR(100) DEFAULT 'JEFE DE LABORATORIO',
+                    fecha_aprobacion DATE DEFAULT CURRENT_DATE,
+                    cumple_global BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                );
+            """))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS public.control_temperatura_humedad_filas (
+                    id BIGSERIAL PRIMARY KEY,
+                    header_id BIGINT REFERENCES public.control_temperatura_humedad(id) ON DELETE CASCADE,
+                    fecha_registro DATE NOT NULL,
+                    hora_toma TIME NOT NULL,
+                    fecha_lectura DATE,
+                    temp_min NUMERIC(4,1),
+                    temp_max NUMERIC(4,1),
+                    hum_min NUMERIC(4,1),
+                    hum_max NUMERIC(4,1),
+                    temperatura_c NUMERIC(4,1) NOT NULL,
+                    humedad_relativa_pct NUMERIC(4,1) NOT NULL,
+                    cumple BOOLEAN DEFAULT TRUE,
+                    responsable_registro VARCHAR(100) NOT NULL,
+                    responsable_revision VARCHAR(100),
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                );
+            """))
+            conn.execute(text("NOTIFY pgrst, 'reload schema';"))
+            logger.info("Migration 051 applied (control_ambiental tables).")
+    except Exception as err:
+        logger.warning("Migration 051 skipped: %s", _short_err(err))
+
     _MIGRATIONS_RUN = True
 
 
