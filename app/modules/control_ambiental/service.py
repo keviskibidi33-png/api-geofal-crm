@@ -663,8 +663,23 @@ class ControlAmbientalService:
                         })
 
                 start_row = 12
+                merge_cells = root.find(f".//{{{NS_SHEET}}}mergeCells")
+                if merge_cells is None:
+                    merge_cells = etree.SubElement(root, f"{{{NS_SHEET}}}mergeCells")
+
                 for idx, row_data in enumerate(grouped_rows.values()):
                     row = start_row + idx
+
+                    # Remove any pre-existing template merge for this data row (like C12:K12)
+                    for mc in list(merge_cells.findall(f"{{{NS_SHEET}}}mergeCell")):
+                        ref = mc.get("ref", "")
+                        if f"{row}" in ref:
+                            merge_cells.remove(mc)
+
+                    # Add exact merges A{row}:B{row} for FECHA and C{row}:D{row} for HORA
+                    for new_ref in [f"A{row}:B{row}", f"C{row}:D{row}"]:
+                        mc = etree.SubElement(merge_cells, f"{{{NS_SHEET}}}mergeCell")
+                        mc.set("ref", new_ref)
 
                     set_cell(sheet_data, f"A{row}", row_data["fecha"])
                     set_cell(sheet_data, f"C{row}", row_data["hora"])
@@ -689,6 +704,8 @@ class ControlAmbientalService:
 
                     set_cell(sheet_data, f"AK{row}", row_data["verificado_por"])
                     set_cell(sheet_data, f"AL{row}", row_data["revisado_por"])
+
+                merge_cells.set("count", str(len(merge_cells.findall(f"{{{NS_SHEET}}}mergeCell"))))
 
                 return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
