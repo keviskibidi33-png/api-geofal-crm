@@ -649,9 +649,11 @@ class ControlAmbientalService:
 
                 codigo_bal_val = codigo or first.codigo_balanza
                 pesas_val = parsed_obs.get("codigos_pesas_patron", "PP-01, PP-02, PP-05")
+                mes_anio_val = parsed_obs.get("mes_anio", "AGOSTO DE 2026")
 
-                ws.cell(row=6, column=5, value=codigo_bal_val)
-                ws.cell(row=8, column=6, value=pesas_val)
+                ws.cell(row=6, column=5, value=codigo_bal_val)       # E6
+                ws.cell(row=6, column=37, value=mes_anio_val)      # AK6
+                ws.cell(row=8, column=6, value=pesas_val)           # F8
             elif codigo:
                 ws.cell(row=6, column=5, value=codigo)
 
@@ -672,16 +674,45 @@ class ControlAmbientalService:
                 temp_c = parsed_obs.get("temp_c", "-")
                 hum_pct = parsed_obs.get("humedad_pct", "-")
                 rev_por = parsed_obs.get("revisado_por", "ING. FABIAN")
+                pesadas = parsed_obs.get("pesadas", [])
 
                 current_row = start_row + idx
+
+                # Column A = FECHA (A:B merged)
                 ws.cell(row=current_row, column=1, value=r.fecha)
+
+                # Column C = HORA (C:D merged)
                 ws.cell(row=current_row, column=3, value=hora)
+
+                # Column E = Temp (°C)
                 ws.cell(row=current_row, column=5, value=temp_c)
+
+                # Column F = Humedad (%H.R.)
                 ws.cell(row=current_row, column=6, value=hum_pct)
-                ws.cell(row=current_row, column=7, value=r.lectura_balanza_g)
-                ws.cell(row=current_row, column=8, value="OK" if r.estado_conforme else "NO")
-                ws.cell(row=current_row, column=19, value=r.verificado_por)
-                ws.cell(row=current_row, column=20, value=rev_por)
+
+                # If pesadas list is present in payload, populate up to 15 pesadas
+                if pesadas and isinstance(pesadas, list) and len(pesadas) > 0:
+                    for p_idx, p in enumerate(pesadas[:15]):
+                        col_lectura = 7 + (p_idx * 2)   # G, I, K, M, O, Q, S, U, W, Y, AA, AC, AE, AG, AI
+                        col_estado = 8 + (p_idx * 2)    # H, J, L, N, P, R, T, V, X, Z, AB, AD, AF, AH, AJ
+                        
+                        lectura_val = p.get("lectura_balanza_g") or p.get("masa_patron_g") or ""
+                        estado_val = p.get("estado") or ("OK" if lectura_val != "" else "")
+
+                        if lectura_val != "":
+                            ws.cell(row=current_row, column=col_lectura, value=lectura_val)
+                        if estado_val != "":
+                            ws.cell(row=current_row, column=col_estado, value=estado_val)
+                else:
+                    # Fallback single pesada
+                    ws.cell(row=current_row, column=7, value=r.lectura_balanza_g)
+                    ws.cell(row=current_row, column=8, value="OK" if r.estado_conforme else "NO")
+
+                # Column AK (37) = Realizado por:
+                ws.cell(row=current_row, column=37, value=r.verificado_por)
+
+                # Column AL (38) = Revisado por:
+                ws.cell(row=current_row, column=38, value=rev_por)
         else:
             for r in records:
                 obs = r.observaciones or ""
