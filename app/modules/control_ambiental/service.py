@@ -14,7 +14,10 @@ from app.modules.common.excel_xml import (
     transform_template_sheet,
     set_cell,
     col_num_to_letter,
+    _set_paragraph_text,
     NS_SHEET,
+    NS_DRAW,
+    NS_A,
 )
 from openpyxl import Workbook, load_workbook
 
@@ -494,63 +497,52 @@ class ControlAmbientalService:
         records = ControlAmbientalService.listar_temperatura(
             db, area=area, fecha_inicio=fecha_inicio, fecha_fin=fecha_fin, limit=500
         )
-
         if template_path and os.path.exists(template_path):
+            first = records[0] if records else None
+            obs = (first.observaciones if first else "") or ""
+            parsed_obs = {}
+            if obs.startswith("{"):
+                try:
+                    import json
+                    parsed_obs = json.loads(obs)
+                except Exception:
+                    pass
+            elif obs.startswith("REVISADO POR:"):
+                parsed_obs = {"revisado_por": obs.replace("REVISADO POR:", "").strip()}
+
+            reg_val = parsed_obs.get("registro", "REG-01")
+            mes_anio_val = parsed_obs.get("mes_anio", "AGOSTO DE 2026")
+            aprob_por_val = parsed_obs.get("aprobado_por", "JEFE DE LABORATORIO")
+            fecha_aprob_val = parsed_obs.get("fecha_aprobacion", datetime.date.today().strftime("%Y-%m-%d"))
+            area_val = area or (first.area_ambiente if first else "ÁREA DE RECEPCIÓN DE MUESTRAS")
+
             def _transform_sheet(sheet_bytes: bytes) -> bytes:
                 root = etree.fromstring(sheet_bytes)
                 sheet_data = root.find(f".//{{{NS_SHEET}}}sheetData")
 
-                if records:
-                    first = records[0]
-                    obs = first.observaciones or ""
-                    parsed_obs = {}
-                    if obs.startswith("{"):
-                        try:
-                            import json
-                            parsed_obs = json.loads(obs)
-                        except Exception:
-                            pass
-                    elif obs.startswith("REVISADO POR:"):
-                        parsed_obs = {"revisado_por": obs.replace("REVISADO POR:", "").strip()}
+                set_cell(sheet_data, "D15", area_val)
 
-                    reg_val = parsed_obs.get("registro", "REG-01")
-                    mes_anio_val = parsed_obs.get("mes_anio", "")
-                    aprob_por_val = parsed_obs.get("aprobado_por", "JEFE DE LABORATORIO")
-                    fecha_aprob_val = parsed_obs.get("fecha_aprobacion", "")
-                    area_val = area or first.area_ambiente
-
-                    set_cell(sheet_data, "B10", reg_val)
-                    if mes_anio_val:
-                        set_cell(sheet_data, "E10", mes_anio_val)
-                    set_cell(sheet_data, "G10", aprob_por_val)
-                    if fecha_aprob_val:
-                        set_cell(sheet_data, "L10", fecha_aprob_val)
-
-                    set_cell(sheet_data, "D15", area_val)
-
-                    if "CÁMARA HÚMEDA" in area_val.upper() or "CURADO" in area_val.upper():
-                        set_cell(sheet_data, "D17", "23°C ± 2.0°C / ≥ 90%")
-                    else:
-                        set_cell(sheet_data, "D17", "20°C ± 3.0°C / 45% - 80%")
-                elif area:
-                    set_cell(sheet_data, "D15", area)
+                if "CÁMARA HÚMEDA" in area_val.upper() or "CURADO" in area_val.upper():
+                    set_cell(sheet_data, "D17", "23°C ± 2.0°C / ≥ 90%")
+                else:
+                    set_cell(sheet_data, "D17", "20°C ± 3.0°C / 45% - 80%")
 
                 start_row = 24
                 for idx, r in enumerate(records):
-                    obs = r.observaciones or ""
-                    parsed_obs = {}
-                    if obs.startswith("{"):
+                    r_obs = r.observaciones or ""
+                    r_parsed = {}
+                    if r_obs.startswith("{"):
                         try:
                             import json
-                            parsed_obs = json.loads(obs)
+                            r_parsed = json.loads(r_obs)
                         except Exception:
                             pass
-                    elif obs.startswith("REVISADO POR:"):
-                        parsed_obs = {"revisado_por": obs.replace("REVISADO POR:", "").strip()}
+                    elif r_obs.startswith("REVISADO POR:"):
+                        r_parsed = {"revisado_por": r_obs.replace("REVISADO POR:", "").strip()}
 
-                    fecha_lectura = parsed_obs.get("fecha_lectura", r.fecha)
-                    hum_min = parsed_obs.get("hum_min", "-")
-                    rev_por = parsed_obs.get("revisado_por", "ING. FABIAN")
+                    fecha_lectura = r_parsed.get("fecha_lectura", r.fecha)
+                    hum_min = r_parsed.get("hum_min", "-")
+                    rev_por = r_parsed.get("revisado_por", "ING. FABIAN")
 
                     row = start_row + idx
                     set_cell(sheet_data, f"B{row}", r.fecha)
@@ -565,7 +557,34 @@ class ControlAmbientalService:
 
                 return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
-            file_bytes = transform_template_sheet(template_name, "Formato de control de temperatu", _transform_sheet)
+            def _transform_drawing(drawing_xml: bytes) -> bytes:
+                root = etree.fromstring(drawing_xml)
+                ns = {"xdr": NS_DRAW, "a": NS_A}
+                vals = {
+                    1: reg_val,
+                    3: mes_anio_val,
+                    6: aprob_por_val,
+                    9: fecha_aprob_val,
+                }
+                for anchor in root.findall(".//xdr:twoCellAnchor", ns):
+                    from_col_el = anchor.find(".//xdr:from/xdr:col", ns)
+                    from_row_el = anchor.find(".//xdr:from/xdr:row", ns)
+                    if from_col_el is not None and from_row_el is not None:
+                        col = int(from_col_el.text)
+                        row = int(from_row_el.text)
+                        if row == 9 and col in vals and vals[col]:
+                            p = anchor.find(".//a:p", ns)
+                            if p is not None:
+                                _set_paragraph_text(p, vals[col])
+
+                return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+            file_bytes = transform_template_sheet(
+                template_name,
+                "Formato de control de temperatu",
+                _transform_sheet,
+                drawing_transform=_transform_drawing,
+            )
             output = io.BytesIO(file_bytes)
             return output
         else:
