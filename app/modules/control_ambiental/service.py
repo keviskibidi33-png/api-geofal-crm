@@ -477,7 +477,12 @@ class ControlAmbientalService:
     # --- Excel Export Generators ---
 
     @staticmethod
-    def generar_excel_temperatura(db: Session) -> io.BytesIO:
+    def generar_excel_temperatura(
+        db: Session,
+        area: Optional[str] = None,
+        fecha_inicio: Optional[str] = None,
+        fecha_fin: Optional[str] = None,
+    ) -> io.BytesIO:
         template_name = "F-LEM-P-05.01 V03 CONTROL DE TEMPERATURA Y HUMEDAD RELATIVA.xlsx"
         template_path = find_template_path(template_name)
         
@@ -497,9 +502,14 @@ class ControlAmbientalService:
                 "RESPONSABLE REGISTRO", "RESPONSABLE REVISIÓN", "APROBADO POR", "FECHA APROBACIÓN",
             ])
 
-        records = db.query(ControlTemperatura).order_by(desc(ControlTemperatura.fecha), desc(ControlTemperatura.id)).all()
+        records = ControlAmbientalService.listar_temperatura(
+            db, area=area, fecha_inicio=fecha_inicio, fecha_fin=fecha_fin, limit=500
+        )
 
         if template_path and os.path.exists(template_path):
+            if area:
+                ws.cell(row=15, column=4, value=area)
+
             start_row = 24
             for idx, r in enumerate(records):
                 obs = r.observaciones or ""
@@ -561,7 +571,12 @@ class ControlAmbientalService:
         return output
 
     @staticmethod
-    def generar_excel_balanzas(db: Session) -> io.BytesIO:
+    def generar_excel_balanzas(
+        db: Session,
+        codigo: Optional[str] = None,
+        fecha_inicio: Optional[str] = None,
+        fecha_fin: Optional[str] = None,
+    ) -> io.BytesIO:
         template_name = "F-LEM-IN-01.02 V03 FORMATO DE VERIFICACIÓN DIARIA DE BALANZAS.xlsx"
         template_path = find_template_path(template_name)
 
@@ -582,9 +597,14 @@ class ControlAmbientalService:
                 "VERIFICADO POR", "REVISADO POR", "PESAS PATRÓN",
             ])
 
-        records = db.query(ControlBalanza).order_by(desc(ControlBalanza.fecha), desc(ControlBalanza.id)).all()
+        records = ControlAmbientalService.listar_balanza(
+            db, codigo=codigo, fecha_inicio=fecha_inicio, fecha_fin=fecha_fin, limit=500
+        )
 
         if template_path and os.path.exists(template_path):
+            if codigo:
+                ws.cell(row=6, column=4, value=codigo)
+
             start_row = 12
             for idx, r in enumerate(records):
                 obs = r.observaciones or ""

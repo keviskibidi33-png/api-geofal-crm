@@ -177,8 +177,15 @@ def seed_data(request: Request, db: Session = Depends(get_db_session)):
 
 
 @router.get("/temperatura/excel")
-def exportar_excel_temperatura(db: Session = Depends(get_db_session)):
-    excel_stream = ControlAmbientalService.generar_excel_temperatura(db)
+def exportar_excel_temperatura(
+    area: Optional[str] = Query(None),
+    fecha_inicio: Optional[str] = Query(None),
+    fecha_fin: Optional[str] = Query(None),
+    db: Session = Depends(get_db_session),
+):
+    excel_stream = ControlAmbientalService.generar_excel_temperatura(
+        db, area=area, fecha_inicio=fecha_inicio, fecha_fin=fecha_fin
+    )
     filename = "F-LEM-P-05.01 V03 CONTROL DE TEMPERATURA Y HUMEDAD RELATIVA.xlsx"
     return StreamingResponse(
         excel_stream,
@@ -188,8 +195,15 @@ def exportar_excel_temperatura(db: Session = Depends(get_db_session)):
 
 
 @router.get("/balanza/excel")
-def exportar_excel_balanzas(db: Session = Depends(get_db_session)):
-    excel_stream = ControlAmbientalService.generar_excel_balanzas(db)
+def exportar_excel_balanzas(
+    codigo: Optional[str] = Query(None),
+    fecha_inicio: Optional[str] = Query(None),
+    fecha_fin: Optional[str] = Query(None),
+    db: Session = Depends(get_db_session),
+):
+    excel_stream = ControlAmbientalService.generar_excel_balanzas(
+        db, codigo=codigo, fecha_inicio=fecha_inicio, fecha_fin=fecha_fin
+    )
     filename = "F-LEM-IN-01.02 V03 FORMATO DE VERIFICACIÓN DIARIA DE BALANZAS.xlsx"
     return StreamingResponse(
         excel_stream,
