@@ -349,3 +349,64 @@ async def send_message(payload: MessageCreateRequest, current_user=Depends(get_c
         logger.exception("Failed to send message: %s", e)
         return {"success": True, "message": msg_data}
 
+
+@router.get("/my-dms")
+async def list_my_dm_users(current_user=Depends(get_current_user)):
+    """Fetch distinct team user IDs/emails with whom the current user has DM history."""
+    actor = current_actor.get() or {}
+    user_id, user_email, _, _ = _get_actor_role_and_admin_status(actor, current_user)
+    my_identifiers = {user_id.lower(), user_email.lower()}
+
+    dm_user_identifiers = set()
+
+    try:
+        headers = _get_supabase_headers()
+        base_url = _get_supabase_url()
+        res = http_get(
+            f"{base_url}/chat_messages?select=channel_id,sender_id&channel_id=like.dm*%25&limit=1000",
+            headers=headers,
+            timeout=5,
+        )
+        if res.status_code == 200:
+            rows = res.json() or []
+            for r in rows:
+                ch_id = str(r.get("channel_id") or "")
+                s_id = str(r.get("sender_id") or "").lower()
+                if ch_id.startswith("dm_") or ch_id.startswith("dm-"):
+                    delimiter = "_" if ch_id.startswith("dm_") else "-"
+                    prefix = "dm_" if ch_id.startswith("dm_") else "dm-"
+                    parts = [p.lower() for p in ch_id.replace(prefix, "").split(delimiter)]
+                    if any(my_id in parts for my_id in my_identifiers) or s_id in my_identifiers:
+                        for p in parts:
+                            if p not in my_identifiers and p:
+                                dm_user_identifiers.add(p)
+                        if s_id and s_id not in my_identifiers:
+                            dm_user_identifiers.add(s_id)
+    except Exception as e:
+        logger.warning("Error fetching user DM history from Supabase: %s", e)
+
+    if _has_database_url():
+        try:
+            conn = _get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT DISTINCT channel_id, sender_id FROM chat_messages WHERE channel_id LIKE 'dm%%'")
+                rows = cur.fetchall() or []
+                for r in rows:
+                    ch_id = str(r.get("channel_id") or "")
+                    s_id = str(r.get("sender_id") or "").lower()
+                    if ch_id.startswith("dm_") or ch_id.startswith("dm-"):
+                        delimiter = "_" if ch_id.startswith("dm_") else "-"
+                        prefix = "dm_" if ch_id.startswith("dm_") else "dm-"
+                        parts = [p.lower() for p in ch_id.replace(prefix, "").split(delimiter)]
+                        if any(my_id in parts for my_id in my_identifiers) or s_id in my_identifiers:
+                            for p in parts:
+                                if p not in my_identifiers and p:
+                                    dm_user_identifiers.add(p)
+                            if s_id and s_id not in my_identifiers:
+                                dm_user_identifiers.add(s_id)
+            conn.close()
+        except Exception as e:
+            logger.warning("Error fetching user DM history from DB: %s", e)
+
+    return {"dm_user_ids": list(dm_user_identifiers)}
+
