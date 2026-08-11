@@ -325,7 +325,7 @@ async def send_message(payload: MessageCreateRequest, current_user=Depends(get_c
     sender_name = actor.get("name") or current_user.get("nombre") or actor.get("email") or "Usuario CRM"
     sender_avatar = actor.get("avatar_url") or current_user.get("avatar_url")
 
-    msg_id = f"msg-{uuid.uuid4().hex[:10]}"
+    msg_id = payload.id or f"msg-{uuid.uuid4().hex[:10]}"
     headers = _get_supabase_headers()
     base_url = _get_supabase_url()
 

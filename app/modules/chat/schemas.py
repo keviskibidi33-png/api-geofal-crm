@@ -32,6 +32,7 @@ class ChannelResponse(BaseModel):
 
 
 class MessageCreateRequest(BaseModel):
+    id: Optional[str] = None
     channel_id: str
     content: str = Field(..., min_length=1)
     attachments: List[Any] = Field(default_factory=list)
