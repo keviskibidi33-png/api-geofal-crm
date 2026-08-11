@@ -279,6 +279,29 @@ async def list_chat_users(current_user=Depends(get_current_user)):
             # User is Super Admin / Gerencia: Full unrestricted access ("libre albedrío") to message anyone!
             return {"users": all_users}
 
+
+@router.post("/heartbeat")
+async def user_heartbeat(current_user=Depends(get_current_user)):
+    """Heartbeat endpoint called periodically by active clients to update last_seen_at."""
+    actor = current_actor.get() or {}
+    user_id, user_email, _, _ = _get_actor_role_and_admin_status(actor, current_user)
+
+    try:
+        if _has_database_url():
+            conn = _get_connection()
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE perfiles 
+                    SET last_seen_at = NOW() 
+                    WHERE id = %s OR email = %s
+                """, (user_id, user_email))
+            conn.commit()
+            conn.close()
+    except Exception as e:
+        logger.warning("Heartbeat update failed: %s", e)
+
+    return {"status": "alive", "timestamp": datetime.now(timezone.utc).isoformat()}
+
         is_comercial = my_role in {"comercial", "auxiliar_comercial"}
 
         # Filter users: If current user is Comercial, block direct 1-on-1 DM with Laboratorio/Tecnico
