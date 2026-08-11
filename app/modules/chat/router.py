@@ -279,6 +279,24 @@ async def list_chat_users(current_user=Depends(get_current_user)):
             # User is Super Admin / Gerencia: Full unrestricted access ("libre albedrío") to message anyone!
             return {"users": all_users}
 
+        is_comercial = my_role in {"comercial", "auxiliar_comercial"}
+
+        # Filter users: If current user is Comercial, block direct 1-on-1 DM with Laboratorio/Tecnico
+        filtered_users = []
+        for u in all_users:
+            target_role = (u.get("rol") or u.get("role") or "").strip().lower()
+            is_lab_target = target_role in {"laboratorio", "tecnico", "laboratorio_tipificador", "tecnico_suelos"}
+
+            if is_comercial and is_lab_target:
+                # Block 1-on-1 DM: Comercial must interact with Lab ONLY via Project Channels
+                continue
+            filtered_users.append(u)
+
+        return {"users": filtered_users}
+    except Exception as e:
+        logger.warning("Error fetching team users for chat: %s", e)
+        return {"users": all_users}
+
 
 @router.post("/heartbeat")
 async def user_heartbeat(current_user=Depends(get_current_user)):
@@ -301,24 +319,6 @@ async def user_heartbeat(current_user=Depends(get_current_user)):
         logger.warning("Heartbeat update failed: %s", e)
 
     return {"status": "alive", "timestamp": datetime.now(timezone.utc).isoformat()}
-
-        is_comercial = my_role in {"comercial", "auxiliar_comercial"}
-
-        # Filter users: If current user is Comercial, block direct 1-on-1 DM with Laboratorio/Tecnico
-        filtered_users = []
-        for u in all_users:
-            target_role = (u.get("rol") or u.get("role") or "").strip().lower()
-            is_lab_target = target_role in {"laboratorio", "tecnico", "laboratorio_tipificador", "tecnico_suelos"}
-
-            if is_comercial and is_lab_target:
-                # Block 1-on-1 DM: Comercial must interact with Lab ONLY via Project Channels
-                continue
-            filtered_users.append(u)
-
-        return {"users": filtered_users}
-    except Exception as e:
-        logger.warning("Error fetching team users for chat: %s", e)
-        return {"users": []}
 
 
 @router.get("/messages/{channel_id}")
