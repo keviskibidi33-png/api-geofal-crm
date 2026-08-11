@@ -243,6 +243,33 @@ def run_startup_migrations(engine) -> None:
     except Exception as err:
         logger.warning("Migration 051 skipped: %s", _short_err(err))
 
+    # ── Migration 052: Chat Realtime Publication ──────────────────
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_publication_tables 
+                        WHERE pubname = 'supabase_realtime' AND tablename = 'chat_messages'
+                    ) THEN
+                        ALTER PUBLICATION supabase_realtime ADD TABLE public.chat_messages;
+                    END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_publication_tables 
+                        WHERE pubname = 'supabase_realtime' AND tablename = 'chat_channels'
+                    ) THEN
+                        ALTER PUBLICATION supabase_realtime ADD TABLE public.chat_channels;
+                    END IF;
+                EXCEPTION WHEN OTHERS THEN
+                    NULL;
+                END $$;
+            """))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_chat_messages_channel_created ON public.chat_messages (channel_id, created_at DESC);"))
+            logger.info("Migration 052 applied (chat_messages & chat_channels supabase_realtime publication).")
+    except Exception as err:
+        logger.warning("Migration 052 skipped: %s", _short_err(err))
+
     _MIGRATIONS_RUN = True
 
 
