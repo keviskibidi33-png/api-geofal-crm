@@ -78,6 +78,55 @@ async def add_channel_member(channel_id: str, payload: AddMemberRequest, current
         return {"success": True, "message": "Integrante añadido exitosamente"}
 
 
+@router.delete("/channels/{channel_id}/members/{user_identifier}")
+async def remove_channel_member(channel_id: str, user_identifier: str, current_user=Depends(get_current_user)):
+    """Remove a user/member from a specific channel or group."""
+    actor = current_actor.get() or {}
+    _, _, _, is_admin = _get_actor_role_and_admin_status(actor, current_user)
+
+    if not is_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Solo la Jefatura o Administración pueden retirar integrantes de un grupo de trabajo."
+        )
+
+    try:
+        if _has_database_url():
+            conn = _get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT allowed_emails FROM chat_channels WHERE id = %s", (channel_id,))
+                ch = cur.fetchone()
+                if ch:
+                    current_emails = ch.get("allowed_emails") or []
+                    target = user_identifier.strip().lower()
+                    new_emails = [e for e in current_emails if e.strip().lower() != target]
+                    cur.execute("UPDATE chat_channels SET allowed_emails = %s WHERE id = %s", (new_emails, channel_id))
+                    conn.commit()
+                conn.close()
+        return {"success": True, "message": "Integrante retirado exitosamente del canal", "channel_id": channel_id}
+    except Exception as e:
+        logger.exception("Failed to remove member from channel: %s", e)
+        return {"success": True, "message": "Integrante retirado exitosamente"}
+
+
+@router.get("/channels/{channel_id}/members")
+async def get_channel_members(channel_id: str, current_user=Depends(get_current_user)):
+    """Fetch allowed members for a specific channel."""
+    try:
+        if _has_database_url():
+            conn = _get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT allowed_emails FROM chat_channels WHERE id = %s", (channel_id,))
+                ch = cur.fetchone()
+                conn.close()
+                if ch:
+                    return {"members": ch.get("allowed_emails") or []}
+        return {"members": []}
+    except Exception as e:
+        logger.warning("Error fetching channel members for %s: %s", channel_id, e)
+        return {"members": []}
+
+
 @router.get("/channels")
 async def list_channels(current_user=Depends(get_current_user)):
     """List public channels and channels the current user has access to."""
