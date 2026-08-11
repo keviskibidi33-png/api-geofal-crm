@@ -270,6 +270,16 @@ def run_startup_migrations(engine) -> None:
     except Exception as err:
         logger.warning("Migration 052 skipped: %s", _short_err(err))
 
+    # ── Migration 053: Chat Message Read Receipts ──────────────────
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE public.chat_messages ADD COLUMN IF NOT EXISTS is_read BOOLEAN DEFAULT FALSE;"))
+            conn.execute(text("ALTER TABLE public.chat_messages ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ NULL;"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_chat_messages_is_read ON public.chat_messages (channel_id, is_read);"))
+            logger.info("Migration 053 applied (chat_messages is_read column).")
+    except Exception as err:
+        logger.warning("Migration 053 skipped: %s", _short_err(err))
+
     _MIGRATIONS_RUN = True
 
 

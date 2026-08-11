@@ -325,6 +325,18 @@ async def send_message(payload: MessageCreateRequest, current_user=Depends(get_c
     sender_name = actor.get("name") or current_user.get("nombre") or actor.get("email") or "Usuario CRM"
     sender_avatar = actor.get("avatar_url") or current_user.get("avatar_url")
 
+    if not sender_avatar and _has_database_url():
+        try:
+            conn = _get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT avatar_url FROM perfiles WHERE id = %s OR email = %s LIMIT 1", (sender_id, actor.get("email") or ""))
+                row = cur.fetchone()
+                if row and row.get("avatar_url"):
+                    sender_avatar = row.get("avatar_url")
+            conn.close()
+        except Exception:
+            pass
+
     msg_id = payload.id or f"msg-{uuid.uuid4().hex[:10]}"
     headers = _get_supabase_headers()
     base_url = _get_supabase_url()
@@ -338,6 +350,7 @@ async def send_message(payload: MessageCreateRequest, current_user=Depends(get_c
         "content": payload.content,
         "attachments": payload.attachments or [],
         "parent_id": payload.parent_id,
+        "is_read": False,
     }
 
     try:
@@ -348,6 +361,32 @@ async def send_message(payload: MessageCreateRequest, current_user=Depends(get_c
     except Exception as e:
         logger.exception("Failed to send message: %s", e)
         return {"success": True, "message": msg_data}
+
+
+@router.post("/messages/mark-read")
+async def mark_messages_read(payload: dict, current_user=Depends(get_current_user)):
+    """Mark all messages in a channel as read by the current user."""
+    actor = current_actor.get() or {}
+    user_id, user_email, _, _ = _get_actor_role_and_admin_status(actor, current_user)
+    channel_id = payload.get("channel_id")
+    if not channel_id:
+        return {"success": False, "message": "channel_id is required"}
+
+    try:
+        if _has_database_url():
+            conn = _get_connection()
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE chat_messages 
+                    SET is_read = TRUE, read_at = NOW() 
+                    WHERE channel_id = %s AND (sender_id != %s AND sender_id != %s) AND is_read = FALSE
+                """, (channel_id, user_id, user_email))
+            conn.commit()
+            conn.close()
+    except Exception as e:
+        logger.warning("Error marking messages read in DB: %s", e)
+
+    return {"success": True, "channel_id": channel_id}
 
 
 @router.get("/my-dms")
