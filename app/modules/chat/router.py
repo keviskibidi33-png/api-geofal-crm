@@ -39,11 +39,10 @@ def _get_actor_role_and_admin_status(actor: dict, current_user: dict) -> tuple[s
         except Exception:
             pass
 
-    allowed_admin_keywords = {"admin", "admin_general", "gerencia", "super_admin", "jefe_laboratorio", "jefe_de_laboratorio", "jefatura"}
+    allowed_admin_keywords = {"admin", "admin_general", "gerencia", "super_admin"}
     is_admin = (
         user_role in allowed_admin_keywords
-        or any(k in user_role for k in ["admin", "gerencia", "super", "jefe"])
-        or any(domain_user in user_email for domain_user in ["gerencia", "admin", "bsaravia", "labprueba"])
+        or user_email in ["gerencia@geofal.com.pe", "admin@geofal.com.pe"]
     )
     return user_id, user_email, user_role, is_admin
 
@@ -117,11 +116,21 @@ async def get_channel_members(channel_id: str, current_user=Depends(get_current_
         if _has_database_url():
             conn = _get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("SELECT allowed_emails FROM chat_channels WHERE id = %s", (channel_id,))
+                cur.execute("SELECT allowed_emails, allowed_roles FROM chat_channels WHERE id = %s", (channel_id,))
                 ch = cur.fetchone()
-                conn.close()
                 if ch:
-                    return {"members": ch.get("allowed_emails") or []}
+                    emails = set([e.lower() for e in (ch.get("allowed_emails") or [])])
+                    roles = [r.lower() for r in (ch.get("allowed_roles") or [])]
+                    if roles:
+                        placeholders = ','.join(['%s'] * len(roles))
+                        cur.execute(f"SELECT email FROM perfiles WHERE LOWER(role) IN ({placeholders})", roles)
+                        role_rows = cur.fetchall() or []
+                        for r in role_rows:
+                            if r.get("email"):
+                                emails.add(r["email"].lower())
+                    conn.close()
+                    return {"members": list(emails)}
+                conn.close()
         return {"members": []}
     except Exception as e:
         logger.warning("Error fetching channel members for %s: %s", channel_id, e)
@@ -325,6 +334,28 @@ async def user_heartbeat(current_user=Depends(get_current_user)):
 @router.get("/messages/{channel_id}")
 async def list_messages(channel_id: str, limit: int = 100, current_user=Depends(get_current_user)):
     """Fetch real-time messages for a given channel or DM conversation."""
+    actor = current_actor.get() or {}
+    user_id, user_email, user_role, is_admin = _get_actor_role_and_admin_status(actor, current_user)
+
+    # Permission check for private channels
+    if not (channel_id.startswith("dm_") or channel_id.startsWith("dm-") if hasattr(channel_id, "startsWith") else channel_id.startswith("dm-")):
+        if _has_database_url():
+            try:
+                conn = _get_connection()
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute("SELECT is_private, allowed_emails, allowed_roles FROM chat_channels WHERE id = %s", (channel_id,))
+                    ch = cur.fetchone()
+                    conn.close()
+                    if ch and ch.get("is_private"):
+                        roles = [r.lower() for r in (ch.get("allowed_roles") or [])]
+                        emails = [e.lower() for e in (ch.get("allowed_emails") or [])]
+                        if not (is_admin or user_role in roles or user_email in emails):
+                            raise HTTPException(status_code=403, detail="Acceso denegado a este canal privado")
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.warning("Channel permission check failed: %s", e)
+
     try:
         headers = _get_supabase_headers()
         base_url = _get_supabase_url()
