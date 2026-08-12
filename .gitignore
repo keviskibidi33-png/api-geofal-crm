@@ -97,6 +97,8 @@ Thumbs.db
 !app/templates/ensayos/**
 !app/templates/informes/
 !app/templates/informes/**
+!app/templates/OT/
+!app/templates/OT/**
 !app/templates/copias/
 !app/templates/copias/**
 *.xls
