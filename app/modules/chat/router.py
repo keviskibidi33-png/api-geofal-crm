@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 import logging
+from datetime import datetime, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from app.auth import get_current_user, current_actor
@@ -471,4 +472,59 @@ async def list_my_dm_users(current_user=Depends(get_current_user)):
             logger.warning("Error fetching user DM history from DB: %s", e)
 
     return {"dm_user_ids": list(dm_user_identifiers)}
+
+
+@router.get("/unread-summary")
+async def get_unread_summary(current_user=Depends(get_current_user)):
+    """Fetch unread message counts per channel/DM for the current user."""
+    actor = current_actor.get() or {}
+    user_id, user_email, _, _ = _get_actor_role_and_admin_status(actor, current_user)
+
+    unread_counts = {}
+    total_unread = 0
+
+    if _has_database_url():
+        try:
+            conn = _get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT channel_id, COUNT(*) as count 
+                    FROM chat_messages 
+                    WHERE (is_read IS NOT TRUE)
+                      AND (sender_id IS NULL OR (LOWER(sender_id) != LOWER(%s) AND LOWER(sender_id) != LOWER(%s)))
+                    GROUP BY channel_id
+                """, (user_id, user_email))
+                rows = cur.fetchall() or []
+                for r in rows:
+                    ch_id = r.get("channel_id")
+                    cnt = int(r.get("count") or 0)
+                    if ch_id and cnt > 0:
+                        unread_counts[ch_id] = cnt
+                        total_unread += cnt
+            conn.close()
+        except Exception as e:
+            logger.warning("Error fetching unread summary from DB: %s", e)
+
+    if not unread_counts:
+        try:
+            headers = _get_supabase_headers()
+            base_url = _get_supabase_url()
+            res = http_get(
+                f"{base_url}/chat_messages?select=channel_id,sender_id,is_read&is_read=eq.false&limit=1000",
+                headers=headers,
+                timeout=5,
+            )
+            if res.status_code == 200:
+                rows = res.json() or []
+                for r in rows:
+                    ch_id = r.get("channel_id")
+                    s_id = str(r.get("sender_id") or "").lower()
+                    if s_id != user_id.lower() and s_id != user_email.lower():
+                        unread_counts[ch_id] = unread_counts.get(ch_id, 0) + 1
+                        total_unread += 1
+        except Exception as e:
+            logger.warning("Error fetching unread summary from Supabase: %s", e)
+
+    return {"unread_counts": unread_counts, "total_unread": total_unread}
+
 
