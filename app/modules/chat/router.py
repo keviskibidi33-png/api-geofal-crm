@@ -413,6 +413,7 @@ async def update_channel_settings(channel_id: str, payload: dict, current_user=D
 
 
 @router.get("/users")
+@router.get("/team-users")
 async def list_chat_users(current_user=Depends(get_current_user)):
     """List real system team users available for 1-on-1 direct messaging."""
     actor = current_actor.get() or {}
@@ -712,6 +713,34 @@ async def mark_messages_read(payload: dict, current_user=Depends(get_current_use
         logger.warning("Error marking messages read in DB: %s", e)
 
     return {"success": True, "channel_id": channel_id}
+
+
+@router.get("/unread-summary")
+async def get_unread_summary(current_user=Depends(get_current_user)):
+    """Get count of unread messages per channel for the current user."""
+    actor = current_actor.get() or {}
+    user_id, user_email, _, _ = _get_actor_role_and_admin_status(actor, current_user)
+
+    unread_counts = {}
+    if _has_database_url():
+        try:
+            conn = _get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT channel_id, COUNT(*)::int AS count
+                    FROM chat_messages
+                    WHERE is_read = FALSE AND (sender_id != %s AND sender_id != %s)
+                    GROUP BY channel_id
+                """, (user_id, user_email))
+                rows = cur.fetchall() or []
+                for r in rows:
+                    if r.get("channel_id"):
+                        unread_counts[r["channel_id"]] = r["count"]
+            conn.close()
+        except Exception as e:
+            logger.warning("Error fetching unread summary from DB: %s", e)
+
+    return {"unread_counts": unread_counts}
 
 
 @router.get("/my-dms")
