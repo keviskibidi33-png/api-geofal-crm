@@ -622,7 +622,7 @@ async def send_message(payload: MessageCreateRequest, current_user=Depends(get_c
 
 @router.post("/messages/{message_id}/reactions")
 async def toggle_message_reaction(message_id: str, payload: dict, current_user=Depends(get_current_user)):
-    """Toggle a reaction (emoji) on a specific chat message and persist in DB."""
+    """Toggle a reaction (emoji) on a specific chat message and persist in DB and Supabase REST."""
     actor = current_actor.get() or {}
     user_id, user_email, _, _ = _get_actor_role_and_admin_status(actor, current_user)
     emoji = payload.get("emoji")
@@ -630,6 +630,7 @@ async def toggle_message_reaction(message_id: str, payload: dict, current_user=D
         raise HTTPException(status_code=400, detail="Emoji is required")
 
     user_label = actor.get("name") or current_user.get("nombre") or user_email or "Usuario"
+    channel_id = ""
 
     if _has_database_url():
         try:
@@ -637,16 +638,24 @@ async def toggle_message_reaction(message_id: str, payload: dict, current_user=D
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute("SELECT full_name FROM perfiles WHERE id = %s OR email = %s LIMIT 1", (user_id, user_email))
                 row = cur.fetchone()
-                if row and row.get("full_name"):
+                if row and row.get("full_name") and str(row["full_name"]).strip():
                     user_label = str(row["full_name"]).strip()
 
-                cur.execute("SELECT COALESCE(reactions, '{}'::jsonb) AS reactions FROM chat_messages WHERE id = %s", (message_id,))
+                cur.execute("SELECT channel_id, COALESCE(reactions, '{}'::jsonb) AS reactions FROM chat_messages WHERE id = %s", (message_id,))
                 msg_row = cur.fetchone()
-                current_reactions = dict(msg_row.get("reactions") or {}) if msg_row else {}
+                if msg_row:
+                    channel_id = str(msg_row.get("channel_id") or "")
+                    current_reactions = dict(msg_row.get("reactions") or {})
+                else:
+                    current_reactions = {}
 
                 users_array = list(current_reactions.get(emoji) or [])
-                if user_label in users_array:
-                    users_array.remove(user_label)
+                # Permitir desmarcar si coincide con user_label o user_email
+                matches = [u for u in users_array if u in (user_label, user_email, user_id)]
+                if matches:
+                    for m in matches:
+                        if m in users_array:
+                            users_array.remove(m)
                 else:
                     users_array.append(user_label)
 
@@ -658,11 +667,25 @@ async def toggle_message_reaction(message_id: str, payload: dict, current_user=D
                 cur.execute("UPDATE chat_messages SET reactions = %s WHERE id = %s", (json.dumps(current_reactions), message_id))
             conn.commit()
             conn.close()
-            return {"success": True, "message_id": message_id, "reactions": current_reactions}
+
+            # También actualizar en Supabase REST para consistencia
+            try:
+                headers = _get_supabase_headers()
+                base_url = _get_supabase_url()
+                http_patch(
+                    f"{base_url}/chat_messages?id=eq.{message_id}",
+                    headers=headers,
+                    json={"reactions": current_reactions},
+                    timeout=5,
+                )
+            except Exception as patch_err:
+                logger.warning("Supabase REST reaction patch warning: %s", patch_err)
+
+            return {"success": True, "message_id": message_id, "channel_id": channel_id, "reactions": current_reactions}
         except Exception as err:
             logger.warning("Error updating reaction in DB: %s", err)
 
-    return {"success": True, "message_id": message_id, "reactions": {}}
+    return {"success": True, "message_id": message_id, "channel_id": channel_id, "reactions": {}}
 
 
 @router.post("/messages/mark-read")
