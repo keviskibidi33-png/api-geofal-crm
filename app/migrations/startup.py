@@ -345,6 +345,26 @@ def run_startup_migrations(engine) -> None:
     except Exception as err:
         logger.warning("Migration 056 skipped: %s", _short_err(err))
 
+    # ── Migration 057: tipo_recepcion & flexible sample fields ────────
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE public.recepcion ADD COLUMN IF NOT EXISTS tipo_recepcion VARCHAR(50) DEFAULT 'CONCRETO';"))
+            conn.execute(text("ALTER TABLE public.muestras_concreto ADD COLUMN IF NOT EXISTS tamano_peso VARCHAR(100);"))
+            conn.execute(text("ALTER TABLE public.muestras_concreto ADD COLUMN IF NOT EXISTS procedencia VARCHAR(255);"))
+            conn.execute(text("ALTER TABLE public.muestras_concreto ADD COLUMN IF NOT EXISTS descripcion_muestra TEXT;"))
+            conn.execute(text("ALTER TABLE public.muestras_concreto ADD COLUMN IF NOT EXISTS cantidad VARCHAR(100);"))
+            conn.execute(text("ALTER TABLE public.muestras_concreto ADD COLUMN IF NOT EXISTS ensayos_requeridos TEXT;"))
+            conn.execute(text("ALTER TABLE public.muestras_concreto ADD COLUMN IF NOT EXISTS norma_requerida VARCHAR(255);"))
+            conn.execute(text("ALTER TABLE public.muestras_concreto ALTER COLUMN estructura DROP NOT NULL;"))
+            conn.execute(text("ALTER TABLE public.muestras_concreto ALTER COLUMN fc_kg_cm2 DROP NOT NULL;"))
+            conn.execute(text("ALTER TABLE public.muestras_concreto ALTER COLUMN fecha_moldeo DROP NOT NULL;"))
+            conn.execute(text("ALTER TABLE public.muestras_concreto ALTER COLUMN edad DROP NOT NULL;"))
+            conn.execute(text("ALTER TABLE public.muestras_concreto ALTER COLUMN fecha_rotura DROP NOT NULL;"))
+            conn.execute(text("NOTIFY pgrst, 'reload schema';"))
+            logger.info("Migration 057 applied (tipo_recepcion & sample columns).")
+    except Exception as err:
+        logger.warning("Migration 057 skipped: %s", _short_err(err))
+
     _MIGRATIONS_RUN = True
 
 

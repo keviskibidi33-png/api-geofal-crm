@@ -6,7 +6,7 @@ from sqlalchemy import desc, func, or_
 from typing import Any, List, Optional
 from datetime import datetime
 from .models import RecepcionMuestra, MuestraConcreto, RecepcionPlantilla
-from .schemas import RecepcionMuestraCreate, RecepcionMuestraResponse
+from .schemas import RecepcionMuestraCreate, RecepcionMuestraResponse, TIPO_RECEPCION_CONFIG
 from .exceptions import DuplicateRecepcionError
 from .excel import ExcelLogic
 import re
@@ -47,7 +47,7 @@ class RecepcionService:
         Normaliza una muestra antes de persistirla y descarta filas fantasma.
 
         Regla de protección:
-        - si una fila no tiene ni identificacion_muestra ni fecha_moldeo, no debe guardarse;
+        - si una fila no tiene ni identificacion_muestra, ni fecha_moldeo, ni descripcion, ni codigo LEM, no debe guardarse;
         - item_numero se reasigna después, así que se elimina aquí para evitar arrastre de índices viejos.
         """
         if not muestra_data:
@@ -62,22 +62,33 @@ class RecepcionService:
 
         identificacion = str(raw.get("identificacion_muestra") or "").strip()
         fecha_moldeo = str(raw.get("fecha_moldeo") or "").strip()
+        descripcion = str(raw.get("descripcion_muestra") or "").strip()
+        codigo_lem = str(raw.get("codigo_muestra_lem") or "").strip()
 
-        # Regla mínima anti-fantasmas: sin identificación y sin fecha de moldeo, la fila no existe.
-        if not identificacion and not fecha_moldeo:
+        # Regla mínima anti-fantasmas: sin ningún campo descriptivo básico, la fila no existe.
+        if not identificacion and not fecha_moldeo and not descripcion and not codigo_lem:
             return None
 
         cleaned = dict(raw)
         cleaned.pop("item_numero", None)
-        cleaned["codigo_muestra_lem"] = str(cleaned.get("codigo_muestra_lem") or "").strip()
+        cleaned["codigo_muestra_lem"] = codigo_lem
         cleaned["identificacion_muestra"] = identificacion
         cleaned["estructura"] = str(cleaned.get("estructura") or "").strip()
-        cleaned["fc_kg_cm2"] = cleaned.get("fc_kg_cm2") if cleaned.get("fc_kg_cm2") not in [None, ""] else 280
+        cleaned["fc_kg_cm2"] = cleaned.get("fc_kg_cm2") if cleaned.get("fc_kg_cm2") not in [None, ""] else None
         cleaned["fecha_moldeo"] = fecha_moldeo
         cleaned["hora_moldeo"] = str(cleaned.get("hora_moldeo") or "").strip()
-        cleaned["edad"] = cleaned.get("edad") if cleaned.get("edad") not in [None, ""] else 10
+        cleaned["edad"] = cleaned.get("edad") if cleaned.get("edad") not in [None, ""] else None
         cleaned["fecha_rotura"] = str(cleaned.get("fecha_rotura") or "").strip()
         cleaned["requiere_densidad"] = cleaned.get("requiere_densidad") in [True, "true", "True", "SI", "si"]
+        
+        # Campos flexibles para Roca, Albañilería, Agua, Suelo/Agregado
+        cleaned["tamano_peso"] = str(cleaned.get("tamano_peso") or "").strip()
+        cleaned["procedencia"] = str(cleaned.get("procedencia") or "").strip()
+        cleaned["descripcion_muestra"] = descripcion
+        cleaned["cantidad"] = str(cleaned.get("cantidad") or "").strip()
+        cleaned["ensayos_requeridos"] = str(cleaned.get("ensayos_requeridos") or "").strip()
+        cleaned["norma_requerida"] = str(cleaned.get("norma_requerida") or "").strip()
+
         cleaned["elemento"] = str(cleaned.get("elemento") or "").strip() or "-"
         cleaned["densidad"] = str(cleaned.get("densidad") or "").strip() or "-"
         cleaned["status_ensayo"] = str(cleaned.get("status_ensayo") or "").strip() or "-"
@@ -86,7 +97,7 @@ class RecepcionService:
         return cleaned
 
     @staticmethod
-    def _apply_recepcion_search_filters(query, search: Optional[str]):
+    def _apply_recepcion_search_filters(query, search: Optional[str], tipo_recepcion: Optional[str] = None):
         if search and search.strip():
             like_value = f"%{search.strip()}%"
             query = query.filter(
@@ -97,6 +108,8 @@ class RecepcionService:
                     RecepcionMuestra.proyecto.ilike(like_value),
                 )
             )
+        if tipo_recepcion and tipo_recepcion.strip() and tipo_recepcion.upper() not in ["ALL", "TODOS"]:
+            query = query.filter(RecepcionMuestra.tipo_recepcion == tipo_recepcion.strip().upper())
         return query
 
     def _upload_to_supabase(self, file_content: bytes, filename: str) -> Optional[str]:
@@ -166,6 +179,14 @@ class RecepcionService:
             
             # Crear recepción
             recepcion_dict = recepcion_data.dict(exclude={'muestras'})
+            
+            # Auto-asignar codigo_laboratorio y version si tipo_recepcion esta en TIPO_RECEPCION_CONFIG
+            tipo_rec = (recepcion_dict.get("tipo_recepcion") or "CONCRETO").upper()
+            recepcion_dict["tipo_recepcion"] = tipo_rec
+            if tipo_rec in TIPO_RECEPCION_CONFIG:
+                cfg = TIPO_RECEPCION_CONFIG[tipo_rec]
+                recepcion_dict["codigo_laboratorio"] = cfg["codigo"]
+                recepcion_dict["version"] = cfg["version"]
             
             # Convertir strings vacíos a None para campos opcionales
             for field in ['numero_cotizacion', 'entregado_por', 'recibido_por']:
@@ -249,6 +270,7 @@ class RecepcionService:
         page: int = 1,
         page_size: int = 25,
         search: Optional[str] = None,
+        tipo_recepcion: Optional[str] = None,
     ) -> dict:
         """Listado paginado liviano para tabla del shell (sin cargar muestras completas)."""
         safe_page_size = max(1, min(page_size, 100))
@@ -257,6 +279,7 @@ class RecepcionService:
         total_query = self._apply_recepcion_search_filters(
             db.query(func.count(RecepcionMuestra.id)),
             search,
+            tipo_recepcion=tipo_recepcion,
         )
         total = int(total_query.scalar() or 0)
         total_pages = max(1, (total + safe_page_size - 1) // safe_page_size)
@@ -264,7 +287,7 @@ class RecepcionService:
         offset = (safe_page - 1) * safe_page_size
 
         base_query = db.query(RecepcionMuestra)
-        base_query = self._apply_recepcion_search_filters(base_query, search)
+        base_query = self._apply_recepcion_search_filters(base_query, search, tipo_recepcion=tipo_recepcion)
         page_records = (
             base_query
             .order_by(desc(RecepcionMuestra.fecha_creacion))
@@ -330,6 +353,7 @@ class RecepcionService:
                 "id": row.id,
                 "numero_ot": row.numero_ot,
                 "numero_recepcion": row.numero_recepcion,
+                "tipo_recepcion": row.tipo_recepcion or "CONCRETO",
                 "cliente": row.cliente,
                 "proyecto": row.proyecto,
                 "fecha_recepcion": row.fecha_recepcion,

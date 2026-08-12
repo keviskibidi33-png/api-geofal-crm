@@ -4,20 +4,63 @@ from datetime import datetime
 import re
 from app.utils.date_format import parse_flexible_date, normalize_date_ymd
 
-# ===== SCHEMAS PARA MUESTRAS DE CONCRETO =====
+# ===== CONFIGURACIÓN Y TIPOS DE RECEPCIÓN =====
+TIPO_RECEPCION_CONFIG = {
+    "CONCRETO": {
+        "label": "Recepción Concreto",
+        "codigo": "F-LEM-P-01.02",
+        "version": "07",
+        "template": "Recepciones/F-LEM-P-01.02 V07 RECEPCIÓN CONCRETO.xlsx"
+    },
+    "ROCA": {
+        "label": "Recepción de Muestras de Roca",
+        "codigo": "F-LEM-P-01.04",
+        "version": "05",
+        "template": "Recepciones/F-LEM-P-01.04 V05 RECEPCIÓN DE MUESTRAS DE ROCA.xlsx"
+    },
+    "ALBANILERIA": {
+        "label": "Recepción de Muestras de Albañilería",
+        "codigo": "F-LEM-P-01.05",
+        "version": "04",
+        "template": "Recepciones/F-LEM-P-01.05 V04 RECEPCIÓN DE MUESTRAS DE ALBAÑILERIA.xlsx"
+    },
+    "AGUA": {
+        "label": "Recepción de Muestras de Agua",
+        "codigo": "F-LEM-P-01.06",
+        "version": "04",
+        "template": "Recepciones/F-LEM-P-01.06 V04 RECEPCIÓN DE MUESTRAS DE AGUA.xlsx"
+    },
+    "SUELO_AGREGADO": {
+        "label": "Recepción Muestra Suelo y Agregado",
+        "codigo": "F-LEM-P-01.13",
+        "version": "01",
+        "template": "Recepciones/F-LEM-P-01.13 V01 RECEP. SU Y AG.XLSX"
+    }
+}
+
+# ===== SCHEMAS PARA MUESTRAS =====
 class MuestraConcretoBase(BaseModel):
-    """Esquema base para muestras de concreto"""
+    """Esquema base para muestras de recepción (concreto y otras especialidades)"""
     item_numero: int = Field(..., ge=1, description="Número de item")
     codigo_muestra: Optional[str] = Field("", max_length=50, description="Código de la muestra")
     codigo_muestra_lem: Optional[str] = Field("", max_length=50, description="Código muestra LEM (zona sombreada)")
     identificacion_muestra: Optional[str] = Field("", max_length=500, description="Identificación/Código de la muestra (multilínea)")
-    estructura: Optional[str] = Field("", max_length=500, description="Tipo de estructura (multilínea)")
-    fc_kg_cm2: float = Field(280, gt=0, description="Resistencia característica en kg/cm²")
+    estructura: Optional[str] = Field("", description="Tipo de estructura (multilínea)")
+    fc_kg_cm2: Optional[float] = Field(None, description="Resistencia característica en kg/cm²")
     fecha_moldeo: Optional[str] = Field("", description="Fecha de moldeo (YYYY/MM/DD)")
     hora_moldeo: Optional[str] = Field("", description="Hora de moldeo (HH:MM)")
-    edad: int = Field(10, ge=1, le=365, description="Edad de la muestra en días")
+    edad: Optional[int] = Field(None, description="Edad de la muestra en días")
     fecha_rotura: Optional[str] = Field("", description="Fecha programada de rotura (YYYY/MM/DD)")
     requiere_densidad: bool = Field(False, description="Requiere ensayo de densidad")
+    
+    # Nuevos campos dinámicos para Roca, Albañilería, Agua, Suelo/Agregado
+    tamano_peso: Optional[str] = Field("", max_length=100, description="Tamaño (cm) o peso (kg)")
+    procedencia: Optional[str] = Field("", max_length=255, description="Procedencia de la muestra")
+    descripcion_muestra: Optional[str] = Field("", description="Descripción de la muestra (Marca - Tipo - Otros)")
+    cantidad: Optional[str] = Field("", max_length=100, description="Cantidad de muestra")
+    ensayos_requeridos: Optional[str] = Field("", description="Ensayos requeridos")
+    norma_requerida: Optional[str] = Field("", max_length=255, description="Norma requerida")
+
     elemento: Optional[str] = Field("-", description="Elemento o tipo de probeta")
     densidad: Optional[str] = Field("-", description="Densidad en gramos")
     status_ensayo: Optional[str] = Field("-", description="Estado del ensayo")
@@ -83,6 +126,7 @@ class RecepcionMuestraBase(BaseModel):
     recibido_por: Optional[str] = Field(None, max_length=100, description="Persona que recibió")
     
     # Metadatos del laboratorio
+    tipo_recepcion: str = Field("CONCRETO", max_length=50, description="Tipo de recepción (CONCRETO, ROCA, ALBANILERIA, AGUA, SUELO_AGREGADO)")
     codigo_laboratorio: str = Field("F-LEM-P-01.02", max_length=20, description="Código del laboratorio")
     version: str = Field("07", max_length=10, description="Versión del documento")
     
@@ -139,6 +183,7 @@ class RecepcionListItem(BaseModel):
     id: int
     numero_ot: str
     numero_recepcion: str
+    tipo_recepcion: Optional[str] = "CONCRETO"
     cliente: Optional[str] = ""
     proyecto: Optional[str] = ""
     fecha_recepcion: Optional[str] = None

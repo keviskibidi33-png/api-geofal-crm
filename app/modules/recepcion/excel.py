@@ -256,12 +256,21 @@ class ExcelLogic:
             self.template_path = str(find_template_path("Temp_Recepcion.xlsx"))
 
     def generar_excel_recepcion(self, recepcion: RecepcionMuestra) -> bytes:
-        if not os.path.exists(self.template_path):
-            raise FileNotFoundError(f"Template no encontrado en {self.template_path}")
+        from app.modules.common.excel_xml import find_template_path
+        from .schemas import TIPO_RECEPCION_CONFIG
+
+        tipo_rec = (getattr(recepcion, 'tipo_recepcion', None) or 'CONCRETO').upper()
+        cfg = TIPO_RECEPCION_CONFIG.get(tipo_rec, TIPO_RECEPCION_CONFIG['CONCRETO'])
+        active_template_path = str(find_template_path(cfg['template']))
+        if not os.path.exists(active_template_path):
+            active_template_path = self.template_path
+
+        if not os.path.exists(active_template_path):
+            raise FileNotFoundError(f"Template no encontrado en {active_template_path}")
 
         shared_strings = []
         ss_xml_original = None
-        with zipfile.ZipFile(self.template_path, 'r') as z:
+        with zipfile.ZipFile(active_template_path, 'r') as z:
             if 'xl/sharedStrings.xml' in z.namelist():
                 ss_xml_original = z.read('xl/sharedStrings.xml')
                 ss_root = etree.fromstring(ss_xml_original)
@@ -283,7 +292,7 @@ class ExcelLogic:
             return idx
 
         sheet_file = 'xl/worksheets/sheet1.xml'
-        with zipfile.ZipFile(self.template_path, 'r') as z:
+        with zipfile.ZipFile(active_template_path, 'r') as z:
             sheet_xml = z.read(sheet_file)
         
         root = etree.fromstring(sheet_xml)
@@ -365,19 +374,48 @@ class ExcelLogic:
         write_cell('D', anchors.get("UBICACIÓN :", ("C", 19))[1], recepcion.ubicacion)
 
         # Samples Table
+        tipo_rec = (getattr(recepcion, 'tipo_recepcion', None) or 'CONCRETO').upper()
         for idx, m in enumerate(muestras):
             curr_row = data_start_row + idx
             write_cell('A', curr_row, idx + 1, is_num=True)
-            write_cell('B', curr_row, getattr(m, 'codigo_muestra_lem', '') or '')
-            # C is skipped (merged or empty in template)
-            write_cell('D', curr_row, getattr(m, 'identificacion_muestra', '') or '')
-            write_cell('E', curr_row, m.estructura)
-            write_cell('F', curr_row, m.fc_kg_cm2, is_num=True)
-            write_cell('G', curr_row, m.fecha_moldeo)
-            write_cell('H', curr_row, m.hora_moldeo)
-            write_cell('I', curr_row, m.edad, is_num=True)
-            write_cell('J', curr_row, m.fecha_rotura)
-            write_cell('K', curr_row, "SI" if m.requiere_densidad else "NO")
+            
+            if tipo_rec == "ROCA":
+                write_cell('B', curr_row, getattr(m, 'codigo_muestra_lem', '') or '')
+                write_cell('C', curr_row, getattr(m, 'identificacion_muestra', '') or '')
+                write_cell('G', curr_row, getattr(m, 'tamano_peso', '') or '')
+                write_cell('H', curr_row, getattr(m, 'procedencia', '') or '')
+                write_cell('J', curr_row, getattr(m, 'ensayos_requeridos', '') or '')
+                write_cell('L', curr_row, getattr(m, 'norma_requerida', '') or '')
+            elif tipo_rec == "ALBANILERIA":
+                write_cell('B', curr_row, getattr(m, 'codigo_muestra_lem', '') or '')
+                write_cell('D', curr_row, getattr(m, 'descripcion_muestra', '') or getattr(m, 'identificacion_muestra', '') or '')
+                write_cell('H', curr_row, getattr(m, 'cantidad', '') or '')
+                write_cell('I', curr_row, getattr(m, 'ensayos_requeridos', '') or '')
+                write_cell('L', curr_row, getattr(m, 'norma_requerida', '') or '')
+            elif tipo_rec == "AGUA":
+                write_cell('B', curr_row, getattr(m, 'codigo_muestra_lem', '') or '')
+                write_cell('C', curr_row, getattr(m, 'identificacion_muestra', '') or '')
+                write_cell('H', curr_row, getattr(m, 'cantidad', '') or '')
+                write_cell('I', curr_row, getattr(m, 'procedencia', '') or '')
+                write_cell('K', curr_row, getattr(m, 'ensayos_requeridos', '') or '')
+                write_cell('M', curr_row, getattr(m, 'norma_requerida', '') or '')
+            elif tipo_rec == "SUELO_AGREGADO":
+                write_cell('B', curr_row, getattr(m, 'codigo_muestra_lem', '') or '')
+                write_cell('C', curr_row, getattr(m, 'identificacion_muestra', '') or '')
+                write_cell('F', curr_row, getattr(m, 'procedencia', '') or '')
+                write_cell('H', curr_row, getattr(m, 'ensayos_requeridos', '') or '')
+            else: # CONCRETO (Default)
+                write_cell('B', curr_row, getattr(m, 'codigo_muestra_lem', '') or '')
+                write_cell('D', curr_row, getattr(m, 'identificacion_muestra', '') or '')
+                write_cell('E', curr_row, getattr(m, 'estructura', '') or '')
+                if m.fc_kg_cm2 is not None:
+                    write_cell('F', curr_row, m.fc_kg_cm2, is_num=True)
+                write_cell('G', curr_row, getattr(m, 'fecha_moldeo', '') or '')
+                write_cell('H', curr_row, getattr(m, 'hora_moldeo', '') or '')
+                if m.edad is not None:
+                    write_cell('I', curr_row, m.edad, is_num=True)
+                write_cell('J', curr_row, getattr(m, 'fecha_rotura', '') or '')
+                write_cell('K', curr_row, "SI" if m.requiere_densidad else "NO")
 
         # Footer
         footer_row = row_nota_label
@@ -399,7 +437,7 @@ class ExcelLogic:
         modified_drawing_xml = None
         if n_muestras > threshold and layout["variant"] == "canonical":
             shift = n_muestras - threshold
-            with zipfile.ZipFile(self.template_path, 'r') as z:
+            with zipfile.ZipFile(active_template_path, 'r') as z:
                 if drawing_file in z.namelist():
                     draw_xml = z.read(drawing_file)
                     d_root = etree.fromstring(draw_xml)
@@ -437,7 +475,7 @@ class ExcelLogic:
 
         # 7. Build Final ZIP
         output = io.BytesIO()
-        with zipfile.ZipFile(self.template_path, 'r') as z_in:
+        with zipfile.ZipFile(active_template_path, 'r') as z_in:
             with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED) as z_out:
                 for item in z_in.namelist():
                     if item == sheet_file:
@@ -937,5 +975,27 @@ class ExcelLogic:
         else:
             print("[DEBUG] Table Header NOT FOUND")
         
+        # Auto-detect tipo_recepcion from document code in top 5 rows
+        detected_tipo = "CONCRETO"
+        for r_idx in range(1, 6):
+            for c_idx in range(1, 15):
+                val_c = str(get_val(r_idx, c_idx) or "").upper()
+                if "01.04" in val_c or "ROCA" in val_c:
+                    detected_tipo = "ROCA"
+                    break
+                elif "01.05" in val_c or "ALBAÑILERIA" in val_c or "ALBANILERIA" in val_c:
+                    detected_tipo = "ALBANILERIA"
+                    break
+                elif "01.06" in val_c or "AGUA" in val_c:
+                    detected_tipo = "AGUA"
+                    break
+                elif "01.13" in val_c or "SUELO" in val_c or "SU Y AG" in val_c:
+                    detected_tipo = "SUELO_AGREGADO"
+                    break
+                elif "01.02" in val_c or "CONCRETO" in val_c:
+                    detected_tipo = "CONCRETO"
+                    break
+
+        data['tipo_recepcion'] = detected_tipo
         data['muestras'] = muestras
         return data

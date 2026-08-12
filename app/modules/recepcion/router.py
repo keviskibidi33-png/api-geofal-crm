@@ -82,6 +82,7 @@ async def listar_recepciones_paginadas(
     page: int = 1,
     page_size: int = 25,
     q: Optional[str] = None,
+    tipo_recepcion: Optional[str] = None,
     db: Session = Depends(get_db_session),
 ):
     """Listado paginado y liviano para tablas del dashboard (sin muestras completas)."""
@@ -90,6 +91,7 @@ async def listar_recepciones_paginadas(
         page=page,
         page_size=page_size,
         search=q,
+        tipo_recepcion=tipo_recepcion,
     )
 
 @router.get("/buscar-recepcion")

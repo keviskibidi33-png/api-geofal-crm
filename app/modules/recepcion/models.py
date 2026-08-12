@@ -43,6 +43,7 @@ class RecepcionMuestra(Base):
     recibido_por = Column(String(100), nullable=True, comment="Persona que recibió")
     
     # Metadatos del laboratorio
+    tipo_recepcion = Column(String(50), nullable=False, default="CONCRETO", comment="Tipo de recepción (CONCRETO, ROCA, ALBANILERIA, AGUA, SUELO_AGREGADO)")
     codigo_laboratorio = Column(String(20), nullable=False, default="F-LEM-P-01.02", comment="Código del laboratorio")
     version = Column(String(10), nullable=False, default="07", comment="Versión del documento")
     
@@ -80,7 +81,7 @@ class RecepcionMuestra(Base):
 
 class MuestraConcreto(Base):
     """
-    Modelo para muestras cilíndricas de concreto
+    Modelo para muestras cilíndricas de concreto y otros tipos de recepción
     """
     __tablename__ = "muestras_concreto"
     
@@ -92,20 +93,28 @@ class MuestraConcreto(Base):
     codigo_muestra_lem = Column(String(50), nullable=True, comment="Código muestra LEM (zona sombreada)")
     identificacion_muestra = Column(String(500), nullable=False, comment="Identificación/Código de la muestra")
     
-    # Características de la muestra
-    estructura = Column(String(500), nullable=False, comment="Tipo de estructura")
-    fc_kg_cm2 = Column(Float, nullable=False, comment="Resistencia característica (kg/cm²)")
+    # Características de la muestra (Concreto)
+    estructura = Column(String(500), nullable=True, comment="Tipo de estructura")
+    fc_kg_cm2 = Column(Float, nullable=True, comment="Resistencia característica (kg/cm²)")
     
     # Fechas de moldeo
-    fecha_moldeo = Column(String(20), nullable=False, comment="Fecha de moldeo")
+    fecha_moldeo = Column(String(20), nullable=True, comment="Fecha de moldeo")
     hora_moldeo = Column(String(10), nullable=True, comment="Hora de moldeo")
     
     # Parámetros de ensayo
-    edad = Column(Integer, nullable=False, comment="Edad de la muestra en días")
-    fecha_rotura = Column(String(20), nullable=False, comment="Fecha programada de rotura")
+    edad = Column(Integer, nullable=True, comment="Edad de la muestra en días")
+    fecha_rotura = Column(String(20), nullable=True, comment="Fecha programada de rotura")
     requiere_densidad = Column(Boolean, nullable=False, default=False, comment="Requiere ensayo de densidad")
     
-    # Nuevos campos para Control de Probetas
+    # Nuevos campos dinámicos para Roca, Albañilería, Agua, Suelo y Agregados
+    tamano_peso = Column(String(100), nullable=True, comment="Tamaño (cm) o peso (kg)")
+    procedencia = Column(String(255), nullable=True, comment="Procedencia de la muestra")
+    descripcion_muestra = Column(Text, nullable=True, comment="Descripción de la muestra")
+    cantidad = Column(String(100), nullable=True, comment="Cantidad de muestra")
+    ensayos_requeridos = Column(Text, nullable=True, comment="Ensayos requeridos")
+    norma_requerida = Column(String(255), nullable=True, comment="Norma requerida")
+
+    # Campos para Control de Probetas
     elemento = Column(String(50), nullable=True, default="-", comment="Elemento/Tamaño de probeta")
     fosa = Column(String(20), nullable=True, default="-", comment="Fosa de ubicación de la probeta")
     densidad = Column(String(50), nullable=True, default="-", comment="Densidad de la probeta")
