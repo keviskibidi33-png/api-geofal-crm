@@ -75,6 +75,8 @@ from app.modules.control_ambiental.router import router as control_ambiental_rou
 from app.modules.control_ambiental.models import Base as ControlAmbientalBase
 from app.modules.chat.router import router as chat_router
 from app.modules.chat.models import Base as ChatBase
+from app.modules.ot.router import router as ot_router
+from app.modules.ot.models import Base as OTBase
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -92,6 +94,7 @@ try:
     VerificacionBase.metadata.create_all(bind=engine)
     ControlAmbientalBase.metadata.create_all(bind=engine)
     ChatBase.metadata.create_all(bind=engine)
+    OTBase.metadata.create_all(bind=engine)
     MainBase.metadata.create_all(bind=engine)
     
     run_startup_migrations(engine)
@@ -232,6 +235,7 @@ app.include_router(dashboard_router)
 app.include_router(users_router)
 app.include_router(control_ambiental_router)
 app.include_router(chat_router)
+app.include_router(ot_router)
 
 
 if __name__ == "__main__":

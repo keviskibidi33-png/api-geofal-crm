@@ -301,7 +301,52 @@ def run_startup_migrations(engine) -> None:
     except Exception as err:
         logger.warning("Migration 055 skipped: %s", _short_err(err))
 
+    # ── Migration 056: ordenes_trabajo table & ot permissions ────────
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS public.ordenes_trabajo (
+                    id SERIAL PRIMARY KEY,
+                    numero_ot VARCHAR(100) UNIQUE NOT NULL,
+                    numero_recepcion VARCHAR(100),
+                    referencia VARCHAR(255) DEFAULT '-',
+                    cliente VARCHAR(255),
+                    proyecto VARCHAR(255),
+                    fecha_recepcion VARCHAR(50),
+                    plazo_entrega_dias VARCHAR(50),
+                    inicio_programado VARCHAR(50),
+                    fin_programado VARCHAR(50),
+                    inicio_real VARCHAR(50),
+                    fin_real VARCHAR(50),
+                    variacion_inicio VARCHAR(50),
+                    variacion_fin VARCHAR(50),
+                    duracion_real_ejecucion_dias VARCHAR(50),
+                    observaciones TEXT,
+                    ot_aperturada_por VARCHAR(255),
+                    ot_designada_a VARCHAR(255),
+                    items JSONB NOT NULL DEFAULT '[]'::jsonb,
+                    estado VARCHAR(50) NOT NULL DEFAULT 'PENDIENTE',
+                    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    creado_por VARCHAR(255),
+                    actualizado_por VARCHAR(255)
+                );
+            """))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_ordenes_trabajo_numero_ot ON public.ordenes_trabajo (numero_ot);"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_ordenes_trabajo_numero_recepcion ON public.ordenes_trabajo (numero_recepcion);"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_ordenes_trabajo_estado ON public.ordenes_trabajo (estado);"))
+            conn.execute(text("""
+                UPDATE role_definitions
+                SET permissions = jsonb_set(permissions, '{ot}', '{"read": true, "write": true, "delete": true}'::jsonb, true)
+                WHERE role_id IN ('admin', 'admin_general', 'jefe_laboratorio', 'oficina_tecnica', 'oficina_tecnica_sup', 'tecnico', 'tecnico_suelos');
+            """))
+            conn.execute(text("NOTIFY pgrst, 'reload schema';"))
+            logger.info("Migration 056 applied (ordenes_trabajo table).")
+    except Exception as err:
+        logger.warning("Migration 056 skipped: %s", _short_err(err))
+
     _MIGRATIONS_RUN = True
+
 
 
 
