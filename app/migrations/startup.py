@@ -282,6 +282,14 @@ def run_startup_migrations(engine) -> None:
     except Exception as err:
         logger.warning("Migration 053 skipped: %s", _short_err(err))
 
+    # ── Migration 054: Chat Message Reactions JSONB ────────────────
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE public.chat_messages ADD COLUMN IF NOT EXISTS reactions JSONB DEFAULT '{}'::jsonb;"))
+            logger.info("Migration 054 applied (chat_messages reactions column).")
+    except Exception as err:
+        logger.warning("Migration 054 skipped: %s", _short_err(err))
+
     _MIGRATIONS_RUN = True
 
 

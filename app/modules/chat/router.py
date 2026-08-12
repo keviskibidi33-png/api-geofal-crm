@@ -518,6 +518,24 @@ async def list_messages(channel_id: str, limit: int = 100, current_user=Depends(
         raise HTTPException(status_code=403, detail="Acceso denegado a este canal o conversación privada.")
 
     try:
+        if _has_database_url():
+            conn = _get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT id::text, channel_id, sender_id, sender_name, sender_avatar,
+                           content, attachments, created_at, parent_id, is_read, COALESCE(reactions, '{}'::jsonb) AS reactions
+                    FROM chat_messages
+                    WHERE channel_id = %s
+                    ORDER BY created_at ASC
+                    LIMIT %s
+                """, (channel_id, limit))
+                rows = cur.fetchall() or []
+                conn.close()
+                return {"messages": [dict(r) for r in rows]}
+    except Exception as db_err:
+        logger.warning("Error fetching messages from DB for channel %s: %s", channel_id, db_err)
+
+    try:
         headers = _get_supabase_headers()
         base_url = _get_supabase_url()
         res = http_get(
@@ -559,14 +577,17 @@ async def send_message(payload: MessageCreateRequest, current_user=Depends(get_c
     sender_name = actor.get("name") or current_user.get("nombre") or actor.get("email") or "Usuario CRM"
     sender_avatar = actor.get("avatar_url") or current_user.get("avatar_url")
 
-    if not sender_avatar and _has_database_url():
+    if _has_database_url():
         try:
             conn = _get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("SELECT avatar_url FROM perfiles WHERE id = %s OR email = %s LIMIT 1", (sender_id, actor.get("email") or ""))
+                cur.execute("SELECT full_name, avatar_url FROM perfiles WHERE id = %s OR email = %s LIMIT 1", (sender_id, actor.get("email") or ""))
                 row = cur.fetchone()
-                if row and row.get("avatar_url"):
-                    sender_avatar = row.get("avatar_url")
+                if row:
+                    if row.get("full_name") and str(row["full_name"]).strip():
+                        sender_name = str(row["full_name"]).strip()
+                    if not sender_avatar and row.get("avatar_url"):
+                        sender_avatar = row.get("avatar_url")
             conn.close()
         except Exception:
             pass
@@ -585,6 +606,7 @@ async def send_message(payload: MessageCreateRequest, current_user=Depends(get_c
         "attachments": payload.attachments or [],
         "parent_id": payload.parent_id,
         "is_read": False,
+        "reactions": {},
     }
 
     try:
@@ -595,6 +617,51 @@ async def send_message(payload: MessageCreateRequest, current_user=Depends(get_c
     except Exception as e:
         logger.exception("Failed to send message: %s", e)
         return {"success": True, "message": msg_data}
+
+
+@router.post("/messages/{message_id}/reactions")
+async def toggle_message_reaction(message_id: str, payload: dict, current_user=Depends(get_current_user)):
+    """Toggle a reaction (emoji) on a specific chat message and persist in DB."""
+    actor = current_actor.get() or {}
+    user_id, user_email, _, _ = _get_actor_role_and_admin_status(actor, current_user)
+    emoji = payload.get("emoji")
+    if not emoji:
+        raise HTTPException(status_code=400, detail="Emoji is required")
+
+    user_label = actor.get("name") or current_user.get("nombre") or user_email or "Usuario"
+
+    if _has_database_url():
+        try:
+            conn = _get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT full_name FROM perfiles WHERE id = %s OR email = %s LIMIT 1", (user_id, user_email))
+                row = cur.fetchone()
+                if row and row.get("full_name"):
+                    user_label = str(row["full_name"]).strip()
+
+                cur.execute("SELECT COALESCE(reactions, '{}'::jsonb) AS reactions FROM chat_messages WHERE id = %s", (message_id,))
+                msg_row = cur.fetchone()
+                current_reactions = dict(msg_row.get("reactions") or {}) if msg_row else {}
+
+                users_array = list(current_reactions.get(emoji) or [])
+                if user_label in users_array:
+                    users_array.remove(user_label)
+                else:
+                    users_array.append(user_label)
+
+                if users_array:
+                    current_reactions[emoji] = users_array
+                else:
+                    current_reactions.pop(emoji, None)
+
+                cur.execute("UPDATE chat_messages SET reactions = %s WHERE id = %s", (json.dumps(current_reactions), message_id))
+            conn.commit()
+            conn.close()
+            return {"success": True, "message_id": message_id, "reactions": current_reactions}
+        except Exception as err:
+            logger.warning("Error updating reaction in DB: %s", err)
+
+    return {"success": True, "message_id": message_id, "reactions": {}}
 
 
 @router.post("/messages/mark-read")

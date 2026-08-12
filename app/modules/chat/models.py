@@ -30,4 +30,5 @@ class ChatMessage(Base):
     content = Column(Text, nullable=False)
     attachments = Column(JSON, default=list)  # [{url, type, name, size}]
     parent_id = Column(String(50), nullable=True, index=True)
+    reactions = Column(JSON, default=dict)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
