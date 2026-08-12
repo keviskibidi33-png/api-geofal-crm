@@ -694,9 +694,11 @@ async def mark_messages_read(payload: dict, current_user=Depends(get_current_use
     """Mark all messages in a channel as read by the current user."""
     actor = current_actor.get() or {}
     user_id, user_email, _, _ = _get_actor_role_and_admin_status(actor, current_user)
-    channel_id = payload.get("channel_id")
+    channel_id = str(payload.get("channel_id") or "")
     if not channel_id:
         return {"success": False, "message": "channel_id is required"}
+
+    alt_channel_id = channel_id.replace("ch-", "") if channel_id.startswith("ch-") else f"ch-{channel_id}"
 
     try:
         if _has_database_url():
@@ -705,10 +707,24 @@ async def mark_messages_read(payload: dict, current_user=Depends(get_current_use
                 cur.execute("""
                     UPDATE chat_messages 
                     SET is_read = TRUE, read_at = NOW() 
-                    WHERE channel_id = %s AND (sender_id != %s AND sender_id != %s) AND is_read = FALSE
-                """, (channel_id, user_id, user_email))
+                    WHERE (channel_id = %s OR channel_id = %s) AND (sender_id != %s AND sender_id != %s) AND is_read = FALSE
+                """, (channel_id, alt_channel_id, user_id, user_email))
             conn.commit()
             conn.close()
+
+        # También actualizar en Supabase REST
+        try:
+            headers = _get_supabase_headers()
+            base_url = _get_supabase_url()
+            http_patch(
+                f"{base_url}/chat_messages?channel_id=in.({channel_id},{alt_channel_id})&is_read=eq.false",
+                headers=headers,
+                json={"is_read": True},
+                timeout=5,
+            )
+        except Exception as patch_err:
+            logger.warning("Supabase REST mark read warning: %s", patch_err)
+
     except Exception as e:
         logger.warning("Error marking messages read in DB: %s", e)
 
@@ -717,15 +733,31 @@ async def mark_messages_read(payload: dict, current_user=Depends(get_current_use
 
 @router.get("/unread-summary")
 async def get_unread_summary(current_user=Depends(get_current_user)):
-    """Get count of unread messages per channel for the current user."""
+    """Get count of unread messages per channel exclusively for channels accessible to the current user."""
     actor = current_actor.get() or {}
-    user_id, user_email, _, _ = _get_actor_role_and_admin_status(actor, current_user)
+    user_id, user_email, user_role, is_admin = _get_actor_role_and_admin_status(actor, current_user)
 
     unread_counts = {}
     if _has_database_url():
         try:
             conn = _get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Obtenemos canales para evaluar accesibilidad
+                cur.execute("SELECT * FROM chat_channels")
+                db_channels = [dict(r) for r in (cur.fetchall() or [])]
+
+                accessible_channel_ids = set()
+                for ch in db_channels:
+                    if _user_has_channel_access(ch, user_id, user_email, user_role, is_admin):
+                        ch_id = str(ch.get("id") or "")
+                        if ch_id:
+                            accessible_channel_ids.add(ch_id.lower())
+
+                for default_id, default_cfg in DEFAULT_CHANNEL_ROLES.items():
+                    temp_ch = {"id": default_id, "is_private": default_cfg["is_private"], "allowed_roles": default_cfg["roles"]}
+                    if _user_has_channel_access(temp_ch, user_id, user_email, user_role, is_admin):
+                        accessible_channel_ids.add(default_id.lower())
+
                 cur.execute("""
                     SELECT channel_id, COUNT(*)::int AS count
                     FROM chat_messages
@@ -733,9 +765,25 @@ async def get_unread_summary(current_user=Depends(get_current_user)):
                     GROUP BY channel_id
                 """, (user_id, user_email))
                 rows = cur.fetchall() or []
+
                 for r in rows:
-                    if r.get("channel_id"):
-                        unread_counts[r["channel_id"]] = r["count"]
+                    ch_id = str(r.get("channel_id") or "").strip()
+                    if not ch_id:
+                        continue
+
+                    ch_id_clean = ch_id.lower()
+                    ch_id_alt = ch_id_clean.replace("ch-", "") if ch_id_clean.startswith("ch-") else f"ch-{ch_id_clean}"
+
+                    if ch_id_clean.startswith("dm_") or ch_id_clean.startswith("dm-"):
+                        prefix = "dm_" if ch_id_clean.startswith("dm_") else "dm-"
+                        delimiter = "_" if ch_id_clean.startswith("dm_") else "-"
+                        parts = [p.lower() for p in ch_id_clean.replace(prefix, "").split(delimiter) if p]
+                        my_ids = {user_id.lower(), user_email.lower()}
+                        if any(p in my_ids for p in parts):
+                            unread_counts[ch_id] = r["count"]
+                    elif is_admin or ch_id_clean in accessible_channel_ids or ch_id_alt in accessible_channel_ids:
+                        unread_counts[ch_id] = r["count"]
+
             conn.close()
         except Exception as e:
             logger.warning("Error fetching unread summary from DB: %s", e)
