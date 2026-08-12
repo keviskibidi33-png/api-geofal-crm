@@ -54,6 +54,15 @@ def _get_actor_role_and_admin_status(actor: dict, current_user: dict) -> tuple[s
     return user_id, user_email, user_role, is_admin
 
 
+DEFAULT_CHANNEL_ROLES = {
+    "general": {"is_private": False, "roles": []},
+    "ventas": {"is_private": True, "roles": ["admin", "admin_general", "gerencia", "super_admin", "comercial", "auxiliar_comercial"]},
+    "laboratorio": {"is_private": True, "roles": ["admin", "admin_general", "gerencia", "super_admin", "laboratorio", "jefe_laboratorio", "jefe_de_laboratorio", "tecnico", "tecnico_suelos", "laboratorio_tipificador"]},
+    "informes": {"is_private": True, "roles": ["admin", "admin_general", "gerencia", "super_admin", "comercial", "auxiliar_comercial", "laboratorio", "jefe_laboratorio", "jefe_de_laboratorio"]},
+    "alertas": {"is_private": True, "roles": ["admin", "admin_general", "gerencia", "super_admin"]},
+}
+
+
 def _user_has_channel_access(ch: dict, user_id: str, user_email: str, user_role: str, is_admin: bool) -> bool:
     """Determine whether a user has permission to access a channel or DM conversation."""
     if is_admin:
@@ -67,8 +76,18 @@ def _user_has_channel_access(ch: dict, user_id: str, user_email: str, user_role:
         my_ids = {user_id.lower(), user_email.lower()}
         return any(p in my_ids for p in parts)
 
-    is_private = bool(ch.get("is_private"))
+    default_cfg = DEFAULT_CHANNEL_ROLES.get(channel_id.lower())
+
+    raw_is_private = ch.get("is_private")
+    is_private = bool(raw_is_private) if raw_is_private is not None else (default_cfg["is_private"] if default_cfg else False)
+    
     roles = [str(r).strip().lower() for r in (ch.get("allowed_roles") or []) if r]
+    if default_cfg and default_cfg.get("roles"):
+        for dr in default_cfg["roles"]:
+            if dr.lower() not in roles:
+                roles.append(dr.lower())
+        is_private = default_cfg.get("is_private", is_private)
+
     emails = [str(e).strip().lower() for e in (ch.get("allowed_emails") or []) if e]
 
     has_restrictions = is_private or len(roles) > 0 or len(emails) > 0
@@ -157,7 +176,12 @@ async def get_channel_members(channel_id: str, current_user=Depends(get_current_
     actor = current_actor.get() or {}
     user_id, user_email, user_role, is_admin = _get_actor_role_and_admin_status(actor, current_user)
 
-    ch_info = {"id": channel_id, "is_private": True}
+    default_cfg = DEFAULT_CHANNEL_ROLES.get(channel_id.lower())
+    ch_info = {
+        "id": channel_id,
+        "is_private": default_cfg["is_private"] if default_cfg else True,
+        "allowed_roles": default_cfg["roles"] if default_cfg else [],
+    }
     try:
         if _has_database_url():
             conn = _get_connection()
@@ -166,31 +190,57 @@ async def get_channel_members(channel_id: str, current_user=Depends(get_current_
                 ch = cur.fetchone()
                 if ch:
                     ch_info = dict(ch)
-                    if not _user_has_channel_access(ch_info, user_id, user_email, user_role, is_admin):
-                        conn.close()
-                        raise HTTPException(status_code=403, detail="Acceso denegado a la lista de integrantes de este canal privado.")
+            conn.close()
 
-                    emails = set([e.lower() for e in (ch.get("allowed_emails") or [])])
-                    roles = [r.lower() for r in (ch.get("allowed_roles") or [])]
+        if not _user_has_channel_access(ch_info, user_id, user_email, user_role, is_admin):
+            raise HTTPException(status_code=403, detail="Acceso denegado a la lista de integrantes de este canal privado.")
+
+        roles = [str(r).strip().lower() for r in (ch_info.get("allowed_roles") or []) if r]
+        if default_cfg and default_cfg.get("roles"):
+            for dr in default_cfg["roles"]:
+                if dr.lower() not in roles:
+                    roles.append(dr.lower())
+
+        raw_is_private = ch_info.get("is_private")
+        is_private = bool(raw_is_private) if raw_is_private is not None else (default_cfg["is_private"] if default_cfg else False)
+        if default_cfg and "is_private" in default_cfg:
+            is_private = default_cfg["is_private"]
+
+        emails_from_db = [str(e).strip().lower() for e in (ch_info.get("allowed_emails") or []) if e]
+        identifiers = set(emails_from_db)
+
+        if _has_database_url():
+            conn = _get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                if not is_private and not roles:
+                    cur.execute("SELECT email, id::text FROM perfiles")
+                    all_rows = cur.fetchall() or []
+                    for r in all_rows:
+                        if r.get("email"):
+                            identifiers.add(str(r["email"]).strip().lower())
+                        if r.get("id"):
+                            identifiers.add(str(r["id"]).strip().lower())
+                else:
                     if roles:
                         placeholders = ','.join(['%s'] * len(roles))
-                        cur.execute(f"SELECT email FROM perfiles WHERE LOWER(role) IN ({placeholders})", roles)
+                        cur.execute(f"SELECT email, id::text FROM perfiles WHERE LOWER(role) IN ({placeholders})", roles)
                         role_rows = cur.fetchall() or []
                         for r in role_rows:
                             if r.get("email"):
-                                emails.add(r["email"].lower())
+                                identifiers.add(str(r["email"]).strip().lower())
+                            if r.get("id"):
+                                identifiers.add(str(r["id"]).strip().lower())
                     
-                    if not ch.get("is_private") and not roles and not emails:
-                        cur.execute("SELECT email FROM perfiles")
-                        all_rows = cur.fetchall() or []
-                        for r in all_rows:
-                            if r.get("email"):
-                                emails.add(r["email"].lower())
+                    cur.execute("SELECT email, id::text FROM perfiles WHERE LOWER(role) IN ('admin', 'admin_general', 'gerencia', 'super_admin')")
+                    admin_rows = cur.fetchall() or []
+                    for r in admin_rows:
+                        if r.get("email"):
+                            identifiers.add(str(r["email"]).strip().lower())
+                        if r.get("id"):
+                            identifiers.add(str(r["id"]).strip().lower())
+            conn.close()
 
-                    conn.close()
-                    return {"members": list(emails)}
-                conn.close()
-        return {"members": []}
+        return {"members": list(identifiers)}
     except HTTPException:
         raise
     except Exception as e:
