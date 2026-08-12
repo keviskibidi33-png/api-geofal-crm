@@ -21,11 +21,18 @@ router = APIRouter(prefix="/api/chat", tags=["Chat"])
 def _get_actor_role_and_admin_status(actor: dict, current_user: dict) -> tuple[str, str, str, bool]:
     user_id = str(actor.get("user_id") or actor.get("sub") or (current_user.get("sub") if isinstance(current_user, dict) else "") or "").strip()
     user_email = str(actor.get("email") or (current_user.get("email") if isinstance(current_user, dict) else "") or "").strip().lower()
-    user_role = str(actor.get("role") or "").strip().lower()
+    
+    raw_role = str(actor.get("role") or "").strip().lower()
+    if raw_role in {"authenticated", "anon", "service_role"}:
+        raw_role = ""
+
+    user_role = raw_role
 
     if not user_role and isinstance(current_user, dict):
         user_metadata = current_user.get("user_metadata", {}) or {}
         user_role = str(user_metadata.get("role") or user_metadata.get("rol") or current_user.get("role") or "").strip().lower()
+        if user_role in {"authenticated", "anon", "service_role"}:
+            user_role = ""
 
     if not user_role and _has_database_url() and (user_id or user_email):
         try:
@@ -47,11 +54,46 @@ def _get_actor_role_and_admin_status(actor: dict, current_user: dict) -> tuple[s
     return user_id, user_email, user_role, is_admin
 
 
+def _user_has_channel_access(ch: dict, user_id: str, user_email: str, user_role: str, is_admin: bool) -> bool:
+    """Determine whether a user has permission to access a channel or DM conversation."""
+    if is_admin:
+        return True
+
+    channel_id = str(ch.get("id") or "")
+    if channel_id.startswith("dm_") or channel_id.startswith("dm-"):
+        prefix = "dm_" if channel_id.startswith("dm_") else "dm-"
+        delimiter = "_" if channel_id.startswith("dm_") else "-"
+        parts = [p.lower() for p in channel_id.replace(prefix, "").split(delimiter) if p]
+        my_ids = {user_id.lower(), user_email.lower()}
+        return any(p in my_ids for p in parts)
+
+    is_private = bool(ch.get("is_private"))
+    roles = [str(r).strip().lower() for r in (ch.get("allowed_roles") or []) if r]
+    emails = [str(e).strip().lower() for e in (ch.get("allowed_emails") or []) if e]
+
+    has_restrictions = is_private or len(roles) > 0 or len(emails) > 0
+    if not has_restrictions:
+        return True
+
+    user_role_clean = (user_role or "").strip().lower()
+    user_email_clean = (user_email or "").strip().lower()
+    user_id_clean = (user_id or "").strip().lower()
+
+    if user_role_clean and user_role_clean in roles:
+        return True
+    if user_email_clean and user_email_clean in emails:
+        return True
+    if user_id_clean and user_id_clean in emails:
+        return True
+
+    return False
+
+
 @router.post("/channels/{channel_id}/members")
 async def add_channel_member(channel_id: str, payload: AddMemberRequest, current_user=Depends(get_current_user)):
     """Add a user/member to a specific channel or group."""
     actor = current_actor.get() or {}
-    _, _, _, is_admin = _get_actor_role_and_admin_status(actor, current_user)
+    user_id, user_email, user_role, is_admin = _get_actor_role_and_admin_status(actor, current_user)
 
     if not is_admin:
         raise HTTPException(
@@ -82,7 +124,7 @@ async def add_channel_member(channel_id: str, payload: AddMemberRequest, current
 async def remove_channel_member(channel_id: str, user_identifier: str, current_user=Depends(get_current_user)):
     """Remove a user/member from a specific channel or group."""
     actor = current_actor.get() or {}
-    _, _, _, is_admin = _get_actor_role_and_admin_status(actor, current_user)
+    user_id, user_email, user_role, is_admin = _get_actor_role_and_admin_status(actor, current_user)
 
     if not is_admin:
         raise HTTPException(
@@ -112,6 +154,10 @@ async def remove_channel_member(channel_id: str, user_identifier: str, current_u
 @router.get("/channels/{channel_id}/members")
 async def get_channel_members(channel_id: str, current_user=Depends(get_current_user)):
     """Fetch allowed members for a specific channel."""
+    actor = current_actor.get() or {}
+    user_id, user_email, user_role, is_admin = _get_actor_role_and_admin_status(actor, current_user)
+
+    ch_info = {"id": channel_id, "is_private": True}
     try:
         if _has_database_url():
             conn = _get_connection()
@@ -119,6 +165,11 @@ async def get_channel_members(channel_id: str, current_user=Depends(get_current_
                 cur.execute("SELECT allowed_emails, allowed_roles, is_private FROM chat_channels WHERE id = %s", (channel_id,))
                 ch = cur.fetchone()
                 if ch:
+                    ch_info = dict(ch)
+                    if not _user_has_channel_access(ch_info, user_id, user_email, user_role, is_admin):
+                        conn.close()
+                        raise HTTPException(status_code=403, detail="Acceso denegado a la lista de integrantes de este canal privado.")
+
                     emails = set([e.lower() for e in (ch.get("allowed_emails") or [])])
                     roles = [r.lower() for r in (ch.get("allowed_roles") or [])]
                     if roles:
@@ -140,6 +191,8 @@ async def get_channel_members(channel_id: str, current_user=Depends(get_current_
                     return {"members": list(emails)}
                 conn.close()
         return {"members": []}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.warning("Error fetching channel members for %s: %s", channel_id, e)
         return {"members": []}
@@ -149,7 +202,7 @@ async def get_channel_members(channel_id: str, current_user=Depends(get_current_
 async def list_channels(current_user=Depends(get_current_user)):
     """List public channels and channels the current user has access to."""
     actor = current_actor.get() or {}
-    _, user_email, user_role, is_admin = _get_actor_role_and_admin_status(actor, current_user)
+    user_id, user_email, user_role, is_admin = _get_actor_role_and_admin_status(actor, current_user)
 
     channels = []
     if _has_database_url():
@@ -173,23 +226,16 @@ async def list_channels(current_user=Depends(get_current_user)):
             logger.warning("Error fetching chat channels via REST: %s", e)
 
     if not channels:
-        return {"channels": [
+        channels = [
             {"id": "general", "name": "general", "description": "Comunicados y mensajes generales", "is_private": False, "category": "general"},
-            {"id": "ventas", "name": "ventas", "description": "Coordinación de ventas y clientes", "is_private": False, "category": "area"},
-            {"id": "laboratorio", "name": "laboratorio", "description": "Ensayos de laboratorio y calibraciones", "is_private": False, "category": "area"},
-            {"id": "informes", "name": "informes", "description": "Revisión y emisión de informes LEM", "is_private": False, "category": "area"},
-        ]}
+            {"id": "ventas", "name": "comercial-ventas", "description": "Coordinación de ventas y clientes", "is_private": True, "category": "area", "allowed_roles": ["admin", "admin_general", "gerencia", "super_admin", "comercial", "auxiliar_comercial"]},
+            {"id": "laboratorio", "name": "laboratorio-ensayos", "description": "Ensayos de laboratorio y calibraciones", "is_private": True, "category": "area", "allowed_roles": ["admin", "admin_general", "gerencia", "super_admin", "laboratorio", "jefe_laboratorio", "tecnico", "tecnico_suelos"]},
+            {"id": "informes", "name": "informes-revision", "description": "Revisión y emisión de informes LEM", "is_private": True, "category": "area", "allowed_roles": ["admin", "admin_general", "gerencia", "super_admin", "comercial", "auxiliar_comercial", "laboratorio", "jefe_laboratorio"]},
+            {"id": "alertas", "name": "alertas-gerencia", "description": "Notificaciones y clientes prioritarios", "is_private": True, "category": "area", "allowed_roles": ["admin", "admin_general", "gerencia", "super_admin"]},
+        ]
 
-    # Filter channels by user access permission
-    filtered = []
-    for ch in channels:
-        if not ch.get("is_private"):
-            filtered.append(ch)
-        else:
-            roles = [r.lower() for r in (ch.get("allowed_roles") or [])]
-            emails = [e.lower() for e in (ch.get("allowed_emails") or [])]
-            if is_admin or user_role in roles or user_email in emails:
-                filtered.append(ch)
+    # Filter channels strictly by user access permission
+    filtered = [ch for ch in channels if _user_has_channel_access(ch, user_id, user_email, user_role, is_admin)]
     return {"channels": filtered}
 
 
@@ -197,7 +243,7 @@ async def list_channels(current_user=Depends(get_current_user)):
 async def create_channel(payload: ChannelCreateRequest, current_user=Depends(get_current_user)):
     """Create or reconfigure a chat channel. Restricted exclusively to Jefe de Laboratorio, Admin, and Gerencia."""
     actor = current_actor.get() or {}
-    _, user_email, _, is_admin = _get_actor_role_and_admin_status(actor, current_user)
+    user_id, user_email, _, is_admin = _get_actor_role_and_admin_status(actor, current_user)
 
     if not is_admin and user_email not in payload.allowed_emails:
         raise HTTPException(
@@ -209,6 +255,11 @@ async def create_channel(payload: ChannelCreateRequest, current_user=Depends(get
     headers = _get_supabase_headers()
     base_url = _get_supabase_url()
 
+    # Ensure creator is included in allowed_emails for private channels
+    allowed_emails = list(payload.allowed_emails or [])
+    if user_email and user_email not in allowed_emails:
+        allowed_emails.append(user_email)
+
     channel_data = {
         "id": channel_id,
         "name": payload.name.lower().replace(" ", "-"),
@@ -216,7 +267,7 @@ async def create_channel(payload: ChannelCreateRequest, current_user=Depends(get
         "is_private": payload.is_private,
         "created_by": actor.get("sub") or user_email,
         "allowed_roles": payload.allowed_roles,
-        "allowed_emails": payload.allowed_emails,
+        "allowed_emails": allowed_emails,
         "category": payload.category,
     }
 
@@ -345,24 +396,22 @@ async def list_messages(channel_id: str, limit: int = 100, current_user=Depends(
     actor = current_actor.get() or {}
     user_id, user_email, user_role, is_admin = _get_actor_role_and_admin_status(actor, current_user)
 
-    # Permission check for private channels
-    if not (channel_id.startswith("dm_") or channel_id.startsWith("dm-") if hasattr(channel_id, "startsWith") else channel_id.startswith("dm-")):
-        if _has_database_url():
-            try:
-                conn = _get_connection()
-                with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                    cur.execute("SELECT is_private, allowed_emails, allowed_roles FROM chat_channels WHERE id = %s", (channel_id,))
-                    ch = cur.fetchone()
-                    conn.close()
-                    if ch and ch.get("is_private"):
-                        roles = [r.lower() for r in (ch.get("allowed_roles") or [])]
-                        emails = [e.lower() for e in (ch.get("allowed_emails") or [])]
-                        if not (is_admin or user_role in roles or user_email in emails):
-                            raise HTTPException(status_code=403, detail="Acceso denegado a este canal privado")
-            except HTTPException:
-                raise
-            except Exception as e:
-                logger.warning("Channel permission check failed: %s", e)
+    # Permission check for channel or DM
+    ch_info = {"id": channel_id, "is_private": True}
+    if _has_database_url():
+        try:
+            conn = _get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT id, is_private, allowed_emails, allowed_roles FROM chat_channels WHERE id = %s", (channel_id,))
+                row = cur.fetchone()
+                if row:
+                    ch_info = dict(row)
+            conn.close()
+        except Exception as e:
+            logger.warning("Channel lookup failed: %s", e)
+
+    if not _user_has_channel_access(ch_info, user_id, user_email, user_role, is_admin):
+        raise HTTPException(status_code=403, detail="Acceso denegado a este canal o conversación privada.")
 
     try:
         headers = _get_supabase_headers()
@@ -384,7 +433,25 @@ async def list_messages(channel_id: str, limit: int = 100, current_user=Depends(
 async def send_message(payload: MessageCreateRequest, current_user=Depends(get_current_user)):
     """Post a new message or file attachment into a channel or DM conversation."""
     actor = current_actor.get() or {}
-    sender_id = actor.get("sub") or current_user.get("id") or "user-crm"
+    user_id, user_email, user_role, is_admin = _get_actor_role_and_admin_status(actor, current_user)
+
+    ch_info = {"id": payload.channel_id, "is_private": True}
+    if _has_database_url():
+        try:
+            conn = _get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT id, is_private, allowed_emails, allowed_roles FROM chat_channels WHERE id = %s", (payload.channel_id,))
+                row = cur.fetchone()
+                if row:
+                    ch_info = dict(row)
+            conn.close()
+        except Exception:
+            pass
+
+    if not _user_has_channel_access(ch_info, user_id, user_email, user_role, is_admin):
+        raise HTTPException(status_code=403, detail="No tienes permisos para enviar mensajes en esta conversación privada.")
+
+    sender_id = actor.get("sub") or current_user.get("id") or user_id or "user-crm"
     sender_name = actor.get("name") or current_user.get("nombre") or actor.get("email") or "Usuario CRM"
     sender_avatar = actor.get("avatar_url") or current_user.get("avatar_url")
 
@@ -517,7 +584,21 @@ async def list_my_dm_users(current_user=Depends(get_current_user)):
 async def get_unread_summary(current_user=Depends(get_current_user)):
     """Fetch unread message counts per channel/DM for the current user."""
     actor = current_actor.get() or {}
-    user_id, user_email, _, _ = _get_actor_role_and_admin_status(actor, current_user)
+    user_id, user_email, user_role, is_admin = _get_actor_role_and_admin_status(actor, current_user)
+
+    accessible_channel_ids = set()
+    if _has_database_url():
+        try:
+            conn = _get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT id, is_private, allowed_roles, allowed_emails FROM chat_channels")
+                rows = cur.fetchall() or []
+                for r in rows:
+                    if _user_has_channel_access(dict(r), user_id, user_email, user_role, is_admin):
+                        accessible_channel_ids.add(str(r["id"]))
+            conn.close()
+        except Exception as e:
+            logger.warning("Error loading channels for unread summary: %s", e)
 
     unread_counts = {}
     total_unread = 0
@@ -535,35 +616,16 @@ async def get_unread_summary(current_user=Depends(get_current_user)):
                 """, (user_id, user_email))
                 rows = cur.fetchall() or []
                 for r in rows:
-                    ch_id = r.get("channel_id")
+                    ch_id = str(r.get("channel_id") or "")
                     cnt = int(r.get("count") or 0)
-                    if ch_id and cnt > 0:
-                        unread_counts[ch_id] = cnt
-                        total_unread += cnt
+                    is_dm = ch_id.startswith("dm_") or ch_id.startswith("dm-")
+                    ch_obj = {"id": ch_id, "is_private": True}
+                    if is_dm or ch_id in accessible_channel_ids or _user_has_channel_access(ch_obj, user_id, user_email, user_role, is_admin):
+                        if cnt > 0:
+                            unread_counts[ch_id] = cnt
+                            total_unread += cnt
             conn.close()
         except Exception as e:
             logger.warning("Error fetching unread summary from DB: %s", e)
 
-    if not unread_counts:
-        try:
-            headers = _get_supabase_headers()
-            base_url = _get_supabase_url()
-            res = http_get(
-                f"{base_url}/chat_messages?select=channel_id,sender_id,is_read&is_read=eq.false&limit=1000",
-                headers=headers,
-                timeout=5,
-            )
-            if res.status_code == 200:
-                rows = res.json() or []
-                for r in rows:
-                    ch_id = r.get("channel_id")
-                    s_id = str(r.get("sender_id") or "").lower()
-                    if s_id != user_id.lower() and s_id != user_email.lower():
-                        unread_counts[ch_id] = unread_counts.get(ch_id, 0) + 1
-                        total_unread += 1
-        except Exception as e:
-            logger.warning("Error fetching unread summary from Supabase: %s", e)
-
     return {"unread_counts": unread_counts, "total_unread": total_unread}
-
-
