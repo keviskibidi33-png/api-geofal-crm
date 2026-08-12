@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from app.auth import get_current_user, current_actor
-from app.utils.http_client import http_get, http_post
+from app.utils.http_client import http_get, http_post, http_patch
 from app.modules.roles.service import _get_supabase_headers, _get_supabase_url
 
 from .schemas import ChannelCreateRequest, ChannelResponse, MessageCreateRequest, MessageResponse, AddMemberRequest
