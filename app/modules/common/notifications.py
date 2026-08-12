@@ -458,7 +458,7 @@ def log_audit_action(
                     "action": action,
                     "module": module,
                     "details": json.dumps(details or {}, ensure_ascii=False),
-                    "severity": severity,
+                    "severity": severity or "info",
                 }
             )
     except Exception as exc:
