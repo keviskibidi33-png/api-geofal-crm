@@ -15,22 +15,32 @@ def generar_excel_ot(ot: OrdenTrabajo) -> io.BytesIO:
     """
     Genera un archivo Excel inyectando los datos de la Orden de Trabajo
     en la plantilla oficial OT-001-Geofal.xlsx.
+    Limpia previamente cualquier ítem remanente de la plantilla original.
     """
     template_path = find_template_path("OT/OT-001-Geofal.xlsx")
     if not template_path.exists():
         template_path = find_template_path("OT-001-Geofal.xlsx")
 
     wb = openpyxl.load_workbook(str(template_path))
-    # Utilizar la primera hoja (o 'CENS' / '.')
-    sheet = wb.active
+    
+    # Seleccionar la hoja principal CENS o la activa
+    if "CENS" in wb.sheetnames:
+        sheet = wb["CENS"]
+        wb.active = sheet
+    else:
+        sheet = wb.active
+
+    # Limpiar celdas de ítems previas de la fila 10 a la 30 para evitar texto heredado del template
+    for row_num in range(10, 31):
+        sheet[f'A{row_num}'] = None
+        sheet[f'B{row_num}'] = None
+        sheet[f'E{row_num}'] = None
+        sheet[f'J{row_num}'] = None
 
     # --- Header Metadata ---
-    if ot.numero_ot:
-        sheet['B6'] = ot.numero_ot
-    if ot.numero_recepcion:
-        sheet['G6'] = ot.numero_recepcion
-    if ot.referencia:
-        sheet['J6'] = ot.referencia
+    sheet['B6'] = ot.numero_ot or ""
+    sheet['G6'] = ot.numero_recepcion or ""
+    sheet['J6'] = ot.referencia or "-"
 
     # --- Items Table (Rows 10 to 30) ---
     raw_items = ot.items if isinstance(ot.items, list) else []
@@ -47,31 +57,26 @@ def generar_excel_ot(ot: OrdenTrabajo) -> io.BytesIO:
         sheet[f'J{row_num}'] = cant
 
     # --- Footer & Fechas ---
-    if ot.fecha_recepcion:
-        sheet['C31'] = ot.fecha_recepcion
-    if ot.plazo_entrega_dias is not None:
-        sheet['C32'] = ot.plazo_entrega_dias
-    if ot.inicio_programado:
-        sheet['F31'] = ot.inicio_programado
-    if ot.fin_programado:
-        sheet['F32'] = ot.fin_programado
-    if ot.inicio_real:
-        sheet['H31'] = ot.inicio_real
-    if ot.fin_real:
-        sheet['H32'] = ot.fin_real
-    if ot.variacion_inicio:
-        sheet['J31'] = ot.variacion_inicio
-    if ot.variacion_fin:
-        sheet['J32'] = ot.variacion_fin
+    sheet['C31'] = ot.fecha_recepcion or ""
+    sheet['C32'] = ot.plazo_entrega_dias or ""
+    sheet['F31'] = ot.inicio_programado or ""
+    sheet['F32'] = ot.fin_programado or ""
+    sheet['H31'] = ot.inicio_real or ""
+    sheet['H32'] = ot.fin_real or ""
+    sheet['J31'] = ot.variacion_inicio or ""
+    sheet['J32'] = ot.variacion_fin or ""
 
-    if ot.duracion_real_ejecucion_dias:
-        sheet['A33'] = f"DURACION REAL DE EJECUCION (DIAS): {ot.duracion_real_ejecucion_dias}"
-    if ot.observaciones:
-        sheet['A34'] = f"OBSERVACIONES: {ot.observaciones}"
-    if ot.ot_aperturada_por:
-        sheet['C38'] = ot.ot_aperturada_por
-    if ot.ot_designada_a:
-        sheet['H38'] = ot.ot_designada_a
+    duracion_text = (
+        f"DURACION REAL DE EJECUCION (DIAS): {ot.duracion_real_ejecucion_dias}"
+        if ot.duracion_real_ejecucion_dias
+        else "DURACION REAL DE EJECUCION (DIAS):"
+    )
+    obs_text = f"OBSERVACIONES: {ot.observaciones}" if ot.observaciones else "OBSERVACIONES:"
+
+    sheet['A33'] = duracion_text
+    sheet['A34'] = obs_text
+    sheet['C38'] = ot.ot_aperturada_por or ""
+    sheet['H38'] = ot.ot_designada_a or ""
 
     output = io.BytesIO()
     wb.save(output)
