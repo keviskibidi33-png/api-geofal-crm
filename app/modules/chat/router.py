@@ -651,8 +651,8 @@ async def toggle_message_reaction(message_id: str, payload: dict, current_user=D
                     current_reactions = {}
 
                 users_array = list(current_reactions.get(emoji) or [])
-                # Permitir desmarcar si coincide con user_label o user_email
-                matches = [u for u in users_array if u in (user_label, user_email, user_id)]
+                user_targets = {str(user_label).strip().lower(), str(user_email).strip().lower(), str(user_id).strip().lower()}
+                matches = [u for u in users_array if str(u).strip().lower() in user_targets]
                 if matches:
                     for m in matches:
                         if m in users_array:
