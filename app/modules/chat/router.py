@@ -57,9 +57,13 @@ def _get_actor_role_and_admin_status(actor: dict, current_user: dict) -> tuple[s
 DEFAULT_CHANNEL_ROLES = {
     "general": {"is_private": False, "roles": []},
     "ventas": {"is_private": True, "roles": ["admin", "admin_general", "gerencia", "super_admin", "comercial", "auxiliar_comercial"]},
+    "comercial-ventas": {"is_private": True, "roles": ["admin", "admin_general", "gerencia", "super_admin", "comercial", "auxiliar_comercial"]},
     "laboratorio": {"is_private": True, "roles": ["admin", "admin_general", "gerencia", "super_admin", "laboratorio", "jefe_laboratorio", "jefe_de_laboratorio", "tecnico", "tecnico_suelos", "laboratorio_tipificador"]},
+    "laboratorio-ensayos": {"is_private": True, "roles": ["admin", "admin_general", "gerencia", "super_admin", "laboratorio", "jefe_laboratorio", "jefe_de_laboratorio", "tecnico", "tecnico_suelos", "laboratorio_tipificador"]},
     "informes": {"is_private": True, "roles": ["admin", "admin_general", "gerencia", "super_admin", "comercial", "auxiliar_comercial", "laboratorio", "jefe_laboratorio", "jefe_de_laboratorio"]},
+    "informes-revision": {"is_private": True, "roles": ["admin", "admin_general", "gerencia", "super_admin", "comercial", "auxiliar_comercial", "laboratorio", "jefe_laboratorio", "jefe_de_laboratorio"]},
     "alertas": {"is_private": True, "roles": ["admin", "admin_general", "gerencia", "super_admin"]},
+    "alertas-gerencia": {"is_private": True, "roles": ["admin", "admin_general", "gerencia", "super_admin"]},
 }
 
 
