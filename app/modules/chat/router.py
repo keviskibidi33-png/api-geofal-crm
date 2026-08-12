@@ -357,6 +357,56 @@ async def create_channel(payload: ChannelCreateRequest, current_user=Depends(get
     return {"success": True, "channel": channel_data}
 
 
+@router.patch("/channels/{channel_id}")
+async def update_channel_settings(channel_id: str, payload: dict, current_user=Depends(get_current_user)):
+    """Update channel configuration (is_private, description, name). Restricted to Admins & Gerencia."""
+    actor = current_actor.get() or {}
+    _, _, _, is_admin = _get_actor_role_and_admin_status(actor, current_user)
+
+    if not is_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Solo la Jefatura o Administración pueden modificar la privacidad y configuración del canal."
+        )
+
+    is_private = payload.get("is_private")
+    description = payload.get("description")
+    name = payload.get("name")
+
+    try:
+        if _has_database_url():
+            conn = _get_connection()
+            with conn.cursor() as cur:
+                if is_private is not None:
+                    cur.execute("UPDATE chat_channels SET is_private = %s, updated_at = NOW() WHERE id = %s", (is_private, channel_id))
+                if description is not None:
+                    cur.execute("UPDATE chat_channels SET description = %s, updated_at = NOW() WHERE id = %s", (description, channel_id))
+                if name is not None:
+                    cur.execute("UPDATE chat_channels SET name = %s, updated_at = NOW() WHERE id = %s", (name, channel_id))
+                conn.commit()
+            conn.close()
+
+        headers = _get_supabase_headers()
+        base_url = _get_supabase_url()
+        update_data = {}
+        if is_private is not None:
+            update_data["is_private"] = is_private
+        if description is not None:
+            update_data["description"] = description
+        if name is not None:
+            update_data["name"] = name
+
+        if update_data:
+            http_post(f"{base_url}/chat_channels?id=eq.{channel_id}", headers=headers, json=update_data, timeout=5)
+
+        return {"success": True, "message": "Configuración de canal actualizada", "channel_id": channel_id, "is_private": is_private}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Failed to update channel settings: %s", e)
+        return {"success": False, "message": "Error actualizando canal"}
+
+
 @router.get("/users")
 async def list_chat_users(current_user=Depends(get_current_user)):
     """List real system team users available for 1-on-1 direct messaging."""
