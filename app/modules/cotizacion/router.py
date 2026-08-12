@@ -225,9 +225,10 @@ async def get_quote_by_token(token: str):
     finally:
         conn.close()
 
-
 @router.get("/quotes")
-async def list_quotes(year: int = None, limit: int = 50):
+@router.get("/api/cotizador/mis-cotizaciones")
+@router.get("/cotizador/mis-cotizaciones")
+async def list_quotes(year: int = None, limit: int = 100):
     """Lista las cotizaciones guardadas"""
     quotes = []
     if _has_database_url():
@@ -237,23 +238,24 @@ async def list_quotes(year: int = None, limit: int = 50):
                 if year:
                     cur.execute("""
                         SELECT 
-                            id, numero, year, cliente_nombre, cliente_ruc, proyecto, 
-                            total, estado, moneda, fecha_emision, archivo_path as filepath, 
-                            archivo_path as object_key,
-                            created_at, cliente_id, proyecto_id, vendedor_id
+                            id, numero, year, cliente_nombre as cliente, cliente_nombre, cliente_ruc, proyecto, proyecto as proyecto_nombre, 
+                            subtotal, igv, total, monto, estado, moneda, fecha_emision, archivo_path as filepath, 
+                            object_key, items_json, items_count,
+                            created_at, cliente_id, proyecto_id, vendedor_id, vendedor_nombre, correo_vendedor
                         FROM cotizaciones
-                        WHERE year = %s
+                        WHERE year = %s AND visibilidad = 'visible'
                         ORDER BY created_at DESC
                         LIMIT %s
                     """, (year, limit))
                 else:
                     cur.execute("""
                         SELECT 
-                            id, numero, year, cliente_nombre, cliente_ruc, proyecto, 
-                            total, estado, moneda, fecha_emision, archivo_path as filepath, 
-                            archivo_path as object_key,
-                            created_at, cliente_id, proyecto_id, vendedor_id
+                            id, numero, year, cliente_nombre as cliente, cliente_nombre, cliente_ruc, proyecto, proyecto as proyecto_nombre, 
+                            subtotal, igv, total, monto, estado, moneda, fecha_emision, archivo_path as filepath, 
+                            object_key, items_json, items_count,
+                            created_at, cliente_id, proyecto_id, vendedor_id, vendedor_nombre, correo_vendedor
                         FROM cotizaciones
+                        WHERE visibilidad = 'visible'
                         ORDER BY created_at DESC
                         LIMIT %s
                     """, (limit,))
@@ -272,9 +274,26 @@ async def list_quotes(year: int = None, limit: int = 50):
                     "year": target_year,
                     "created_at": f.stat().st_mtime
                 })
-    return {"quotes": quotes, "total": len(quotes)}
+    return {"quotes": quotes, "cotizaciones": quotes, "total": len(quotes)}
 
 
+@router.put("/api/cotizador/actualizar-estado/{quote_id}")
+@router.put("/cotizador/actualizar-estado/{quote_id}")
+@router.put("/actualizar-estado/{quote_id}")
+async def update_quote_status(quote_id: str, payload: dict):
+    if not _has_database_url():
+        raise HTTPException(status_code=400, detail="Database not configured")
+    estado = payload.get("estado")
+    if not estado:
+        raise HTTPException(status_code=400, detail="Estado es requerido")
+    conn = _get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE cotizaciones SET estado = %s, updated_at = NOW() WHERE id = %s", (estado, quote_id))
+            conn.commit()
+        return {"success": True, "message": "Estado actualizado", "quote_id": quote_id, "estado": estado}
+    finally:
+        conn.close()
 
 @router.get("/quotes/{quote_id}/download")
 async def download_quote(quote_id: str, background_tasks: BackgroundTasks):
