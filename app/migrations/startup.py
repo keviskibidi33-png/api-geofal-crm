@@ -290,7 +290,19 @@ def run_startup_migrations(engine) -> None:
     except Exception as err:
         logger.warning("Migration 054 skipped: %s", _short_err(err))
 
+    # ── Migration 055: Chat Message Pinning ───────────────────────
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE public.chat_messages ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN DEFAULT FALSE;"))
+            conn.execute(text("ALTER TABLE public.chat_messages ADD COLUMN IF NOT EXISTS pinned_by VARCHAR(100) NULL;"))
+            conn.execute(text("ALTER TABLE public.chat_messages ADD COLUMN IF NOT EXISTS pinned_at TIMESTAMPTZ NULL;"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_chat_messages_is_pinned ON public.chat_messages (channel_id, is_pinned);"))
+            logger.info("Migration 055 applied (chat_messages is_pinned columns).")
+    except Exception as err:
+        logger.warning("Migration 055 skipped: %s", _short_err(err))
+
     _MIGRATIONS_RUN = True
+
 
 
 def run_startup_cleanup(engine) -> None:

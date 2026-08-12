@@ -5,7 +5,7 @@ import uuid
 import logging
 from datetime import datetime, timezone
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from app.auth import get_current_user, current_actor
 from app.utils.http_client import http_get, http_post, http_patch
 from app.modules.roles.service import _get_supabase_headers, _get_supabase_url
@@ -496,6 +496,61 @@ async def user_heartbeat(current_user=Depends(get_current_user)):
     return {"status": "alive", "timestamp": datetime.now(timezone.utc).isoformat()}
 
 
+@router.post("/upload")
+async def upload_chat_file(
+    file: UploadFile = File(...),
+    channel_id: str = Query("general"),
+    current_user=Depends(get_current_user)
+):
+    """Upload file or image attachment for chat and return attachment metadata."""
+    actor = current_actor.get() or {}
+    _user_id, _user_email, _, _ = _get_actor_role_and_admin_status(actor, current_user)
+
+    if not file or not file.filename:
+        raise HTTPException(status_code=400, detail="No se proporcionó ningún archivo")
+
+    content = await file.read()
+    filename = file.filename
+    content_type = file.content_type or ""
+    is_image = content_type.startswith("image/") or filename.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"))
+
+    file_ext = filename.rsplit(".", 1)[-1] if "." in filename else "bin"
+    unique_filename = f"chat_{uuid.uuid4().hex[:10]}.{file_ext}"
+
+    storage_url = None
+    try:
+        from app.modules.tamiz.router import _upload_to_supabase_storage
+        for bucket in ["verificacion", "recepcion", "cotizaciones"]:
+            storage_path = _upload_to_supabase_storage(content, bucket, f"chat/{unique_filename}")
+            if storage_path:
+                supabase_url = _get_supabase_url().rstrip('/')
+                storage_url = f"{supabase_url}/storage/v1/object/public/{bucket}/{storage_path}"
+                break
+    except Exception as st_err:
+        logger.warning("Supabase storage upload error: %s", st_err)
+
+    if not storage_url:
+        import os
+        upload_dir = os.path.join(os.getcwd(), "app", "static", "chat_uploads")
+        os.makedirs(upload_dir, exist_ok=True)
+        local_filepath = os.path.join(upload_dir, unique_filename)
+        with open(local_filepath, "wb") as f:
+            f.write(content)
+        storage_url = f"/static/chat_uploads/{unique_filename}"
+
+    size_mb = len(content) / (1024 * 1024)
+    size_str = f"{size_mb:.2f} MB" if size_mb >= 1 else f"{len(content) / 1024:.1f} KB"
+
+    attachment = {
+        "url": storage_url,
+        "name": filename,
+        "type": "image" if is_image else "file",
+        "size": size_str,
+    }
+
+    return {"success": True, "attachment": attachment}
+
+
 @router.get("/messages/{channel_id}")
 async def list_messages(channel_id: str, limit: int = 100, current_user=Depends(get_current_user)):
     """Fetch real-time messages for a given channel or DM conversation."""
@@ -525,7 +580,8 @@ async def list_messages(channel_id: str, limit: int = 100, current_user=Depends(
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute("""
                     SELECT id::text, channel_id, sender_id, sender_name, sender_avatar,
-                           content, attachments, created_at, parent_id, is_read, COALESCE(reactions, '{}'::jsonb) AS reactions
+                           content, attachments, created_at, parent_id, is_read, COALESCE(reactions, '{}'::jsonb) AS reactions,
+                           COALESCE(is_pinned, false) AS is_pinned, pinned_by, pinned_at
                     FROM chat_messages
                     WHERE channel_id = %s
                     ORDER BY created_at ASC
@@ -609,7 +665,29 @@ async def send_message(payload: MessageCreateRequest, current_user=Depends(get_c
         "parent_id": payload.parent_id,
         "is_read": False,
         "reactions": {},
+        "is_pinned": False,
     }
+
+    if _has_database_url():
+        try:
+            conn = _get_connection()
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO chat_messages (id, channel_id, sender_id, sender_name, sender_avatar, content, attachments, parent_id, is_read, reactions, is_pinned)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (id) DO UPDATE SET
+                        content = EXCLUDED.content,
+                        attachments = EXCLUDED.attachments,
+                        parent_id = EXCLUDED.parent_id
+                """, (
+                    msg_id, payload.channel_id, sender_id, sender_name, sender_avatar,
+                    payload.content, json.dumps(payload.attachments or []), payload.parent_id,
+                    False, json.dumps({}), False
+                ))
+                conn.commit()
+            conn.close()
+        except Exception as dbe:
+            logger.warning("Error saving message to Postgres: %s", dbe)
 
     try:
         res = http_post(f"{base_url}/chat_messages", headers=headers, json=msg_data, timeout=5)
@@ -687,6 +765,56 @@ async def toggle_message_reaction(message_id: str, payload: dict, current_user=D
             logger.warning("Error updating reaction in DB: %s", err)
 
     return {"success": True, "message_id": message_id, "channel_id": channel_id, "reactions": {}}
+
+
+@router.post("/messages/{message_id}/pin")
+async def toggle_message_pin(message_id: str, payload: dict = {}, current_user=Depends(get_current_user)):
+    """Toggle a pinned status on a message and update DB & Supabase REST."""
+    actor = current_actor.get() or {}
+    user_id, user_email, _, _ = _get_actor_role_and_admin_status(actor, current_user)
+    user_label = actor.get("name") or current_user.get("nombre") or user_email or "Usuario"
+
+    new_pinned = None
+    channel_id = ""
+
+    if _has_database_url():
+        try:
+            conn = _get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT channel_id, COALESCE(is_pinned, false) AS is_pinned FROM chat_messages WHERE id = %s", (message_id,))
+                msg_row = cur.fetchone()
+                if msg_row:
+                    channel_id = str(msg_row.get("channel_id") or "")
+                    curr_pinned = bool(msg_row.get("is_pinned"))
+                    new_pinned = not curr_pinned
+                else:
+                    new_pinned = True
+
+                cur.execute("""
+                    UPDATE chat_messages 
+                    SET is_pinned = %s, pinned_by = %s, pinned_at = NOW() 
+                    WHERE id = %s
+                """, (new_pinned, user_label, message_id))
+                conn.commit()
+            conn.close()
+        except Exception as err:
+            logger.warning("Error updating pin in DB: %s", err)
+
+    try:
+        headers = _get_supabase_headers()
+        base_url = _get_supabase_url()
+        if new_pinned is None:
+            new_pinned = True
+        http_patch(
+            f"{base_url}/chat_messages?id=eq.{message_id}",
+            headers=headers,
+            json={"is_pinned": new_pinned, "pinned_by": user_label, "pinned_at": datetime.now(timezone.utc).isoformat()},
+            timeout=5,
+        )
+    except Exception as patch_err:
+        logger.warning("Supabase REST pin patch warning: %s", patch_err)
+
+    return {"success": True, "message_id": message_id, "channel_id": channel_id, "is_pinned": new_pinned}
 
 
 @router.post("/messages/mark-read")
