@@ -159,17 +159,19 @@ def run_startup_migrations(engine) -> None:
             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_chat_messages_channel_id ON public.chat_messages (channel_id);"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_chat_messages_created_at ON public.chat_messages (created_at);"))
             conn.execute(text("""
-                INSERT INTO public.chat_channels (id, name, description, is_private, category)
+                INSERT INTO public.chat_channels (id, name, description, is_private, category, allowed_roles)
                 VALUES 
-                  ('general', 'general', 'Comunicados e información de empresa', false, 'general'),
-                  ('ventas', 'comercial-ventas', 'Coordinación de cotizaciones y clientes', false, 'area'),
-                  ('laboratorio', 'laboratorio-ensayos', 'Ensayos de campo, muestras y probetas', false, 'area'),
-                  ('informes', 'informes-revision', 'Revisión y emisión de informes LEM', false, 'area'),
-                  ('alertas', 'alertas-gerencia', 'Notificaciones y clientes prioritarios', true, 'area')
-                ON CONFLICT (id) DO NOTHING;
+                  ('general', 'general', 'Comunicados e información de empresa', false, 'general', '{}'),
+                  ('ventas', 'comercial-ventas', 'Coordinación de cotizaciones y clientes', true, 'area', '{"admin", "admin_general", "gerencia", "super_admin", "comercial", "auxiliar_comercial"}'),
+                  ('laboratorio', 'laboratorio-ensayos', 'Ensayos de campo, muestras y probetas', true, 'area', '{"admin", "admin_general", "gerencia", "super_admin", "laboratorio", "jefe_laboratorio", "jefe_de_laboratorio", "tecnico", "tecnico_suelos", "laboratorio_tipificador"}'),
+                  ('informes', 'informes-revision', 'Revisión y emisión de informes LEM', true, 'area', '{"admin", "admin_general", "gerencia", "super_admin", "comercial", "auxiliar_comercial", "laboratorio", "jefe_laboratorio", "jefe_de_laboratorio"}'),
+                  ('alertas', 'alertas-gerencia', 'Notificaciones y clientes prioritarios', true, 'area', '{"admin", "admin_general", "gerencia", "super_admin"}')
+                ON CONFLICT (id) DO UPDATE SET
+                  is_private = EXCLUDED.is_private,
+                  allowed_roles = EXCLUDED.allowed_roles;
             """))
             conn.execute(text("NOTIFY pgrst, 'reload schema';"))
-            logger.info("Migration 050 applied.")
+            logger.info("Migration 050 applied (chat_channels area roles updated).")
     except Exception as err:
         logger.warning("Migration 050 skipped: %s", _short_err(err))
 

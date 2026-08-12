@@ -116,7 +116,7 @@ async def get_channel_members(channel_id: str, current_user=Depends(get_current_
         if _has_database_url():
             conn = _get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("SELECT allowed_emails, allowed_roles FROM chat_channels WHERE id = %s", (channel_id,))
+                cur.execute("SELECT allowed_emails, allowed_roles, is_private FROM chat_channels WHERE id = %s", (channel_id,))
                 ch = cur.fetchone()
                 if ch:
                     emails = set([e.lower() for e in (ch.get("allowed_emails") or [])])
@@ -128,6 +128,14 @@ async def get_channel_members(channel_id: str, current_user=Depends(get_current_
                         for r in role_rows:
                             if r.get("email"):
                                 emails.add(r["email"].lower())
+                    
+                    if not ch.get("is_private") and not roles and not emails:
+                        cur.execute("SELECT email FROM perfiles")
+                        all_rows = cur.fetchall() or []
+                        for r in all_rows:
+                            if r.get("email"):
+                                emails.add(r["email"].lower())
+
                     conn.close()
                     return {"members": list(emails)}
                 conn.close()
