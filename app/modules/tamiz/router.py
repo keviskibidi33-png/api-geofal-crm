@@ -171,14 +171,26 @@ def _ensure_payload_column(db: Session) -> None:
     if _PAYLOAD_COLUMN_READY:
         return
 
-    db.execute(text("ALTER TABLE tamiz_ensayos ADD COLUMN IF NOT EXISTS payload_json JSON"))
-    db.execute(text("ALTER TABLE tamiz_ensayos ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ"))
-    db.execute(
-        text(
-            "ALTER TABLE tamiz_ensayos "
-            "ADD COLUMN IF NOT EXISTS porcentaje_material_fino_pct DOUBLE PRECISION"
+    is_sqlite = db.bind and db.bind.dialect.name == "sqlite"
+    if is_sqlite:
+        for col_def in [
+            "payload_json JSON",
+            "deleted_at TIMESTAMPTZ",
+            "porcentaje_material_fino_pct DOUBLE PRECISION",
+        ]:
+            try:
+                db.execute(text(f"ALTER TABLE tamiz_ensayos ADD COLUMN {col_def}"))
+            except Exception:
+                pass
+    else:
+        db.execute(text("ALTER TABLE tamiz_ensayos ADD COLUMN IF NOT EXISTS payload_json JSON"))
+        db.execute(text("ALTER TABLE tamiz_ensayos ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ"))
+        db.execute(
+            text(
+                "ALTER TABLE tamiz_ensayos "
+                "ADD COLUMN IF NOT EXISTS porcentaje_material_fino_pct DOUBLE PRECISION"
+            )
         )
-    )
     db.flush()
     _PAYLOAD_COLUMN_READY = True
 
@@ -252,7 +264,7 @@ def _guardar_ensayo(
 
     ensayo.numero_ensayo = _build_numero_ensayo(payload)
     ensayo.numero_ot = payload.numero_ot
-    ensayo.cliente = payload.muestra or None
+    ensayo.cliente = getattr(payload, "cliente", None) or None
     ensayo.muestra = payload.muestra
     ensayo.fecha_documento = payload.fecha_ensayo
     ensayo.estado = estado
@@ -288,6 +300,23 @@ def _to_detalle_response(ensayo: TamizEnsayo) -> TamizDetalleResponse:
             payload = TamizRequest.model_validate(ensayo.payload_json)
         except Exception:
             logger.warning("payload_json invalido en tamiz_ensayos.id=%s", ensayo.id, exc_info=True)
+            if isinstance(ensayo.payload_json, dict):
+                try:
+                    payload = TamizRequest.model_construct(**ensayo.payload_json)
+                except Exception:
+                    pass
+
+    if payload is None:
+        payload = TamizRequest(
+            muestra=ensayo.muestra or "",
+            numero_ot=ensayo.numero_ot or "",
+            fecha_ensayo=ensayo.fecha_documento or "",
+            realizado_por="OPERADOR",
+            procedimiento="-",
+            tamano_maximo_nominal_visual_in="",
+            cliente=ensayo.cliente,
+            h_porcentaje_material_fino_pct=ensayo.porcentaje_material_fino_pct,
+        )
 
     return TamizDetalleResponse(
         id=ensayo.id,

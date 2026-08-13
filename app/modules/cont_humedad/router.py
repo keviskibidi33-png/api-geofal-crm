@@ -305,6 +305,24 @@ def _to_detalle_response(ensayo: ContHumedadEnsayo) -> ContHumedadDetalleRespons
             payload = ContHumedadRequest.model_validate(ensayo.payload_json)
         except Exception:
             logger.warning("payload_json invalido en cont_humedad_ensayos.id=%s", ensayo.id, exc_info=True)
+            if isinstance(ensayo.payload_json, dict):
+                try:
+                    payload = ContHumedadRequest.model_construct(**ensayo.payload_json)
+                except Exception:
+                    pass
+
+    if payload is None:
+        payload = ContHumedadRequest(
+            muestra=ensayo.muestra or "",
+            numero_ot=ensayo.numero_ot or "",
+            fecha_ensayo=ensayo.fecha_documento or "",
+            realizado_por="OPERADOR",
+            recipiente_numero="-",
+            tipo_muestra="Agregado",
+            tamano_maximo_muestra_visual_in="-",
+            cliente=ensayo.cliente,
+            contenido_humedad_pct=ensayo.contenido_humedad_pct,
+        )
 
     return ContHumedadDetalleResponse(
         id=ensayo.id,

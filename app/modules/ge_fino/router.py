@@ -299,6 +299,22 @@ def _to_detalle_response(ensayo: GeFinoEnsayo) -> GeFinoDetalleResponse:
             payload = GeFinoRequest.model_validate(ensayo.payload_json)
         except Exception:
             logger.warning("payload_json invalido en ge_fino_ensayos.id=%s", ensayo.id, exc_info=True)
+            if isinstance(ensayo.payload_json, dict):
+                try:
+                    payload = GeFinoRequest.model_construct(**ensayo.payload_json)
+                except Exception:
+                    pass
+
+    if payload is None:
+        payload = GeFinoRequest(
+            muestra=ensayo.muestra or "",
+            numero_ot=ensayo.numero_ot or "",
+            fecha_ensayo=ensayo.fecha_documento or "",
+            realizado_por="OPERADOR",
+            seco_horno_110_si_no="SI",
+            cliente=ensayo.cliente,
+            absorcion_pct=ensayo.absorcion_pct,
+        )
 
     return GeFinoDetalleResponse(
         id=ensayo.id,

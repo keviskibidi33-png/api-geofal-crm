@@ -295,6 +295,22 @@ def _to_detalle_response(ensayo: PesoUnitarioEnsayo) -> PesoUnitarioDetalleRespo
             payload = PesoUnitarioRequest.model_validate(ensayo.payload_json)
         except Exception:
             logger.warning("payload_json invalido en peso_unitario_ensayos.id=%s", ensayo.id, exc_info=True)
+            if isinstance(ensayo.payload_json, dict):
+                try:
+                    payload = PesoUnitarioRequest.model_construct(**ensayo.payload_json)
+                except Exception:
+                    pass
+
+    if payload is None:
+        payload = PesoUnitarioRequest(
+            muestra=ensayo.muestra or "",
+            numero_ot=ensayo.numero_ot or "",
+            fecha_ensayo=ensayo.fecha_documento or "",
+            realizado_por="OPERADOR",
+            cliente=ensayo.cliente,
+            peso_unitario_suelto_promedio=ensayo.peso_unitario_suelto_promedio,
+            peso_unitario_compactado_promedio=ensayo.peso_unitario_compactado_promedio,
+        )
 
     return PesoUnitarioDetalleResponse(
         id=ensayo.id,

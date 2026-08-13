@@ -406,6 +406,21 @@ def _to_detalle_response(ensayo: ProctorEnsayo) -> ProctorDetalleResponse:
             payload = ProctorRequest.model_validate(ensayo.payload_json)
         except Exception:
             logger.warning("payload_json invalido en proctor_ensayos.id=%s", ensayo.id, exc_info=True)
+            if isinstance(ensayo.payload_json, dict):
+                try:
+                    payload = ProctorRequest.model_construct(**ensayo.payload_json)
+                except Exception:
+                    pass
+
+    if payload is None:
+        payload = ProctorRequest(
+            muestra=ensayo.muestra or "",
+            numero_ot=ensayo.numero_ot or "",
+            fecha_ensayo=ensayo.fecha_documento or "",
+            realizado_por="OPERADOR",
+            cliente=ensayo.cliente,
+            densidad_seca_maxima=ensayo.densidad_seca_maxima,
+        )
 
     return ProctorDetalleResponse(
         id=ensayo.id,

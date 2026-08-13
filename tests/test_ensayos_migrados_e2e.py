@@ -211,6 +211,85 @@ class TestEnsayosMigradosE2E(unittest.TestCase):
         assert res_dl.status_code == 200
         assert res_dl.headers.get("X-AM-Id") == str(ensayo_id)
 
+    # ------------------------------------------------------------------
+    # 5. BUCLE LIFECYCLE: Crear -> Guardar -> Seguir Editando -> Salir -> Re-abrir Editar -> Guardar
+    # ------------------------------------------------------------------
+    def test_lifecycle_loop_no_blank_form_on_edit(self):
+        slugs_and_payloads = [
+            (
+                "cont-humedad",
+                {
+                    "muestra": "200-AG-26",
+                    "numero_ot": "2000-26",
+                    "fecha_ensayo": "2026/08/13",
+                    "realizado_por": "OPERADOR BUCLE",
+                    "recipiente_numero": "REC-99",
+                    "tipo_muestra": "Agregado",
+                    "tamano_maximo_muestra_visual_in": "1/2",
+                },
+                "X-Cont-Humedad-Id",
+            ),
+            (
+                "tamiz",
+                {
+                    "muestra": "201-AG-26",
+                    "numero_ot": "2001-26",
+                    "fecha_ensayo": "2026/08/13",
+                    "realizado_por": "OPERADOR BUCLE",
+                    "procedimiento": "A",
+                },
+                "X-Tamiz-Id",
+            ),
+            (
+                "ge-fino",
+                {
+                    "muestra": "202-AG-26",
+                    "numero_ot": "2002-26",
+                    "fecha_ensayo": "2026/08/13",
+                    "realizado_por": "OPERADOR BUCLE",
+                    "seco_horno_110_si_no": "SI",
+                },
+                "X-Ge-Fino-Id",
+            ),
+            (
+                "angularidad",
+                {
+                    "muestra": "203-AG-26",
+                    "numero_ot": "2003-26",
+                    "fecha_ensayo": "2026/08/13",
+                    "realizado_por": "OPERADOR BUCLE",
+                },
+                "X-ANG-Id",
+            ),
+        ]
+
+        for slug, payload, header_name in slugs_and_payloads:
+            # Step 1: Crear
+            res1 = client.post(f"/api/{slug}/excel?download=false", json=payload)
+            assert res1.status_code == 200, f"Step 1 failed for {slug}: {res1.text}"
+            ensayo_id = res1.json()["id"]
+
+            # Step 2: Seguir editando en la misma sesión
+            payload_v2 = {**payload, "cliente": "CLIENTE MODIFICADO"}
+            res2 = client.post(f"/api/{slug}/excel?download=false&ensayo_id={ensayo_id}", json=payload_v2)
+            assert res2.status_code == 200
+            assert res2.json()["id"] == ensayo_id
+
+            # Step 3: Salir / Re-abrir por GET detail (Simulando apertura de pantalla de edicion)
+            res_detail = client.get(f"/api/{slug}/{ensayo_id}")
+            assert res_detail.status_code == 200
+            detail_data = res_detail.json()
+            assert detail_data["id"] == ensayo_id
+            # VERIFICA QUE EL PAYLOAD NO SEA NULO NI ESTÉ EN BLANCO
+            assert detail_data["payload"] is not None, f"Payload string/dict was None for {slug}!"
+            assert detail_data["payload"]["muestra"] != "", f"Muestra empty on edit for {slug}!"
+
+            # Step 4: Guardar nuevamente tras re-apertura (Verificar header de descarga)
+            res4 = client.post(f"/api/{slug}/excel?download=true&ensayo_id={ensayo_id}", json=payload_v2)
+            assert res4.status_code == 200
+            assert res4.headers.get(header_name) == str(ensayo_id)
+
 
 if __name__ == "__main__":
     unittest.main()
+

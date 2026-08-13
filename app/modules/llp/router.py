@@ -365,6 +365,23 @@ def _to_detalle_response(ensayo: LLPEnsayo) -> LLPDetalleResponse:
             payload = LLPRequest.model_validate(ensayo.payload_json)
         except Exception:
             logger.warning("payload_json invalido en llp_ensayos.id=%s", ensayo.id, exc_info=True)
+            if isinstance(ensayo.payload_json, dict):
+                try:
+                    payload = LLPRequest.model_construct(**ensayo.payload_json)
+                except Exception:
+                    pass
+
+    if payload is None:
+        payload = LLPRequest(
+            muestra=ensayo.muestra or "",
+            numero_ot=ensayo.numero_ot or "",
+            fecha_ensayo=ensayo.fecha_documento or "",
+            realizado_por="OPERADOR",
+            cliente=ensayo.cliente,
+            limite_liquido_pct=ensayo.limite_liquido_pct,
+            limite_plastico_pct=ensayo.limite_plastico_pct,
+            indice_plasticidad_pct=ensayo.indice_plasticidad_pct,
+        )
 
     return LLPDetalleResponse(
         id=ensayo.id,

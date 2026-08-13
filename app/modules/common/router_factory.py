@@ -265,6 +265,16 @@ def create_lab_router(
                 payload = request_model.model_validate(ensayo.payload_json).model_dump(mode="json")
             except Exception:
                 logger.warning("payload_json invalid in %s.id=%s", table_name, ensayo.id, exc_info=True)
+                if isinstance(ensayo.payload_json, dict):
+                    payload = dict(ensayo.payload_json)
+
+        if payload is None:
+            payload = {
+                "muestra": ensayo.muestra or "",
+                "numero_ot": ensayo.numero_ot or "",
+                "cliente": ensayo.cliente or "",
+                "fecha_ensayo": ensayo.fecha_documento or "",
+            }
 
         return {
             "id": ensayo.id,
@@ -280,6 +290,7 @@ def create_lab_router(
             "fecha_actualizacion": ensayo.fecha_actualizacion,
             "payload": payload,
         }
+
 
     @router.get("/")
     async def list_ensayos(skip: int = 0, limit: int = 100, db: Session = Depends(get_db_session)):

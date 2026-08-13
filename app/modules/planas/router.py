@@ -297,6 +297,21 @@ def _to_detalle_response(ensayo: PlanasEnsayo) -> PlanasDetalleResponse:
             payload = PlanasRequest.model_validate(ensayo.payload_json)
         except Exception:
             logger.warning("payload_json invalido en planas_ensayos.id=%s", ensayo.id, exc_info=True)
+            if isinstance(ensayo.payload_json, dict):
+                try:
+                    payload = PlanasRequest.model_construct(**ensayo.payload_json)
+                except Exception:
+                    pass
+
+    if payload is None:
+        payload = PlanasRequest(
+            muestra=ensayo.muestra or "",
+            numero_ot=ensayo.numero_ot or "",
+            fecha_ensayo=ensayo.fecha_documento or "",
+            realizado_por="OPERADOR",
+            cliente=ensayo.cliente,
+            masa_inicial_g=ensayo.masa_inicial_g,
+        )
 
     return PlanasDetalleResponse(
         id=ensayo.id,
