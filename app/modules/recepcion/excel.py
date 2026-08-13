@@ -710,8 +710,10 @@ class ExcelLogic:
                 return ""
 
             if len(unique_values) > 1:
-                print(f"[WARNING] Inconsistencia en {label}: {unique_values}. Usando '{unique_values[0]}'")
-                return unique_values[0]
+                raise ValueError(
+                    f"Inconsistencia en {label}: se encontraron valores distintos "
+                    f"({', '.join(unique_values)})."
+                )
 
             return unique_values[0]
 
@@ -950,6 +952,7 @@ class ExcelLogic:
                     continue
 
                 m = {
+                    "item_numero": len(muestras) + 1,
                     "codigo_muestra_lem": normalize_lem_code(safe_str(lem)),
                     "identificacion_muestra": safe_str(ident),
                     "estructura": safe_str(get_val(r, c_est)),

@@ -41,7 +41,7 @@ TIPO_RECEPCION_CONFIG = {
 # ===== SCHEMAS PARA MUESTRAS =====
 class MuestraConcretoBase(BaseModel):
     """Esquema base para muestras de recepción (concreto y otras especialidades)"""
-    item_numero: int = Field(..., ge=1, description="Número de item")
+    item_numero: Optional[int] = Field(None, description="Número de item")
     codigo_muestra: Optional[str] = Field("", max_length=50, description="Código de la muestra")
     codigo_muestra_lem: Optional[str] = Field("", max_length=50, description="Código muestra LEM (zona sombreada)")
     identificacion_muestra: Optional[str] = Field("", max_length=500, description="Identificación/Código de la muestra (multilínea)")
