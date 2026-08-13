@@ -311,5 +311,80 @@ class TestSeguimientoComercialEndpoints(unittest.TestCase):
         db_check = self.db.query(SeguimientoClienteComercial).filter(SeguimientoClienteComercial.id == self.test_record.id).first()
         self.assertIsNone(db_check)
 
+    def test_export_excel_with_seguimiento_template_numeric_cost(self):
+        # Update test record with cost
+        self.test_record.costo_cotiz_sin_igv = "S/. 17,759.00"
+        self.test_record.categoria_servicio = "DEN"
+        self.db.commit()
+
+        template_path = str(PROJECT_ROOT / "app" / "templates" / "Seguimiento.xlsx")
+        excel_bytes = SeguimientoClienteComercialService.exportar_excel(self.db, template_path)
+        
+        import openpyxl
+        wb = openpyxl.load_workbook(excel_bytes, data_only=False)
+        sheet = wb['COMERCIAL'] if 'COMERCIAL' in wb.sheetnames else wb.active
+
+        # Find header row
+        header_row = 8
+        col_mapping = SeguimientoClienteComercialService._resolve_excel_column_mapping(sheet, header_row)
+        
+        cost_col = None
+        for col_idx, field in col_mapping.items():
+            if field == "costo_cotiz_sin_igv":
+                cost_col = col_idx
+                break
+
+        self.assertIsNotNone(cost_col, "COSTO COTIZ SIN IGV column should be detected")
+        self.assertEqual(cost_col, 12, "COSTO COTIZ SIN IGV should be at column 12 (L)")
+
+        # Verify exported row 9
+        row_9_cost_cell = sheet.cell(row=header_row + 1, column=cost_col)
+        self.assertIn(type(row_9_cost_cell.value), (int, float), "Costo must be exported as a numeric value")
+        self.assertEqual(row_9_cost_cell.value, 17759)
+        self.assertEqual(row_9_cost_cell.number_format, '#,##0.00')
+
+    def test_import_excel_14_column_seguimiento_template(self):
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "COMERCIAL"
+
+        headers = [
+            "N°", "FECHA CONTACTO", "PERSONA CONTACTO", "CELULAR", "ASESOR COMENTARIO",
+            "EMPRESA", "F.ULTIMO CONTACTO", "RUBRO", "ESTADO CLIENTE", "SERVICIO SOLICITADO",
+            "N° COTIZACION", "COSTO COTIZ SIN IGV", "ESTADO SEGUIMIENTO", "CATEOGRIA CLIENTE"
+        ]
+        for col_idx, header in enumerate(headers, start=1):
+            sheet.cell(row=8, column=col_idx).value = header
+
+        sheet.cell(row=9, column=1).value = 1
+        sheet.cell(row=9, column=2).value = "2026-07-01"
+        sheet.cell(row=9, column=3).value = "Juan Perez"
+        sheet.cell(row=9, column=4).value = "987654321"
+        sheet.cell(row=9, column=5).value = "Comentario de asesor"
+        sheet.cell(row=9, column=6).value = "Constructora ABC SAC"
+        sheet.cell(row=9, column=7).value = "2026-07-05"
+        sheet.cell(row=9, column=8).value = "EDIFICACIONES"
+        sheet.cell(row=9, column=9).value = "COTIZACION ENVIADA"
+        sheet.cell(row=9, column=10).value = "ENSAYO DE DENSIDAD"
+        sheet.cell(row=9, column=11).value = "COT-123-26"
+        sheet.cell(row=9, column=12).value = 17759.0
+        sheet.cell(row=9, column=13).value = "VENTA"
+        sheet.cell(row=9, column=14).value = "DEN"
+
+        payload_buffer = BytesIO()
+        workbook.save(payload_buffer)
+
+        inserted = SeguimientoClienteComercialService.importar_excel(self.db, payload_buffer.getvalue(), creado_por="Test 14-Col Import")
+        self.assertEqual(inserted, 1)
+
+        imported = self.db.query(SeguimientoClienteComercial).order_by(SeguimientoClienteComercial.id.desc()).first()
+        self.assertIsNotNone(imported)
+        self.assertEqual(imported.razon_social, "Constructora ABC SAC")
+        self.assertEqual(imported.comentarios_asesor, "Comentario de asesor")
+        self.assertEqual(imported.numero_cotizacion, "COT-123-26")
+        self.assertEqual(imported.costo_cotiz_sin_igv, "17759")
+        self.assertEqual(imported.categoria_servicio, "Categoría 1 (DEN)")
+
+
 if __name__ == "__main__":
     unittest.main()

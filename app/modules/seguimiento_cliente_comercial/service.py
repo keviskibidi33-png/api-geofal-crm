@@ -88,18 +88,16 @@ SEG_CLIENTE_HEADERS = [
     "FECHA CONTACTO",
     "PERSONA CONTACTO",
     "CELULAR",
-    "EMAIL",
-    "RAZÓN SOCIAL",
-    "RUC",
-    "ASESOR",
-    "CONTACTO",
+    "ASESOR COMENTARIO",
+    "EMPRESA",
+    "F.ULTIMO CONTACTO",
     "RUBRO",
     "ESTADO CLIENTE",
     "SERVICIO SOLICITADO",
-    "TIPO SERVICIO",
-    "F. ÚLTIMO CONTACTO",
-    "N° COTIZACIÓN",
+    "N° COTIZACION",
+    "COSTO COTIZ SIN IGV",
     "ESTADO SEGUIMIENTO",
+    "CATEGORIA CLIENTE",
 ]
 
 class SeguimientoClienteComercialService:
@@ -742,10 +740,106 @@ class SeguimientoClienteComercialService:
         }
 
     @staticmethod
+    def _parse_money_number(val: object) -> Optional[float]:
+        """
+        Parses money string or number into a clean float value for Excel numeric storage.
+        """
+        if val is None:
+            return None
+        if isinstance(val, (int, float)):
+            return float(val)
+        val_str = str(val).strip()
+        if not val_str or val_str in ("-", "--", "N/A", "null", "None"):
+            return None
+        val_str = re.sub(r'^(S/\.?|\$|PEN|USD)\s*', '', val_str, flags=re.IGNORECASE).strip()
+        raw = re.sub(r'[^0-9.,-]', '', val_str)
+        if not raw or raw == '-':
+            return None
+
+        sign = -1 if raw.startswith('-') else 1
+        unsigned = raw.replace('-', '')
+        normalized = unsigned
+
+        if re.match(r'^\d{1,3}(?:\.\d{3})+\.\d{1,2}$', unsigned):
+            normalized = str(float(unsigned.replace('.', '')) / 100)
+        elif re.match(r'^\d{1,3}(?:,\d{3})+,\d{1,2}$', unsigned):
+            normalized = str(float(unsigned.replace(',', '')) / 100)
+        elif re.match(r'^\d{1,3}(?:,\d{3})+\.\d{1,2}$', unsigned):
+            normalized = unsigned.replace(',', '')
+        elif re.match(r'^\d{1,3}(?:\.\d{3})+,\d{1,2}$', unsigned):
+            normalized = unsigned.replace('.', '').replace(',', '.')
+        elif re.match(r'^\d+[.,]\d{1,2}$', unsigned):
+            normalized = unsigned.replace(',', '.')
+        elif re.match(r'^\d{1,3}(?:[.,]\d{3})+$', unsigned):
+            normalized = re.sub(r'[.,]', '', unsigned)
+
+        try:
+            return float(normalized) * sign
+        except (ValueError, TypeError):
+            return None
+
+    @staticmethod
+    def _resolve_excel_column_mapping(sheet, header_row: int) -> dict[int, str]:
+        """
+        Dynamically maps column indices (1-based) to SeguimientoClienteComercial field names
+        based on the normalized header text found at header_row.
+        """
+        mapping: dict[int, str] = {}
+        for col_idx in range(1, sheet.max_column + 1):
+            raw_val = sheet.cell(row=header_row, column=col_idx).value
+            norm = SeguimientoClienteComercialService._normalize_tsv_header(raw_val)
+            if not norm:
+                continue
+
+            if norm in ("N", "NO", "ITEM", "N DE ORDEN", "NUMERO"):
+                mapping[col_idx] = "no"
+            elif "FECHA CONTACTO" in norm or norm == "F CONTACTO":
+                mapping[col_idx] = "fecha_contacto"
+            elif "PERSONA CONTACTO" in norm or norm == "CONTACTO PERSONA":
+                mapping[col_idx] = "persona_contacto"
+            elif "CELULAR" in norm or "TELEFONO" in norm:
+                mapping[col_idx] = "numero_celular"
+            elif "ASESOR COMENTARIO" in norm or "COMENTARIO ASESOR" in norm or "COMENTARIOS ASESOR" in norm:
+                mapping[col_idx] = "comentarios_asesor"
+            elif "ASISTENTE COMENTARIO" in norm or "COMENTARIO ASISTENTE" in norm or "COMENTARIOS ASISTENTE" in norm:
+                mapping[col_idx] = "comentarios_asistente"
+            elif "EMPRESA" in norm or "RAZON SOCIAL" in norm:
+                mapping[col_idx] = "razon_social"
+            elif "RUC" in norm:
+                mapping[col_idx] = "ruc"
+            elif "ULTIMO CONTACTO" in norm or "F ULTIMO CONTACTO" in norm:
+                mapping[col_idx] = "fecha_ultimo_contacto"
+            elif norm == "ASESOR":
+                mapping[col_idx] = "asesor"
+            elif norm == "CONTACTO":
+                mapping[col_idx] = "contacto"
+            elif "RUBRO" in norm:
+                mapping[col_idx] = "rubro"
+            elif "ESTADO CLIENTE" in norm:
+                mapping[col_idx] = "estado_cliente"
+            elif "SERVICIO SOLICITADO" in norm or "SERVICIO" in norm:
+                mapping[col_idx] = "servicio_solicitado"
+            elif "COTIZACION" in norm or "COTIZAC ON" in norm or "COTIZ" in norm:
+                if "COSTO" in norm or "MONTO" in norm or "PRECIO" in norm or "VALOR" in norm:
+                    mapping[col_idx] = "costo_cotiz_sin_igv"
+                else:
+                    mapping[col_idx] = "numero_cotizacion"
+            elif "COSTO" in norm or "MONTO" in norm or "VALOR" in norm:
+                mapping[col_idx] = "costo_cotiz_sin_igv"
+            elif "ESTADO SEGUIMIENTO" in norm or "ESTADO DE SEGUIMIENTO" in norm:
+                mapping[col_idx] = "estado_seguimiento"
+            elif "CATEGORIA" in norm or "CATEOGRIA" in norm or "TIPO SERVICIO" in norm:
+                mapping[col_idx] = "categoria_servicio"
+            elif "EMAIL" in norm or "E MAIL" in norm or "CORREO" in norm:
+                mapping[col_idx] = "email"
+
+        return mapping
+
+    @staticmethod
     def importar_excel(db: Session, file_content: bytes, creado_por: Optional[str] = None) -> int:
         """
         Imports database records from the Excel file contents.
-        This deletes all existing records in 'seguimiento_cliente_comercial' and inserts from row 5 onwards.
+        This deletes all existing records in 'seguimiento_cliente_comercial' and inserts from header_row + 1 onwards.
         """
         try:
             wb = openpyxl.load_workbook(io.BytesIO(file_content), data_only=True)
@@ -760,84 +854,101 @@ class SeguimientoClienteComercialService:
         db.commit()
         
         inserted_count = 0
-        
-        def normalize_catalog(val: object, allowed_values: list[str], aliases: Optional[dict[str, str]] = None) -> Optional[str]:
-            return SeguimientoClienteComercialService._normalize_catalog_value(val, allowed_values, aliases)
-            
-        def to_int(val) -> Optional[int]:
-            if val is None:
-                return None
-            try:
-                return int(float(val))
-            except (ValueError, TypeError):
-                return None
-
-        def to_str(val) -> Optional[str]:
-            if val is None:
-                return None
-            val_str = str(val).strip()
-            if not val_str:
-                return None
-            # Handle float representation (e.g. RUC, cellular converted to float with .0)
-            if isinstance(val, float) and val.is_integer():
-                return str(int(val))
-            return val_str
-
-        def to_date(val) -> Optional[date]:
-            return SeguimientoClienteComercialService._parse_date_value(val) or SeguimientoClienteComercialService._parse_text_date(val)
 
         header_row = 4
         for r in range(1, 15):
-            row_cells = [sheet.cell(row=r, column=c).value for c in range(1, 20)]
+            row_cells = [sheet.cell(row=r, column=c).value for c in range(1, min(30, sheet.max_column + 1))]
             normalized_row = [SeguimientoClienteComercialService._normalize_tsv_header(cell) for cell in row_cells]
-            if any(cell == "FECHA CONTACTO" for cell in normalized_row) and any(cell == "ESTADO CLIENTE" for cell in normalized_row):
+            if any(cell == "FECHA CONTACTO" for cell in normalized_row) and any("ESTADO" in cell for cell in normalized_row):
                 header_row = r
                 break
 
+        col_mapping = SeguimientoClienteComercialService._resolve_excel_column_mapping(sheet, header_row)
+
         # Parse rows starting from header_row + 1
         for r in range(header_row + 1, sheet.max_row + 1):
-            no_val = sheet.cell(row=r, column=1).value
-            fecha_contacto_val = sheet.cell(row=r, column=2).value
-            persona_contacto_val = sheet.cell(row=r, column=3).value
-            celular_val = sheet.cell(row=r, column=4).value
-            email_val = sheet.cell(row=r, column=5).value
-            razon_social_val = sheet.cell(row=r, column=6).value
-            ruc_val = sheet.cell(row=r, column=7).value
-            asesor_val = sheet.cell(row=r, column=8).value
-            contacto_val = sheet.cell(row=r, column=9).value
-            rubro_val = sheet.cell(row=r, column=10).value
-            estado_cliente_val = sheet.cell(row=r, column=11).value
-            servicio_val = sheet.cell(row=r, column=12).value
-            categoria_val = sheet.cell(row=r, column=13).value or sheet.cell(row=r, column=17).value
-            fecha_ultimo_val = sheet.cell(row=r, column=14).value
-            cotizacion_val = sheet.cell(row=r, column=15).value
-            estado_seg_val = sheet.cell(row=r, column=16).value
-            
-            # If the row is entirely empty, skip it. Specifically check if crucial fields are missing
-            if not any([no_val, fecha_contacto_val, persona_contacto_val, razon_social_val, ruc_val]):
-                continue
-                
-            db_item = SeguimientoClienteComercialService._build_seguimiento_item_from_values(
-                {
-                    "no": inserted_count + 1,
-                    "fecha_contacto": fecha_contacto_val,
-                    "persona_contacto": persona_contacto_val,
-                    "numero_celular": celular_val,
-                    "email": email_val,
-                    "razon_social": razon_social_val,
-                    "ruc": ruc_val,
-                    "asesor": asesor_val,
-                    "contacto": contacto_val,
-                    "rubro": rubro_val,
-                    "estado_cliente": estado_cliente_val,
-                    "servicio_solicitado": servicio_val,
-                    "categoria_servicio": categoria_val,
-                    "fecha_ultimo_contacto": fecha_ultimo_val,
-                    "numero_cotizacion": cotizacion_val,
-                    "estado_seguimiento": estado_seg_val,
-                },
-                creado_por=creado_por,
-            )
+            if col_mapping:
+                row_dict: dict[str, object] = {}
+                for col_idx, field_name in col_mapping.items():
+                    row_dict[field_name] = sheet.cell(row=r, column=col_idx).value
+
+                no_val = row_dict.get("no")
+                fecha_contacto_val = row_dict.get("fecha_contacto")
+                persona_contacto_val = row_dict.get("persona_contacto")
+                razon_social_val = row_dict.get("razon_social")
+                ruc_val = row_dict.get("ruc")
+
+                if not any([no_val, fecha_contacto_val, persona_contacto_val, razon_social_val, ruc_val]):
+                    continue
+
+                db_item = SeguimientoClienteComercialService._build_seguimiento_item_from_values(
+                    {
+                        "no": inserted_count + 1,
+                        "fecha_contacto": row_dict.get("fecha_contacto"),
+                        "persona_contacto": row_dict.get("persona_contacto"),
+                        "numero_celular": row_dict.get("numero_celular"),
+                        "email": row_dict.get("email"),
+                        "razon_social": row_dict.get("razon_social"),
+                        "ruc": row_dict.get("ruc"),
+                        "asesor": row_dict.get("asesor"),
+                        "contacto": row_dict.get("contacto"),
+                        "rubro": row_dict.get("rubro"),
+                        "estado_cliente": row_dict.get("estado_cliente"),
+                        "servicio_solicitado": row_dict.get("servicio_solicitado"),
+                        "categoria_servicio": row_dict.get("categoria_servicio"),
+                        "fecha_ultimo_contacto": row_dict.get("fecha_ultimo_contacto"),
+                        "comentarios_asistente": row_dict.get("comentarios_asistente"),
+                        "comentarios_asesor": row_dict.get("comentarios_asesor"),
+                        "numero_cotizacion": row_dict.get("numero_cotizacion"),
+                        "costo_cotiz_sin_igv": str(row_dict.get("costo_cotiz_sin_igv")) if row_dict.get("costo_cotiz_sin_igv") is not None else None,
+                        "estado_seguimiento": row_dict.get("estado_seguimiento"),
+                    },
+                    creado_por=creado_por,
+                )
+            else:
+                # Fallback legacy 17-column parsing if no mapping resolved
+                no_val = sheet.cell(row=r, column=1).value
+                fecha_contacto_val = sheet.cell(row=r, column=2).value
+                persona_contacto_val = sheet.cell(row=r, column=3).value
+                celular_val = sheet.cell(row=r, column=4).value
+                email_val = sheet.cell(row=r, column=5).value
+                razon_social_val = sheet.cell(row=r, column=6).value
+                ruc_val = sheet.cell(row=r, column=7).value
+                asesor_val = sheet.cell(row=r, column=8).value
+                contacto_val = sheet.cell(row=r, column=9).value
+                rubro_val = sheet.cell(row=r, column=10).value
+                estado_cliente_val = sheet.cell(row=r, column=11).value
+                servicio_val = sheet.cell(row=r, column=12).value
+                categoria_val = sheet.cell(row=r, column=13).value or sheet.cell(row=r, column=17).value
+                fecha_ultimo_val = sheet.cell(row=r, column=14).value
+                cotizacion_val = sheet.cell(row=r, column=15).value
+                estado_seg_val = sheet.cell(row=r, column=16).value
+
+                if not any([no_val, fecha_contacto_val, persona_contacto_val, razon_social_val, ruc_val]):
+                    continue
+
+                db_item = SeguimientoClienteComercialService._build_seguimiento_item_from_values(
+                    {
+                        "no": inserted_count + 1,
+                        "fecha_contacto": fecha_contacto_val,
+                        "persona_contacto": persona_contacto_val,
+                        "numero_celular": celular_val,
+                        "email": email_val,
+                        "razon_social": razon_social_val,
+                        "ruc": ruc_val,
+                        "asesor": asesor_val,
+                        "contacto": contacto_val,
+                        "rubro": rubro_val,
+                        "estado_cliente": estado_cliente_val,
+                        "servicio_solicitado": servicio_val,
+                        "categoria_servicio": categoria_val,
+                        "fecha_ultimo_contacto": fecha_ultimo_val,
+                        "numero_cotizacion": cotizacion_val,
+                        "estado_seguimiento": estado_seg_val,
+                    },
+                    creado_por=creado_por,
+                )
+
             if not db_item:
                 continue
 
@@ -845,7 +956,6 @@ class SeguimientoClienteComercialService:
             db.add(db_item)
             inserted_count += 1
             
-            # Flush periodically to avoid huge memory use
             if inserted_count % 100 == 0:
                 db.flush()
                 
@@ -855,8 +965,8 @@ class SeguimientoClienteComercialService:
     @staticmethod
     def exportar_excel(db: Session, template_path: str) -> io.BytesIO:
         """
-        Loads the template file (Seguimiento.xlsx), populates columns A-Q starting from row 9 with database records,
-        and returns the result as a BytesIO file.
+        Loads the template file (Seguimiento.xlsx), populates columns starting from header_row + 1 with database records,
+        formatting COSTO COTIZ SIN IGV as true numeric float, and returns the result as a BytesIO file.
         """
         if not os.path.exists(template_path):
             try:
@@ -878,7 +988,7 @@ class SeguimientoClienteComercialService:
         
         header_row = 8
         for r in range(1, 15):
-            row_vals = [str(sheet.cell(row=r, column=c).value or "").upper() for c in range(1, 20)]
+            row_vals = [str(sheet.cell(row=r, column=c).value or "").upper() for c in range(1, min(30, sheet.max_column + 1))]
             if any("FECHA CONTACTO" in v for v in row_vals) or any("ESTADO CLIENTE" in v for v in row_vals):
                 header_row = r
                 break
@@ -893,29 +1003,44 @@ class SeguimientoClienteComercialService:
         
         # Clean existing template data rows
         for r in range(start_row, max(sheet.max_row + 1, len(records) + start_row + 10)):
-            for col in range(1, 20):
+            for col in range(1, max(sheet.max_column + 1, 20)):
                 sheet.cell(row=r, column=col).value = None
+
+        col_mapping = SeguimientoClienteComercialService._resolve_excel_column_mapping(sheet, header_row)
+
+        # Fallback if no headers were matched
+        if not col_mapping:
+            col_mapping = {
+                1: "no",
+                2: "fecha_contacto",
+                3: "persona_contacto",
+                4: "numero_celular",
+                5: "comentarios_asesor",
+                6: "razon_social",
+                7: "fecha_ultimo_contacto",
+                8: "rubro",
+                9: "estado_cliente",
+                10: "servicio_solicitado",
+                11: "numero_cotizacion",
+                12: "costo_cotiz_sin_igv",
+                13: "estado_seguimiento",
+                14: "categoria_servicio",
+            }
 
         # Write data keeping styles
         for idx, rec in enumerate(records):
             r = start_row + idx
-            sheet.cell(row=r, column=1).value = rec.no
-            sheet.cell(row=r, column=2).value = rec.fecha_contacto
-            sheet.cell(row=r, column=3).value = rec.persona_contacto
-            sheet.cell(row=r, column=4).value = rec.numero_celular
-            sheet.cell(row=r, column=5).value = rec.email
-            sheet.cell(row=r, column=6).value = rec.razon_social
-            sheet.cell(row=r, column=7).value = rec.ruc
-            sheet.cell(row=r, column=8).value = rec.asesor
-            sheet.cell(row=r, column=9).value = rec.contacto
-            sheet.cell(row=r, column=10).value = rec.rubro
-            sheet.cell(row=r, column=11).value = rec.estado_cliente
-            sheet.cell(row=r, column=12).value = rec.servicio_solicitado
-            sheet.cell(row=r, column=13).value = getattr(rec, "categoria_servicio", None) or getattr(rec, "categoria_cliente", None)
-            sheet.cell(row=r, column=14).value = rec.fecha_ultimo_contacto
-            sheet.cell(row=r, column=15).value = rec.numero_cotizacion
-            sheet.cell(row=r, column=16).value = rec.estado_seguimiento
-            sheet.cell(row=r, column=17).value = getattr(rec, "categoria_servicio", None) or getattr(rec, "categoria_cliente", None)
+            for col_idx, field_name in col_mapping.items():
+                if field_name == "costo_cotiz_sin_igv":
+                    costo_num = SeguimientoClienteComercialService._parse_money_number(getattr(rec, field_name, None))
+                    sheet.cell(row=r, column=col_idx).value = costo_num
+                    if costo_num is not None:
+                        sheet.cell(row=r, column=col_idx).number_format = '#,##0.00'
+                elif field_name == "categoria_servicio":
+                    val = getattr(rec, "categoria_servicio", None) or getattr(rec, "categoria_cliente", None)
+                    sheet.cell(row=r, column=col_idx).value = val
+                else:
+                    sheet.cell(row=r, column=col_idx).value = getattr(rec, field_name, None)
 
         # Save workbook to BytesIO
         output = io.BytesIO()
