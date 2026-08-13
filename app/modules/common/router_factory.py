@@ -192,8 +192,19 @@ def create_lab_router(
         nonlocal payload_column_ready
         if payload_column_ready:
             return
-        db.execute(text(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS payload_json JSON"))
-        db.execute(text(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ"))
+        is_sqlite = db.bind and db.bind.dialect.name == "sqlite"
+        if is_sqlite:
+            try:
+                db.execute(text(f"ALTER TABLE {table_name} ADD COLUMN payload_json JSON"))
+            except Exception:
+                pass
+            try:
+                db.execute(text(f"ALTER TABLE {table_name} ADD COLUMN deleted_at TIMESTAMPTZ"))
+            except Exception:
+                pass
+        else:
+            db.execute(text(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS payload_json JSON"))
+            db.execute(text(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ"))
         db.flush()
         payload_column_ready = True
 

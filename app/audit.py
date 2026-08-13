@@ -73,6 +73,7 @@ def _audit_payload(target, action_prefix: str) -> dict:
             "numero_ensayo": getattr(target, "numero_ensayo", None),
             "id": getattr(target, "id", None),
         }, ensure_ascii=False),
+        "severity": "info",
     }
 
 

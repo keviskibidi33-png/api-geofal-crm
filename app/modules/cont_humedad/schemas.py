@@ -28,14 +28,16 @@ def _normalize_flexible_date(raw: str) -> str:
 
 
 def _normalize_muestra(raw: str) -> str:
+    """Normaliza código de muestra para ensayos de agregados (prefijo AG)."""
     value = raw.strip().upper()
     if not value:
         return value
 
     compact = re.sub(r"\s+", "", value)
-    match = re.match(r"^(\d+)(?:-SU)?(?:-(\d{2}))?$", compact)
+    # Acepta formatos: 171, 171-26, 171-AG, 171-AG-26
+    match = re.match(r"^(\d+)(?:-(?:AG|SU))?(?:-(\d{2}))?$", compact)
     if match:
-        return f"{match.group(1)}-SU-{match.group(2) or _year_short()}"
+        return f"{match.group(1)}-AG-{match.group(2) or _year_short()}"
     return value
 
 
@@ -97,6 +99,7 @@ class ContHumedadRequest(BaseModel):
     numero_ot: str = Field(..., description="Numero OT")
     fecha_ensayo: str = Field(..., description="Fecha de ensayo YYYY/MM/DD")
     realizado_por: str = Field(..., description="Realizado por")
+    cliente: Optional[str] = Field(None, description="Cliente u ot solicitante")
 
     # Tabla principal (rows 19-27)
     numero_ensayo: Optional[int] = 1

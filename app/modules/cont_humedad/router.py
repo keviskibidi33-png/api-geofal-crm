@@ -171,14 +171,26 @@ def _ensure_payload_column(db: Session) -> None:
     if _PAYLOAD_COLUMN_READY:
         return
 
-    db.execute(text("ALTER TABLE cont_humedad_ensayos ADD COLUMN IF NOT EXISTS payload_json JSON"))
-    db.execute(text("ALTER TABLE cont_humedad_ensayos ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ"))
-    db.execute(
-        text(
-            "ALTER TABLE cont_humedad_ensayos "
-            "ADD COLUMN IF NOT EXISTS contenido_humedad_pct DOUBLE PRECISION"
+    is_sqlite = db.bind and db.bind.dialect.name == "sqlite"
+    if is_sqlite:
+        for col_def in [
+            "payload_json JSON",
+            "deleted_at TIMESTAMPTZ",
+            "contenido_humedad_pct DOUBLE PRECISION",
+        ]:
+            try:
+                db.execute(text(f"ALTER TABLE cont_humedad_ensayos ADD COLUMN {col_def}"))
+            except Exception:
+                pass
+    else:
+        db.execute(text("ALTER TABLE cont_humedad_ensayos ADD COLUMN IF NOT EXISTS payload_json JSON"))
+        db.execute(text("ALTER TABLE cont_humedad_ensayos ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ"))
+        db.execute(
+            text(
+                "ALTER TABLE cont_humedad_ensayos "
+                "ADD COLUMN IF NOT EXISTS contenido_humedad_pct DOUBLE PRECISION"
+            )
         )
-    )
     db.flush()
     _PAYLOAD_COLUMN_READY = True
 
@@ -257,7 +269,7 @@ def _guardar_ensayo(
 
     ensayo.numero_ensayo = _build_numero_ensayo(payload)
     ensayo.numero_ot = payload.numero_ot
-    ensayo.cliente = payload.muestra or None
+    ensayo.cliente = getattr(payload, "cliente", None) or None
     ensayo.muestra = payload.muestra
     ensayo.fecha_documento = payload.fecha_ensayo
     ensayo.estado = estado
@@ -450,7 +462,7 @@ def generar_excel_cont_humedad(
         )
     except FileNotFoundError as exc:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Template no encontrado: {exc}")
+        raise HTTPException(status_code=404, detail=f"Template no encontrado: {exc}")
     except HTTPException:
         db.rollback()
         raise
