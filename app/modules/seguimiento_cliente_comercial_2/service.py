@@ -54,6 +54,11 @@ PREDEFINED_ESTADOS_SEGUIMIENTO = [
     "Perdido",
     "Seguimiento futuro",
 ]
+REMOVED_ESTADOS_SEGUIMIENTO_CATALOG = {
+    "PENDIENTE",
+    "SEGUIMIENTO",
+}
+
 
 STATE_ALIASES = {
     "1 SOLICITUD INFORMACION": "SE SOLICITÓ INFORMACIÓN",
@@ -866,7 +871,11 @@ class SeguimientoClienteComercialService:
                 excluded_values=REMOVED_SERVICIOS_CATALOG,
             ),
             "categorias_servicio": merge_catalogs(PREDEFINED_CATEGORIAS_SERVICIO, db_categorias),
-            "estados_seguimiento": merge_catalogs(PREDEFINED_ESTADOS_SEGUIMIENTO, db_estados_seguimiento),
+            "estados_seguimiento": merge_catalogs(
+                PREDEFINED_ESTADOS_SEGUIMIENTO,
+                db_estados_seguimiento,
+                excluded_values=REMOVED_ESTADOS_SEGUIMIENTO_CATALOG,
+            ),
         }
 
     @staticmethod
