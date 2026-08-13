@@ -74,6 +74,15 @@ def _user_has_channel_access(ch: dict, user_id: str, user_email: str, user_role:
         return True
 
     channel_id = str(ch.get("id") or "")
+    channel_id_lower = channel_id.lower()
+
+    open_operational_channels = {
+        "general", "laboratorio", "laboratorio-ensayos", "ventas", 
+        "comercial-ventas", "informes", "informes-revision"
+    }
+    if channel_id_lower in open_operational_channels and (user_id or user_email):
+        return True
+
     if channel_id.startswith("dm_") or channel_id.startswith("dm-"):
         prefix = "dm_" if channel_id.startswith("dm_") else "dm-"
         delimiter = "_" if channel_id.startswith("dm_") else "-"
