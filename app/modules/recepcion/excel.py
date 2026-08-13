@@ -827,6 +827,9 @@ class ExcelLogic:
         if rp and ('www.' in rp.lower() or 'http' in rp.lower() or '@' in rp or 'laboratorio' in rp.lower()):
             data['recibido_por'] = ''  # Discard, it's the footer
 
+        data['emision_fisica'] = False
+        data['emision_digital'] = True
+
         # Muestras
         # Find header row for table, looks for "ITEM" or "CÓDIGO LEM"
         header_row = 0

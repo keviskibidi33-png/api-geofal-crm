@@ -199,6 +199,11 @@ class RecepcionService:
                 if field in recepcion_dict and recepcion_dict[field] == "":
                     recepcion_dict[field] = "Sin especificar"
             
+            if recepcion_dict.get('emision_fisica') is None:
+                recepcion_dict['emision_fisica'] = False
+            if recepcion_dict.get('emision_digital') is None:
+                recepcion_dict['emision_digital'] = True
+            
             # Convertir fechas de string a datetime (acepta YYYY/MM/DD y legacy)
             def parse_date(date_str: Optional[str]) -> Optional[datetime]:
                 return parse_flexible_date(date_str)
