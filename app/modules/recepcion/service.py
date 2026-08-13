@@ -66,7 +66,7 @@ class RecepcionService:
         codigo_lem = str(raw.get("codigo_muestra_lem") or "").strip()
 
         # Regla mínima anti-fantasmas: sin ningún campo descriptivo básico, la fila no existe.
-        if not identificacion and not fecha_moldeo and not descripcion and not codigo_lem:
+        if not identificacion and not fecha_moldeo and not descripcion:
             return None
 
         cleaned = dict(raw)

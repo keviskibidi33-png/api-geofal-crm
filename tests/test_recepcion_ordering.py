@@ -214,7 +214,8 @@ class TestRecepcionOrdering(unittest.TestCase):
         self.assertIsNotNone(stored)
         self.assertEqual(len(stored.muestras), 1)
         self.assertEqual([m.item_numero for m in stored.muestras], [1])
-        self.assertEqual([m.codigo_muestra_lem for m in stored.muestras], ["5001-CO-26"])
+        suffix = str(datetime.now().year)[-2:]
+        self.assertEqual([m.codigo_muestra_lem for m in stored.muestras], [f"5001-CO-{suffix}"])
 
         updated = service.actualizar_recepcion(
             self.db,
@@ -269,7 +270,7 @@ class TestRecepcionOrdering(unittest.TestCase):
         self.assertEqual([m.item_numero for m in stored_after.muestras], [1, 2])
         self.assertEqual(
             [m.codigo_muestra_lem for m in stored_after.muestras],
-            ["6002-CO-26", "6003-CO-26"],
+            [f"6002-CO-{suffix}", f"6003-CO-{suffix}"],
         )
 
 
