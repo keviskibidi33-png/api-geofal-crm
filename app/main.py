@@ -146,6 +146,15 @@ app.add_middleware(
     max_age=3600,
 )
 
+# Global Exception Handler to preserve CORS headers on unhandled 500 errors
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logging.error(f"Global unhandled exception on {request.url}: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Error interno del servidor: {str(exc)}"},
+    )
+
 # Health & Debug Endpoints
 @app.get("/")
 @app.get("/health")

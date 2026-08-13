@@ -710,10 +710,8 @@ class ExcelLogic:
                 return ""
 
             if len(unique_values) > 1:
-                raise ValueError(
-                    f"Inconsistencia en {label}: se encontraron valores distintos "
-                    f"({', '.join(unique_values)})."
-                )
+                print(f"[WARNING] Inconsistencia en {label}: {unique_values}. Usando '{unique_values[0]}'")
+                return unique_values[0]
 
             return unique_values[0]
 

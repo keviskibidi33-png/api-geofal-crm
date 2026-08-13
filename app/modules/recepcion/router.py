@@ -274,6 +274,7 @@ async def actualizar_recepcion(
     return updated_recepcion
 
 @router.post("/importar-excel")
+@router.post("/import-excel")
 async def importar_excel_recepcion(file: UploadFile = File(...)):
     """
     Importa datos desde un Excel (puede ser Cotización o Plantilla) para llenar el formulario de Recepción.
