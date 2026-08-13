@@ -152,6 +152,23 @@ class GranSueloRequest(BaseModel):
             return value
         return _normalize_numero_ot(str(value))
 
+    @field_validator(
+        "metodo_prueba",
+        "tamizado_tipo",
+        "metodo_muestreo",
+        "condicion_muestra",
+        "excluyo_material",
+        "problema_muestra",
+        "proceso_dispersion",
+        mode="before",
+    )
+    @classmethod
+    def normalize_select_literals(cls, value):
+        if value is None:
+            return "-"
+        text = str(value).strip().upper()
+        return text or "-"
+
     @field_validator("fecha_ensayo", "revisado_fecha", "aprobado_fecha", mode="before")
     @classmethod
     def normalize_fechas(cls, value):

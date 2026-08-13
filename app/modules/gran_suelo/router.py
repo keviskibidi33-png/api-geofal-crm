@@ -291,6 +291,10 @@ def _to_detalle_response(ensayo: GranSueloEnsayo) -> GranSueloDetalleResponse:
             payload = GranSueloRequest.model_validate(ensayo.payload_json)
         except Exception:
             logger.warning("payload_json invalido en gran_suelo_ensayos.id=%s", ensayo.id, exc_info=True)
+            try:
+                payload = GranSueloRequest.model_construct(**ensayo.payload_json)
+            except Exception:
+                payload = None
 
     return GranSueloDetalleResponse(
         id=ensayo.id,
@@ -456,4 +460,3 @@ def generar_excel_gran_suelo(
         db.rollback()
         logger.exception("Error inesperado en generar_excel_gran_suelo")
         raise HTTPException(status_code=500, detail=f"Error generando Excel Gran Suelo: {str(exc)}")
-
