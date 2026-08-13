@@ -268,6 +268,24 @@ class SeguimientoClienteComercialService:
         if not any([fecha_contacto_val, persona_contacto_val, razon_social_val, ruc_val, celular_val, email_val]):
             return None
 
+        # Resolve quote number with fallback to comments if missing
+        numero_cotizacion_val = to_str(values.get("numero_cotizacion"))
+        if not numero_cotizacion_val:
+            numero_cotizacion_val = (
+                SeguimientoClienteComercialService._extract_quote_from_text(values.get("comentarios_asesor"))
+                or SeguimientoClienteComercialService._extract_quote_from_text(values.get("comentarios_asistente"))
+            )
+
+        # Resolve cost with fallback to comments if missing
+        costo_val = to_str(values.get("costo_cotiz_sin_igv"))
+        if not costo_val or not costo_val.strip():
+            extracted_cost = (
+                SeguimientoClienteComercialService._extract_price_from_text(values.get("comentarios_asesor"))
+                or SeguimientoClienteComercialService._extract_price_from_text(values.get("comentarios_asistente"))
+            )
+            if extracted_cost is not None:
+                costo_val = str(extracted_cost)
+
         return SeguimientoClienteComercial(
             no=to_int(no_val) if allow_missing_no or no_val is not None else None,
             fecha_contacto=SeguimientoClienteComercialService._parse_date_value(fecha_contacto_val) or SeguimientoClienteComercialService._parse_text_date(fecha_contacto_val),
@@ -303,8 +321,8 @@ class SeguimientoClienteComercialService:
             fecha_ultimo_contacto=SeguimientoClienteComercialService._parse_date_value(values.get("fecha_ultimo_contacto")) or SeguimientoClienteComercialService._parse_text_date(values.get("fecha_ultimo_contacto")),
             comentarios_asistente=to_str(values.get("comentarios_asistente")),
             comentarios_asesor=to_str(values.get("comentarios_asesor")),
-            numero_cotizacion=to_str(values.get("numero_cotizacion")),
-            costo_cotiz_sin_igv=to_str(values.get("costo_cotiz_sin_igv")),
+            numero_cotizacion=numero_cotizacion_val,
+            costo_cotiz_sin_igv=costo_val,
             estado_seguimiento=SeguimientoClienteComercialService._normalize_catalog_value(values.get("estado_seguimiento"), PREDEFINED_ESTADOS_SEGUIMIENTO),
             creado_por=creado_por,
         )
@@ -963,10 +981,86 @@ class SeguimientoClienteComercialService:
         return inserted_count
 
     @staticmethod
+    def _parse_quote_number_and_year(val: object) -> tuple[Optional[int], Optional[int]]:
+        """
+        Extracts numeric quote number and year from strings like 'COT-123-26', '123-26', '1234', etc.
+        """
+        if not val:
+            return None, None
+        clean = str(val).strip().upper()
+        m = re.search(r'(\d+)\s*[-/]\s*(\d{2,4})', clean)
+        if m:
+            p1, p2 = int(m.group(1)), int(m.group(2))
+            if p1 > 1900 or (p1 in (24, 25, 26, 27, 28) and p2 > 50):
+                return p2, (p1 if p1 > 1900 else 2000 + p1)
+            else:
+                return p1, (p2 if p2 > 1900 else 2000 + p2)
+        m_num = re.search(r'\b(\d{1,6})\b', clean)
+        if m_num:
+            return int(m_num.group(1)), None
+        return None, None
+
+    @staticmethod
+    def _extract_quote_from_text(text_val: object) -> Optional[str]:
+        """
+        Finds quotation codes (e.g. COT-123-26 or 123-26) inside comments or free text.
+        """
+        if not text_val:
+            return None
+        text_str = str(text_val)
+        m = re.search(r'(?:COT(?:IZACI[OÓ]N)?\.?\s*[-#]?\s*)?(\d{1,5}\s*[-/]\s*\d{2,4})', text_str, re.IGNORECASE)
+        if m:
+            return m.group(1).replace(" ", "")
+        m2 = re.search(r'COT(?:IZACI[OÓ]N)?\.?\s*[-#]?\s*(\d{2,5})', text_str, re.IGNORECASE)
+        if m2:
+            return f"COT-{m2.group(1)}"
+        return None
+
+    @staticmethod
+    def _extract_price_from_text(text_val: object) -> Optional[float]:
+        """
+        Finds explicit monetary amounts in comments (e.g. 'S/. 1,500.00', '$ 500', 'costo: 1200').
+        """
+        if not text_val:
+            return None
+        text_str = str(text_val)
+        m = re.search(r'(?:S/\.?|\$|monto:?|costo:?|precio:?)\s*([0-9.,]+)', text_str, re.IGNORECASE)
+        if m:
+            return SeguimientoClienteComercialService._parse_money_number(m.group(1))
+        return None
+
+    @staticmethod
+    def _load_cotizaciones_lookup(db: Session) -> dict[tuple[int, Optional[int]], float]:
+        """
+        Loads a fast lookup dictionary mapping (numero, year) to quote subtotal / total from cotizaciones table.
+        """
+        cotiz_map: dict[tuple[int, Optional[int]], float] = {}
+        try:
+            from sqlalchemy import text
+            rows = db.execute(text(
+                "SELECT numero, year, subtotal, total FROM cotizaciones WHERE visibilidad = 'visible' OR visibilidad IS NULL"
+            )).fetchall()
+            for r in rows:
+                num, yr, subtotal, total = r[0], r[1], r[2], r[3]
+                cost = subtotal if subtotal is not None else total
+                if num is not None and cost is not None:
+                    num_int = int(num)
+                    full_yr = int(yr) if yr and int(yr) > 1900 else (2000 + int(yr) if yr else 2026)
+                    short_yr = full_yr % 100
+                    cost_flt = float(cost)
+                    cotiz_map[(num_int, full_yr)] = cost_flt
+                    cotiz_map[(num_int, short_yr)] = cost_flt
+                    cotiz_map[(num_int, None)] = cost_flt
+        except Exception:
+            pass
+        return cotiz_map
+
+    @staticmethod
     def exportar_excel(db: Session, template_path: str) -> io.BytesIO:
         """
         Loads the template file (Seguimiento.xlsx), populates columns starting from header_row + 1 with database records,
-        formatting COSTO COTIZ SIN IGV as true numeric float, and returns the result as a BytesIO file.
+        enriching quotes and prices with multiple fallback layers, formatting COSTO COTIZ SIN IGV as true numeric float,
+        and returns the result as a BytesIO file.
         """
         if not os.path.exists(template_path):
             try:
@@ -1027,15 +1121,52 @@ class SeguimientoClienteComercialService:
                 14: "categoria_servicio",
             }
 
+        # Pre-load cotizaciones lookup for quote/price auto-recovery
+        cotiz_lookup = SeguimientoClienteComercialService._load_cotizaciones_lookup(db)
+
         # Write data keeping styles
         for idx, rec in enumerate(records):
             r = start_row + idx
+
+            # 1. Resolve quote number with fallback to comments if missing
+            cotiz_str = rec.numero_cotizacion
+            if not cotiz_str or not str(cotiz_str).strip():
+                cotiz_str = (
+                    SeguimientoClienteComercialService._extract_quote_from_text(rec.comentarios_asesor)
+                    or SeguimientoClienteComercialService._extract_quote_from_text(rec.comentarios_asistente)
+                )
+
+            # 2. Resolve price with multi-layer fallback
+            # Layer A: direct stored price
+            costo_num = SeguimientoClienteComercialService._parse_money_number(rec.costo_cotiz_sin_igv)
+
+            # Layer B: match against official quotes in cotizaciones table
+            if costo_num is None and cotiz_str:
+                q_num, q_yr = SeguimientoClienteComercialService._parse_quote_number_and_year(cotiz_str)
+                if q_num is not None:
+                    if (q_num, q_yr) in cotiz_lookup:
+                        costo_num = cotiz_lookup[(q_num, q_yr)]
+                    elif (q_num, 2026) in cotiz_lookup:
+                        costo_num = cotiz_lookup[(q_num, 2026)]
+                    elif (q_num, 26) in cotiz_lookup:
+                        costo_num = cotiz_lookup[(q_num, 26)]
+                    elif (q_num, None) in cotiz_lookup:
+                        costo_num = cotiz_lookup[(q_num, None)]
+
+            # Layer C: extract price from comments notes
+            if costo_num is None:
+                costo_num = (
+                    SeguimientoClienteComercialService._extract_price_from_text(rec.comentarios_asesor)
+                    or SeguimientoClienteComercialService._extract_price_from_text(rec.comentarios_asistente)
+                )
+
             for col_idx, field_name in col_mapping.items():
                 if field_name == "costo_cotiz_sin_igv":
-                    costo_num = SeguimientoClienteComercialService._parse_money_number(getattr(rec, field_name, None))
                     sheet.cell(row=r, column=col_idx).value = costo_num
                     if costo_num is not None:
                         sheet.cell(row=r, column=col_idx).number_format = '#,##0.00'
+                elif field_name == "numero_cotizacion":
+                    sheet.cell(row=r, column=col_idx).value = cotiz_str or rec.numero_cotizacion
                 elif field_name == "categoria_servicio":
                     val = getattr(rec, "categoria_servicio", None) or getattr(rec, "categoria_cliente", None)
                     sheet.cell(row=r, column=col_idx).value = val

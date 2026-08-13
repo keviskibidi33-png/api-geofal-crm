@@ -9,6 +9,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+import openpyxl
 from openpyxl import Workbook
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -384,6 +385,92 @@ class TestSeguimientoComercialEndpoints(unittest.TestCase):
         self.assertEqual(imported.numero_cotizacion, "COT-123-26")
         self.assertEqual(imported.costo_cotiz_sin_igv, "17759")
         self.assertEqual(imported.categoria_servicio, "Categoría 1 (DEN)")
+
+    def test_export_enrichment_from_cotizaciones_table(self):
+        # Create a mock cotizaciones table in sqlite db
+        from sqlalchemy import text
+        self.db.execute(text("""
+            CREATE TABLE IF NOT EXISTS cotizaciones (
+                id INTEGER PRIMARY KEY,
+                numero INTEGER,
+                year INTEGER,
+                subtotal FLOAT,
+                total FLOAT,
+                cliente_ruc TEXT,
+                cliente_nombre TEXT,
+                visibilidad TEXT DEFAULT 'visible'
+            )
+        """))
+        self.db.execute(text("""
+            INSERT INTO cotizaciones (numero, year, subtotal, total, cliente_ruc, cliente_nombre, visibilidad)
+            VALUES (888, 2026, 4520.50, 5334.19, '20555555555', 'Test Auto Price SAC', 'visible')
+        """))
+        self.db.commit()
+
+        # Add tracking record with quote number 888-26 but NO cost
+        rec = SeguimientoClienteComercial(
+            no=10,
+            fecha_contacto=date(2026, 7, 10),
+            razon_social="Test Auto Price SAC",
+            ruc="20555555555",
+            numero_cotizacion="COT-888-26",
+            costo_cotiz_sin_igv=None
+        )
+        self.db.add(rec)
+        self.db.commit()
+
+        template_path = str(PROJECT_ROOT / "app" / "templates" / "Seguimiento.xlsx")
+        excel_bytes = SeguimientoClienteComercialService.exportar_excel(self.db, template_path)
+
+        wb = openpyxl.load_workbook(excel_bytes, data_only=False)
+        sheet = wb['COMERCIAL'] if 'COMERCIAL' in wb.sheetnames else wb.active
+
+        # Find row for rec
+        target_row = None
+        for r in range(9, sheet.max_row + 1):
+            if sheet.cell(row=r, column=6).value == "Test Auto Price SAC":
+                target_row = r
+                break
+
+        self.assertIsNotNone(target_row, "Row should be found in exported Excel")
+        cotiz_cell_val = sheet.cell(row=target_row, column=11).value
+        cost_cell_val = sheet.cell(row=target_row, column=12).value
+
+        self.assertEqual(cotiz_cell_val, "COT-888-26")
+        self.assertAlmostEqual(cost_cell_val, 4520.50, places=2)
+
+    def test_export_enrichment_from_comments(self):
+        # Add tracking record with quote number and price inside comments only
+        rec = SeguimientoClienteComercial(
+            no=11,
+            fecha_contacto=date(2026, 7, 11),
+            razon_social="Comentarios Recovery SAC",
+            ruc="20666666666",
+            numero_cotizacion=None,
+            costo_cotiz_sin_igv=None,
+            comentarios_asesor="Se envió COT-777-26 por S/. 3,250.00 al cliente"
+        )
+        self.db.add(rec)
+        self.db.commit()
+
+        template_path = str(PROJECT_ROOT / "app" / "templates" / "Seguimiento.xlsx")
+        excel_bytes = SeguimientoClienteComercialService.exportar_excel(self.db, template_path)
+
+        wb = openpyxl.load_workbook(excel_bytes, data_only=False)
+        sheet = wb['COMERCIAL'] if 'COMERCIAL' in wb.sheetnames else wb.active
+
+        target_row = None
+        for r in range(9, sheet.max_row + 1):
+            if sheet.cell(row=r, column=6).value == "Comentarios Recovery SAC":
+                target_row = r
+                break
+
+        self.assertIsNotNone(target_row)
+        cotiz_cell_val = sheet.cell(row=target_row, column=11).value
+        cost_cell_val = sheet.cell(row=target_row, column=12).value
+
+        self.assertEqual(cotiz_cell_val, "777-26")
+        self.assertAlmostEqual(cost_cell_val, 3250.0, places=2)
 
 
 if __name__ == "__main__":
