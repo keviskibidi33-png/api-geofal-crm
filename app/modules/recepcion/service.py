@@ -112,9 +112,7 @@ class RecepcionService:
             types = [t.strip().upper() for t in tipo_recepcion.split(",") if t.strip()]
             if "LIMA_ALL" in types or "NOT_CONCRETO" in types:
                 query = query.filter(
-                    RecepcionMuestra.tipo_recepcion.isnot(None),
-                    RecepcionMuestra.tipo_recepcion != "",
-                    RecepcionMuestra.tipo_recepcion != "CONCRETO",
+                    RecepcionMuestra.tipo_recepcion.in_(["SUELO_AGREGADO", "ROCA", "ALBANILERIA", "AGUA"])
                 )
             elif "CONCRETO" in types and len(types) == 1:
                 query = query.filter(
