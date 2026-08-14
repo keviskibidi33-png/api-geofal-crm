@@ -93,6 +93,10 @@ Thumbs.db
 !V7 - VIGA BECKELMAN.xlsx
 !V8 - CONTROL DE CALIDAD DE CONCRETO FRESCO EN OBRA.xlsx
 # Allow all xlsx files under the reorganized template subdirectories
+!app/templates/
+!app/templates/**
+!app/templates/Recepciones/
+!app/templates/Recepciones/**
 !app/templates/ensayos/
 !app/templates/ensayos/**
 !app/templates/informes/
