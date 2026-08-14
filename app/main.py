@@ -243,7 +243,7 @@ app.include_router(notifications_router)
 app.include_router(dashboard_router)
 app.include_router(users_router)
 app.include_router(control_ambiental_router)
-app.include_router(chat_router)
+# app.include_router(chat_router)  # Desactivado temporalmente hasta nuevo aviso
 app.include_router(ot_router)
 
 
