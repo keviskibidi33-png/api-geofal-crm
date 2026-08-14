@@ -77,6 +77,8 @@ from app.modules.chat.router import router as chat_router
 from app.modules.chat.models import Base as ChatBase
 from app.modules.ot.router import router as ot_router
 from app.modules.ot.models import Base as OTBase
+from app.modules.kanban.router import router as kanban_router
+from app.modules.kanban.models import Base as KanbanBase
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -95,6 +97,7 @@ try:
     ControlAmbientalBase.metadata.create_all(bind=engine)
     ChatBase.metadata.create_all(bind=engine)
     OTBase.metadata.create_all(bind=engine)
+    KanbanBase.metadata.create_all(bind=engine)
     MainBase.metadata.create_all(bind=engine)
     
     run_startup_migrations(engine)
@@ -245,6 +248,7 @@ app.include_router(users_router)
 app.include_router(control_ambiental_router)
 # app.include_router(chat_router)  # Desactivado temporalmente hasta nuevo aviso
 app.include_router(ot_router)
+app.include_router(kanban_router)
 
 
 if __name__ == "__main__":

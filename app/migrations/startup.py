@@ -365,6 +365,37 @@ def run_startup_migrations(engine) -> None:
     except Exception as err:
         logger.warning("Migration 057 skipped: %s", _short_err(err))
 
+    # ── Migration 058: kanban_cards table ────────────────────────────
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS public.kanban_cards (
+                    id VARCHAR(64) PRIMARY KEY,
+                    title VARCHAR(255) NOT NULL,
+                    description TEXT,
+                    proyecto_nombre VARCHAR(255) NOT NULL,
+                    codigo_ot VARCHAR(100),
+                    column_id VARCHAR(30) NOT NULL DEFAULT 'todo',
+                    priority VARCHAR(20) NOT NULL DEFAULT 'media',
+                    assigned_to VARCHAR(150) NOT NULL DEFAULT 'Laboratorio',
+                    assigned_avatar TEXT,
+                    due_date VARCHAR(50),
+                    image_url TEXT,
+                    notes JSONB NOT NULL DEFAULT '[]'::jsonb,
+                    tracing_summary JSONB,
+                    created_by VARCHAR(100),
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS idx_kanban_cards_column_id ON public.kanban_cards (column_id);
+                CREATE INDEX IF NOT EXISTS idx_kanban_cards_codigo_ot ON public.kanban_cards (codigo_ot);
+                CREATE INDEX IF NOT EXISTS idx_kanban_cards_created_at ON public.kanban_cards (created_at DESC);
+                NOTIFY pgrst, 'reload schema';
+            """))
+            logger.info("Migration 058 applied (kanban_cards table).")
+    except Exception as err:
+        logger.warning("Migration 058 skipped: %s", _short_err(err))
+
     _MIGRATIONS_RUN = True
 
 
