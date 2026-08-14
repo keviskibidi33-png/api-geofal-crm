@@ -109,7 +109,13 @@ class RecepcionService:
                 )
             )
         if tipo_recepcion and tipo_recepcion.strip() and tipo_recepcion.upper() not in ["ALL", "TODOS"]:
-            query = query.filter(RecepcionMuestra.tipo_recepcion == tipo_recepcion.strip().upper())
+            types = [t.strip().upper() for t in tipo_recepcion.split(",") if t.strip()]
+            if "LIMA_ALL" in types or "NOT_CONCRETO" in types:
+                query = query.filter(RecepcionMuestra.tipo_recepcion != "CONCRETO")
+            elif len(types) == 1:
+                query = query.filter(RecepcionMuestra.tipo_recepcion == types[0])
+            elif len(types) > 1:
+                query = query.filter(RecepcionMuestra.tipo_recepcion.in_(types))
         return query
 
     def _upload_to_supabase(self, file_content: bytes, filename: str) -> Optional[str]:
