@@ -396,6 +396,18 @@ def run_startup_migrations(engine) -> None:
     except Exception as err:
         logger.warning("Migration 058 skipped: %s", _short_err(err))
 
+    # ── Migration 059: Backfill tipo_recepcion a CONCRETO en registros históricos ─
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                UPDATE public.recepcion
+                SET tipo_recepcion = 'CONCRETO'
+                WHERE tipo_recepcion IS NULL OR tipo_recepcion = '';
+            """))
+            logger.info("Migration 059 applied (tipo_recepcion CONCRETO backfilled).")
+    except Exception as err:
+        logger.warning("Migration 059 skipped: %s", _short_err(err))
+
     _MIGRATIONS_RUN = True
 
 

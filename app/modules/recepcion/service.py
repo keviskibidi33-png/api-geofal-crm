@@ -111,7 +111,19 @@ class RecepcionService:
         if tipo_recepcion and tipo_recepcion.strip() and tipo_recepcion.upper() not in ["ALL", "TODOS"]:
             types = [t.strip().upper() for t in tipo_recepcion.split(",") if t.strip()]
             if "LIMA_ALL" in types or "NOT_CONCRETO" in types:
-                query = query.filter(RecepcionMuestra.tipo_recepcion != "CONCRETO")
+                query = query.filter(
+                    RecepcionMuestra.tipo_recepcion.isnot(None),
+                    RecepcionMuestra.tipo_recepcion != "",
+                    RecepcionMuestra.tipo_recepcion != "CONCRETO",
+                )
+            elif "CONCRETO" in types and len(types) == 1:
+                query = query.filter(
+                    or_(
+                        RecepcionMuestra.tipo_recepcion == "CONCRETO",
+                        RecepcionMuestra.tipo_recepcion.is_(None),
+                        RecepcionMuestra.tipo_recepcion == "",
+                    )
+                )
             elif len(types) == 1:
                 query = query.filter(RecepcionMuestra.tipo_recepcion == types[0])
             elif len(types) > 1:
