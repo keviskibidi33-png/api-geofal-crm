@@ -273,19 +273,40 @@ def prefill_ot_from_recepcion(
         )
 
     if not recepcion:
-        # Fallback inteligente: buscar en seguimiento_cliente_laboratorio o trazabilidad
+        # Fallback inteligente: buscar en programacion_lab, cuadro_control o seguimiento_cliente_laboratorio
         try:
             from sqlalchemy import text
             import re
-            row = db.execute(
-                text("""
-                    SELECT cliente, proyecto, fecha_recepcion, descripcion_servicio, no_recepcion, ot, item, codigo_muestra
-                    FROM seguimiento_cliente_laboratorio
-                    WHERE no_recepcion ILIKE :num OR ot ILIKE :num OR item = :exact_num
-                    ORDER BY id DESC LIMIT 1
-                """),
-                {"num": f"%{clean_num}%", "exact_num": clean_num}
-            ).first()
+            row = None
+            for cand_sql in [
+                """
+                SELECT cliente_nombre, proyecto, fecha_recepcion, descripcion_servicio, recep_numero, ot, item_numero, codigo_muestra
+                FROM programacion_lab
+                WHERE recep_numero ILIKE :num OR ot ILIKE :num
+                ORDER BY id DESC LIMIT 1
+                """,
+                """
+                SELECT cliente_nombre, proyecto, fecha_recepcion, descripcion_servicio, recep_numero, ot, item_numero, codigo_muestra
+                FROM cuadro_control
+                WHERE recep_numero ILIKE :num OR ot ILIKE :num
+                ORDER BY id DESC LIMIT 1
+                """,
+                """
+                SELECT cliente, proyecto, fecha_recepcion, descripcion_servicio, no_recepcion, ot, item, codigo_muestra
+                FROM seguimiento_cliente_laboratorio
+                WHERE no_recepcion ILIKE :num OR ot ILIKE :num OR item = :exact_num
+                ORDER BY id DESC LIMIT 1
+                """,
+            ]:
+                try:
+                    with db.begin_nested():
+                        found = db.execute(text(cand_sql), {"num": f"%{clean_num}%", "exact_num": clean_num}).first()
+                        if found:
+                            row = found
+                            break
+                except Exception:
+                    pass
+
             if row:
                 f_rec = _to_iso_date(row[2]) if row[2] else ""
                 desc_text = str(row[3] or "")

@@ -321,16 +321,39 @@ class RecepcionService:
                     _sync_ot_to_recepcion(ot_missing, db)
                 db.commit()
 
-            # 2. Auto-crear recepciones originadas en Control de Laboratorio (seguimiento_cliente_laboratorio)
-            lab_rows = db.execute(
-                text("""
-                    SELECT id, item, no_recepcion, ot, codigo_muestra, fecha_recepcion, cliente, proyecto, descripcion_servicio
-                    FROM seguimiento_cliente_laboratorio
-                    WHERE no_recepcion IS NOT NULL AND no_recepcion != ''
-                    ORDER BY id DESC
-                    LIMIT 50
-                """)
-            ).fetchall()
+            # 2. Auto-crear recepciones originadas en Control de Laboratorio (programacion_lab / cuadro_control / seguimiento_cliente_laboratorio)
+            lab_rows = []
+            for candidate_sql in [
+                """
+                SELECT id, item_numero, recep_numero, ot, codigo_muestra, fecha_recepcion, cliente_nombre, proyecto, descripcion_servicio
+                FROM programacion_lab
+                WHERE recep_numero IS NOT NULL AND recep_numero != ''
+                ORDER BY id DESC
+                LIMIT 50
+                """,
+                """
+                SELECT id, item_numero, recep_numero, ot, codigo_muestra, fecha_recepcion, cliente_nombre, proyecto, descripcion_servicio
+                FROM cuadro_control
+                WHERE recep_numero IS NOT NULL AND recep_numero != ''
+                ORDER BY id DESC
+                LIMIT 50
+                """,
+                """
+                SELECT id, item, no_recepcion, ot, codigo_muestra, fecha_recepcion, cliente, proyecto, descripcion_servicio
+                FROM seguimiento_cliente_laboratorio
+                WHERE no_recepcion IS NOT NULL AND no_recepcion != ''
+                ORDER BY id DESC
+                LIMIT 50
+                """,
+            ]:
+                try:
+                    with db.begin_nested():
+                        rows = db.execute(text(candidate_sql)).fetchall()
+                        if rows:
+                            lab_rows.extend(rows)
+                            break
+                except Exception:
+                    pass
 
             if lab_rows:
                 existing_recs = set(
