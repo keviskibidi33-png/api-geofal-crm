@@ -368,6 +368,24 @@ class RecepcionService:
                             desc_text = str(row[8] or "")
                             raw_codigo_muestra = str(row[4] or "")
 
+                            # Validación Estricta: Solo auto-crear si es servicio inequívoco de probetas de concreto
+                            raw_upper = raw_codigo_muestra.upper()
+                            desc_upper = desc_text.upper()
+
+                            # Descartar suelos, agregados, rocas, albañilería
+                            if any(k in raw_upper for k in ["-AG-", "-SU-", "-RO-", "-AL-", "-AG", "-SU", "-RO", "-AL"]):
+                                continue
+                            if any(k in desc_upper for k in ["MUESTRA DE SUELO", "MUESTRA DE AGREGADO", "SUELO", "AGREGADO", "CALICATA", "DENSIDAD DE CAMPO", "DENSIDADES"]):
+                                if not ("PROBETA" in desc_upper or "COMPRESION" in desc_upper or "-CO-" in raw_upper or "-CO" in raw_upper):
+                                    continue
+
+                            is_concrete = (
+                                "-CO-" in raw_upper or "-CO" in raw_upper or "CO-" in raw_upper or
+                                any(k in desc_upper for k in ["PROBETA", "PROBETAS", "COMPRESION", "CILINDRO", "TESTIGO"])
+                            )
+                            if not is_concrete:
+                                continue
+
                             cant_probetas = 0
                             range_match = re.search(r"(\d+).*?(?:AL|-|A)\s*(\d+)", raw_codigo_muestra, re.IGNORECASE)
                             if range_match:

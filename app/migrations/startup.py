@@ -456,20 +456,32 @@ def run_startup_cleanup(engine) -> None:
             if resultado.get("eliminados", 0) > 0 or resultado.get("sincronizados", 0) > 0:
                 logger.info("[STARTUP-CLEANUP] Saneamiento completado: %s", resultado)
 
-            trazas = db_session.query(Trazabilidad).all()
-            import re as _re
-            for t in trazas:
-                num = t.numero_recepcion
-                if num and (not _re.search(r'-\d{2}$', num) or num.endswith('-')):
-                    recepcion, canonical = TracingService._buscar_recepcion_flexible(db_session, num)
-                    if canonical and canonical != num:
-                        canonical_exists = db_session.query(Trazabilidad).filter(
-                            Trazabilidad.numero_recepcion == canonical
-                        ).first()
-                        if canonical_exists:
-                            db_session.delete(t)
-                        else:
-                            t.numero_recepcion = canonical
+            # Saneamiento de Recepciones de Concreto espurias (creadas erróneamente para servicios de suelos/agregados)
+            from app.modules.recepcion.models import RecepcionMuestra, MuestraConcreto
+            from sqlalchemy import or_, not_
+
+            spurious_recs = db_session.query(RecepcionMuestra).filter(
+                RecepcionMuestra.tipo_recepcion == "CONCRETO",
+                RecepcionMuestra.domicilio_legal == "Sin especificar",
+                or_(
+                    RecepcionMuestra.observaciones.ilike("%MUESTRA DE SUELO%"),
+                    RecepcionMuestra.observaciones.ilike("%MUESTRA DE AGREGADO%"),
+                    RecepcionMuestra.observaciones.ilike("%CALICATA%"),
+                    RecepcionMuestra.observaciones.ilike("%DENSIDAD DE CAMPO%"),
+                ),
+                not_(RecepcionMuestra.observaciones.ilike("%PROBETA%")),
+                not_(RecepcionMuestra.observaciones.ilike("%COMPRESION%")),
+            ).all()
+
+            for s_rec in spurious_recs:
+                # Verificar que no tenga muestras con -CO-
+                muestras = db_session.query(MuestraConcreto).filter(MuestraConcreto.recepcion_id == s_rec.id).all()
+                has_co = any("-CO" in str(m.codigo_muestra or "").upper() for m in muestras)
+                if not has_co:
+                    logger.info("[STARTUP-CLEANUP] Eliminando recepcion de probetas espuria %s (%s)", s_rec.numero_recepcion, s_rec.observaciones)
+                    db_session.query(MuestraConcreto).filter(MuestraConcreto.recepcion_id == s_rec.id).delete()
+                    db_session.delete(s_rec)
+
             db_session.commit()
     except Exception as err:
         logger.warning("Startup trazabilidad cleanup skipped: %s", _short_err(err))
