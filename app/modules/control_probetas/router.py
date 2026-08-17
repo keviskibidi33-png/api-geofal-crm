@@ -23,6 +23,8 @@ from app.modules.recepcion.models import RecepcionMuestra, MuestraConcreto
 from app.modules.compresion.models import EnsayoCompresion, ItemCompresion
 from app.modules.verificacion.models import VerificacionMuestras, MuestraVerificada
 from app.modules.common.notifications import resolve_actor_identity, log_audit_action
+from app.modules.ot.models import OrdenTrabajo
+from app.modules.ot.excel import generar_excel_ot
 
 router = APIRouter(prefix="/api/control-probetas", tags=["Control Probetas"])
 logger = logging.getLogger(__name__)
@@ -43,8 +45,9 @@ class ProbetaListItem(BaseModel):
     poza: Optional[str] = "-"
     # densidad: "SI" or "NO" derived from requiere_densidad; numeric value kept internally
     densidad: Optional[str] = "NO"
-    status_ensayo: Optional[str] = "-"
-    status_entrega: Optional[str] = "-"
+    status: Optional[str] = "FALTA"
+    status_ensayo: Optional[str] = "FALTA"
+    status_entrega: Optional[str] = None
     fecha_entrega: Optional[str] = "-"
 
     # Recepcion Info
@@ -77,8 +80,9 @@ class ProbetaCreatePayload(BaseModel):
     elemento: Optional[str] = "-"
     poza: Optional[str] = "-"
     densidad: Optional[str] = "-"
-    status_ensayo: Optional[str] = "-"
-    status_entrega: Optional[str] = "-"
+    status: Optional[str] = "FALTA"
+    status_ensayo: Optional[str] = "FALTA"
+    status_entrega: Optional[str] = None
     fecha_entrega: Optional[str] = "-"
 
 class ProbetaPaginatedResponse(BaseModel):
@@ -98,7 +102,8 @@ class ProbetasKpis(BaseModel):
 
 ALLOWED_ELEMENTOS = {"-", "PEQUEÑA", "GRANDE", "DIAMANTINA", "CUBO", "VIGA"}
 ALLOWED_POZAS = {"-", "ROTAS", "ANULADO", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"}
-ALLOWED_STATUS_ENSAYO = {"-", "ENSAYADO", "PENDIENTE", "FALTA", "ANULADO"}
+ALLOWED_STATUS = {"-", "FALTA", "ENTREGADO", "INFORME LISTO", "ANULADO", "ENSAYADO"}
+ALLOWED_STATUS_ENSAYO = {"-", "ENSAYADO", "PENDIENTE", "FALTA", "ANULADO", "ENTREGADO", "INFORME LISTO"}
 ALLOWED_STATUS_ENTREGA = {"-", "ENTREGADO", "INFORME LISTO", "INFORME", "INFORME ENVIADO", "ROTAS", "ANULADAS"}
 
 
@@ -185,7 +190,15 @@ def _parse_recepcion_date(recep: RecepcionMuestra) -> Optional[date]:
     return normalized
 
 
-def _compute_status_ensayo(muestra: MuestraConcreto, item_comp: Optional[ItemCompresion], recep: RecepcionMuestra) -> str:
+def _compute_status(muestra: MuestraConcreto, item_comp: Optional[ItemCompresion], recep: RecepcionMuestra) -> str:
+    raw_status = str(muestra.status_ensayo or "").strip().upper()
+    if raw_status in {"ENTREGADO", "INFORME LISTO", "ANULADO"}:
+        return raw_status
+
+    raw_entrega = str(muestra.status_entrega or "").strip().upper()
+    if raw_entrega in {"ENTREGADO", "INFORME LISTO"}:
+        return raw_entrega
+
     carga = None
     if item_comp and item_comp.carga_maxima is not None:
         try:
@@ -193,22 +206,12 @@ def _compute_status_ensayo(muestra: MuestraConcreto, item_comp: Optional[ItemCom
         except Exception:
             carga = None
     if carga is not None and carga > 0:
-        return "ENSAYADO"
+        return "ENTREGADO"
 
-    status_ensayo_raw = str(muestra.status_ensayo or "").strip().upper()
-    status_entrega_raw = str(muestra.status_entrega or "").strip().upper()
-    if status_ensayo_raw == "ENSAYADO" or status_entrega_raw in ("ENTREGADO", "INFORME LISTO", "INFORME", "INFORME ENVIADO"):
-        return "ENSAYADO"
+    if raw_status in {"ENSAYADO"}:
+        return "ENTREGADO"
 
-    rotura_date = normalize_date_string(muestra.fecha_rotura)
-    if not rotura_date:
-        rotura_date = _parse_recepcion_date(recep)
-        if not rotura_date:
-            return "PENDIENTE"
-
-    now_lima = datetime.now(LIMA_TZ)
-    cutoff = datetime.combine(rotura_date, datetime.min.time()).replace(hour=12, minute=0, second=0, microsecond=0, tzinfo=LIMA_TZ)
-    return "FALTA" if now_lima >= cutoff else "PENDIENTE"
+    return "FALTA"
 
 
 def build_probeta_response(
@@ -221,9 +224,7 @@ def build_probeta_response(
     fecha_ensayo_str = item_comp.fecha_ensayo.strftime("%Y/%m/%d") if (item_comp and item_comp.fecha_ensayo) else None
     # Densidad expressed as SI/NO from requiere_densidad boolean
     densidad_display = "SI" if muestra.requiere_densidad else "NO"
-    status_ensayo_auto = _compute_status_ensayo(muestra, item_comp, recep)
-    status_ensayo_final = "ANULADO" if (muestra.status_ensayo or "").strip().upper() == "ANULADO" else status_ensayo_auto
-    status_entrega_final = (muestra.status_entrega or "-").strip().upper() or "-"
+    status_final = _compute_status(muestra, item_comp, recep)
     return ProbetaListItem(
         muestra_id=muestra.id,
         item_numero=muestra.item_numero,
@@ -239,8 +240,9 @@ def build_probeta_response(
         elemento=muestra.elemento or "-",
         poza=getattr(muestra, "fosa", None) or "-",
         densidad=densidad_display,
-        status_ensayo=status_ensayo_final,
-        status_entrega=status_entrega_final,
+        status=status_final,
+        status_ensayo=status_final,
+        status_entrega=None,
         fecha_entrega=muestra.fecha_entrega or "-",
         recepcion_id=recep.id,
         numero_recepcion=recep.numero_recepcion,
@@ -377,6 +379,44 @@ def importar_recepcion_probetas(
                 density_updated += 1
 
     db.commit()
+
+    # Sincronización automática con Ordenes de Trabajo (OT)
+    try:
+        ot_items = [
+            {
+                "item": m.item_numero,
+                "codigo_muestra": m.codigo_muestra_lem or m.codigo_muestra or f"M-{m.item_numero}",
+                "descripcion": f"{m.elemento or 'PROBETA'} F'C={m.fc_kg_cm2} EDAD={m.edad}D",
+                "cantidad": 1,
+            }
+            for m in muestras
+        ]
+        existing_ot = db.query(OrdenTrabajo).filter(
+            or_(
+                OrdenTrabajo.numero_ot == recep.numero_ot,
+                OrdenTrabajo.numero_recepcion == recep.numero_recepcion
+            )
+        ).first()
+        if existing_ot:
+            existing_ot.items = ot_items
+            existing_ot.cliente = recep.cliente
+            existing_ot.proyecto = recep.proyecto
+            if not existing_ot.fecha_recepcion:
+                existing_ot.fecha_recepcion = _format_fecha_recepcion(recep)
+        else:
+            new_ot = OrdenTrabajo(
+                numero_ot=recep.numero_ot,
+                numero_recepcion=recep.numero_recepcion,
+                cliente=recep.cliente,
+                proyecto=recep.proyecto,
+                fecha_recepcion=_format_fecha_recepcion(recep),
+                items=ot_items,
+                estado="PENDIENTE",
+            )
+            db.add(new_ot)
+        db.commit()
+    except Exception as ot_err:
+        logger.error("Error sincronizando Orden de Trabajo para recepción %s: %s", recep.id, ot_err)
 
     try:
         actor = resolve_actor_identity(db, request)
@@ -641,15 +681,14 @@ def create_probeta(
         except Exception:
             pass
             
-    lem = (payload.codigo_muestra_lem or "").strip()
-    if lem:
-        from app.modules.recepcion.service import _normalize_lem_code
-        lem = _normalize_lem_code(lem)
-        
+    raw_st = str(payload.status or payload.status_ensayo or "FALTA").strip().upper()
+    if raw_st not in ALLOWED_STATUS:
+        raw_st = "FALTA"
+
     new_muestra = MuestraConcreto(
         recepcion_id=payload.recepcion_id,
         item_numero=next_item,
-        codigo_muestra_lem=lem or "",
+        codigo_muestra_lem=payload.codigo_muestra_lem or "",
         identificacion_muestra=payload.identificacion_muestra or f"Muestra {next_item}",
         estructura=payload.estructura or "Sin especificar",
         fc_kg_cm2=payload.fc_kg_cm2,
@@ -661,8 +700,8 @@ def create_probeta(
         elemento=normalize_option(payload.elemento, ALLOWED_ELEMENTOS),
         fosa=normalize_option(payload.poza, ALLOWED_POZAS),
         densidad=(payload.densidad or "-").strip() or "-",
-        status_ensayo="ANULADO" if str(payload.status_ensayo or "").strip().upper() == "ANULADO" else "PENDIENTE",
-        status_entrega=normalize_option(payload.status_entrega or "-", ALLOWED_STATUS_ENTREGA),
+        status_ensayo=raw_st,
+        status_entrega=raw_st if raw_st in {"ENTREGADO", "INFORME LISTO"} else "-",
         fecha_entrega=normalize_date_payload(payload.fecha_entrega) or "-",
         es_control_probetas=True
     )
@@ -671,6 +710,30 @@ def create_probeta(
     db.commit()
     db.refresh(new_muestra)
     
+    # Sincronización con Orden de Trabajo
+    try:
+        all_muestras = db.query(MuestraConcreto).filter(MuestraConcreto.recepcion_id == recep.id).order_by(asc(MuestraConcreto.item_numero)).all()
+        ot_items = [
+            {
+                "item": m.item_numero,
+                "codigo_muestra": m.codigo_muestra_lem or m.codigo_muestra or f"M-{m.item_numero}",
+                "descripcion": f"{m.elemento or 'PROBETA'} F'C={m.fc_kg_cm2} EDAD={m.edad}D",
+                "cantidad": 1,
+            }
+            for m in all_muestras
+        ]
+        ot = db.query(OrdenTrabajo).filter(
+            or_(
+                OrdenTrabajo.numero_ot == recep.numero_ot,
+                OrdenTrabajo.numero_recepcion == recep.numero_recepcion
+            )
+        ).first()
+        if ot:
+            ot.items = ot_items
+            db.commit()
+    except Exception as e:
+        logger.error("Error sincronizando OT en create_probeta: %s", e)
+
     try:
         actor = resolve_actor_identity(db, request)
         log_audit_action(
@@ -719,29 +782,35 @@ def update_probeta(
             
     for key, val in payload.items():
         if key == "densidad" and isinstance(val, str) and val.upper() in {"SI", "NO"}:
-            # Accept SI/NO from frontend and persist as requiere_densidad boolean
             muestra.requiere_densidad = val.upper() == "SI"
             continue
-        if key == "poza" or key == "fosa":
+        if key in ("poza", "fosa"):
             muestra.fosa = normalize_option(val, ALLOWED_POZAS)
             continue
-        if hasattr(muestra, key):
-            if key == "elemento":
-                setattr(muestra, key, normalize_option(val, ALLOWED_ELEMENTOS))
-            elif key == "status_ensayo":
-                normalized_status = str(val or "").strip().upper()
-                if normalized_status == "ANULADO":
-                    setattr(muestra, key, "ANULADO")
-                elif normalized_status in {"", "-", "PENDIENTE", "FALTA", "ENSAYADO"}:
-                    setattr(muestra, key, "ENSAYADO" if normalized_status == "ENSAYADO" else "")
-            elif key == "status_entrega":
-                normalized_status_entrega = str(val or "").strip().upper()
-                if normalized_status_entrega in {"ROTAS", "ANULADAS", "ENTREGADO", "INFORME LISTO", "INFORME", "INFORME ENVIADO", "FALTA", "PENDIENTE", "-"}:
-                    setattr(muestra, key, normalize_option(val, ALLOWED_STATUS_ENTREGA))
-            elif key in {"fecha_rotura", "fecha_entrega", "fecha_moldeo"}:
-                setattr(muestra, key, normalize_date_payload(val) or ("-" if key == "fecha_entrega" else ""))
+        if key in ("status", "status_ensayo", "status_entrega"):
+            normalized_status = str(val or "").strip().upper()
+            if normalized_status in {"ENTREGADO", "INFORME LISTO"}:
+                muestra.status_ensayo = normalized_status
+                muestra.status_entrega = normalized_status
+                today_str = datetime.now(LIMA_TZ).strftime("%Y/%m/%d")
+                muestra.fecha_entrega = today_str
+            elif normalized_status == "FALTA":
+                muestra.status_ensayo = "FALTA"
+                muestra.status_entrega = "-"
+            elif normalized_status == "ANULADO":
+                muestra.status_ensayo = "ANULADO"
+                muestra.status_entrega = "ANULADO"
             else:
-                setattr(muestra, key, val)
+                muestra.status_ensayo = normalized_status if normalized_status in ALLOWED_STATUS else "FALTA"
+            continue
+        if key == "elemento":
+            muestra.elemento = normalize_option(val, ALLOWED_ELEMENTOS)
+            continue
+        if key in {"fecha_rotura", "fecha_entrega", "fecha_moldeo"}:
+            setattr(muestra, key, normalize_date_payload(val) or ("-" if key == "fecha_entrega" else ""))
+            continue
+        if hasattr(muestra, key):
+            setattr(muestra, key, val)
             
     if "fecha_moldeo" in payload or "edad" in payload:
         moldeo = muestra.fecha_moldeo
@@ -755,14 +824,6 @@ def update_probeta(
                 muestra.fecha_rotura = rotura_dt.strftime("%Y/%m/%d")
             except Exception:
                 pass
-
-    item_comp = db.query(ItemCompresion).join(EnsayoCompresion, EnsayoCompresion.id == ItemCompresion.ensayo_id).filter(
-        EnsayoCompresion.recepcion_id == muestra.recepcion_id,
-        ItemCompresion.item == muestra.item_numero
-    ).first()
-    recep = db.query(RecepcionMuestra).filter(RecepcionMuestra.id == muestra.recepcion_id).first()
-    if recep and (muestra.status_ensayo or "").strip().upper() != "ANULADO":
-        muestra.status_ensayo = _compute_status_ensayo(muestra, item_comp, recep)
                 
     db.commit()
     db.refresh(muestra)
@@ -847,6 +908,76 @@ def delete_probeta(
     return {"success": True, "message": "Probeta eliminada con éxito"}
 
 
+@router.get("/ot-excel/{recepcion_id}")
+def download_ot_excel_by_recepcion(
+    recepcion_id: int,
+    db: Session = Depends(get_db_session)
+):
+    """
+    Genera y descarga la Orden de Trabajo (OT) oficial en formato Excel
+    inyectando los datos e ítems de probetas correspondientes a la recepción.
+    """
+    recep = db.query(RecepcionMuestra).filter(RecepcionMuestra.id == recepcion_id).first()
+    if not recep:
+        raise HTTPException(status_code=404, detail="Recepción no encontrada")
+
+    muestras = db.query(MuestraConcreto).filter(
+        MuestraConcreto.recepcion_id == recepcion_id
+    ).order_by(asc(MuestraConcreto.item_numero)).all()
+
+    ot_items = [
+        {
+            "item": m.item_numero,
+            "codigo_muestra": m.codigo_muestra_lem or m.codigo_muestra or f"M-{m.item_numero}",
+            "descripcion": f"{m.elemento or 'PROBETA'} F'C={m.fc_kg_cm2} EDAD={m.edad}D",
+            "cantidad": 1,
+        }
+        for m in muestras
+    ]
+
+    ot = db.query(OrdenTrabajo).filter(
+        or_(
+            OrdenTrabajo.numero_ot == recep.numero_ot,
+            OrdenTrabajo.numero_recepcion == recep.numero_recepcion
+        )
+    ).first()
+
+    if not ot:
+        ot = OrdenTrabajo(
+            numero_ot=recep.numero_ot,
+            numero_recepcion=recep.numero_recepcion,
+            cliente=recep.cliente,
+            proyecto=recep.proyecto,
+            fecha_recepcion=_format_fecha_recepcion(recep),
+            items=ot_items,
+            estado="PENDIENTE"
+        )
+        db.add(ot)
+        db.commit()
+        db.refresh(ot)
+    else:
+        ot.items = ot_items
+        ot.cliente = recep.cliente
+        ot.proyecto = recep.proyecto
+        if not ot.fecha_recepcion:
+            ot.fecha_recepcion = _format_fecha_recepcion(recep)
+        db.commit()
+
+    try:
+        excel_buffer = generar_excel_ot(ot)
+        safe_name = (ot.numero_ot or f"OT-{ot.id}").replace("/", "-").replace("\\", "-")
+        filename = f"OT-{safe_name}.xlsx"
+
+        return StreamingResponse(
+            excel_buffer,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except Exception as exc:
+        logger.error("Error al generar Excel de OT para recepción %s: %s", recepcion_id, exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"No se pudo generar el archivo Excel: {str(exc)}")
+
+
 @router.get("/exportar")
 def exportar_control_probetas(
     search: Optional[str] = None,
@@ -914,7 +1045,7 @@ def exportar_control_probetas(
     if estado and not muestra_ids:
         target_status = estado.lower().strip()
         if target_status == "faltas":
-            mapped_items = [x for x in mapped_items if x.status_ensayo == "FALTA"]
+            mapped_items = [x for x in mapped_items if x.status == "FALTA"]
         else:
             mapped_items = [x for x in mapped_items if x.estado_probeta == target_status]
 
@@ -937,7 +1068,7 @@ def exportar_control_probetas(
         bottom=Side(style='thin', color='D9D9D9')
     )
     
-    ws.merge_cells("A1:N1")
+    ws.merge_cells("A1:M1")
     ws["A1"] = "CONTROL DE PROBETAS - REPORTE GENERAL"
     ws["A1"].font = font_title
     ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
@@ -948,7 +1079,7 @@ def exportar_control_probetas(
     headers = [
         "#", "RECEPCIÓN", "CÓDIGO LEM", "CLIENTE", "ELEMENTO", 
         "F. ROTURA", "DENSIDAD", "EDAD", "POZA", "F'C", 
-        "STATUS ENSAYO", "STATUS ENTREGA", "F. ENTREGA", "ESTADO"
+        "STATUS", "F. ENTREGA", "ESTADO"
     ]
     
     for col_idx, h in enumerate(headers, 1):
@@ -976,8 +1107,7 @@ def exportar_control_probetas(
             item.edad,
             item.poza,
             item.fc_kg_cm2,
-            item.status_ensayo,
-            item.status_entrega,
+            item.status,
             item.fecha_entrega,
             item.estado_probeta.upper()
         ]
@@ -986,10 +1116,10 @@ def exportar_control_probetas(
         for col_idx, val in enumerate(row_data, 1):
             cell = ws.cell(row=row_idx, column=col_idx)
             cell.value = val
-            cell.font = font_bold if col_idx in (1, 2, 10, 14) else font_data
+            cell.font = font_bold if col_idx in (1, 2, 10, 13) else font_data
             cell.border = thin_border
             
-            if col_idx in (1, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14):
+            if col_idx in (1, 5, 6, 7, 8, 9, 10, 11, 12, 13):
                 cell.alignment = Alignment(horizontal="center", vertical="center")
             else:
                 cell.alignment = Alignment(horizontal="left", vertical="center")
