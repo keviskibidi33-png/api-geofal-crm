@@ -146,9 +146,18 @@ def generar_excel_ot_concreto(ot: OrdenTrabajo) -> io.BytesIO:
             set_cell(sheet_data, f"G{row_num}", str(fecha_rotura).replace("-", "/"), merge_anchor_map=merge_map)
             set_cell(sheet_data, f"H{row_num}", str(densidad or "-"), merge_anchor_map=merge_map)
             if edad != "" and edad is not None:
-                set_cell(sheet_data, f"I{row_num}", int(edad) if str(edad).isdigit() else str(edad), is_number=str(edad).isdigit(), merge_anchor_map=merge_map)
+                try:
+                    edad_val = float(str(edad))
+                    set_cell(sheet_data, f"I{row_num}", int(edad_val), is_number=True, merge_anchor_map=merge_map)
+                except (ValueError, TypeError):
+                    set_cell(sheet_data, f"I{row_num}", str(edad), merge_anchor_map=merge_map)
             if fc != "" and fc is not None:
-                set_cell(sheet_data, f"J{row_num}", int(fc) if str(fc).isdigit() else str(fc), is_number=str(fc).isdigit(), merge_anchor_map=merge_map)
+                try:
+                    fc_val = float(str(fc))
+                    # Sin decimales: 210.0 → 210
+                    set_cell(sheet_data, f"J{row_num}", int(fc_val), is_number=True, merge_anchor_map=merge_map)
+                except (ValueError, TypeError):
+                    set_cell(sheet_data, f"J{row_num}", str(fc), merge_anchor_map=merge_map)
 
         # 4. Pie de página y programación
         fecha_recep_str = (ot.fecha_recepcion or "").replace("-", "/")
