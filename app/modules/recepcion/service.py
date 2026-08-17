@@ -339,70 +339,75 @@ class RecepcionService:
                 for row in lab_rows:
                     rec_num = str(row[2]).strip()
                     if rec_num and rec_num not in existing_recs:
-                        clean_num = rec_num.split("-")[0] if "-" in rec_num else rec_num
-                        f_rec = parse_flexible_date(row[5]) or datetime.utcnow()
-                        desc_text = str(row[8] or "")
-                        raw_codigo_muestra = str(row[4] or "")
+                        try:
+                            clean_num = rec_num.split("-")[0] if "-" in rec_num else rec_num
+                            f_rec = parse_flexible_date(row[5]) or datetime.utcnow()
+                            desc_text = str(row[8] or "")
+                            raw_codigo_muestra = str(row[4] or "")
 
-                        cant_probetas = 0
-                        range_match = re.search(r"(\d+).*?(?:AL|-|A)\s*(\d+)", raw_codigo_muestra, re.IGNORECASE)
-                        if range_match:
-                            try:
-                                cant_probetas = int(range_match.group(2)) - int(range_match.group(1)) + 1
-                            except Exception:
-                                pass
-                        if cant_probetas <= 0:
-                            num_match = re.search(r"(\d+)\s*PROBETA", desc_text, re.IGNORECASE)
-                            cant_probetas = int(num_match.group(1)) if num_match else 3
+                            cant_probetas = 0
+                            range_match = re.search(r"(\d+).*?(?:AL|-|A)\s*(\d+)", raw_codigo_muestra, re.IGNORECASE)
+                            if range_match:
+                                try:
+                                    cant_probetas = int(range_match.group(2)) - int(range_match.group(1)) + 1
+                                except Exception:
+                                    pass
+                            if cant_probetas <= 0:
+                                num_match = re.search(r"(\d+)\s*PROBETA", desc_text, re.IGNORECASE)
+                                cant_probetas = int(num_match.group(1)) if num_match else 3
 
-                        cant_probetas = max(1, min(cant_probetas, 50))
-                        lem_codes = generate_correlative_lem_codes(raw_codigo_muestra or clean_num, clean_num, count=cant_probetas)
+                            cant_probetas = max(1, min(cant_probetas, 50))
+                            lem_codes = generate_correlative_lem_codes(raw_codigo_muestra or clean_num, clean_num, count=cant_probetas)
 
-                        nueva_recep = RecepcionMuestra(
-                            numero_recepcion=rec_num,
-                            numero_ot=str(row[3] or rec_num).strip(),
-                            cliente=str(row[6] or "Sin especificar").strip(),
-                            proyecto=str(row[7] or "Sin especificar").strip(),
-                            domicilio_legal="Sin especificar",
-                            ruc="Sin especificar",
-                            persona_contacto="Sin especificar",
-                            email="Sin especificar",
-                            telefono="Sin especificar",
-                            solicitante=str(row[6] or "Sin especificar").strip(),
-                            domicilio_solicitante="Sin especificar",
-                            ubicacion="Sin especificar",
-                            fecha_recepcion=f_rec,
-                            fecha_estimada_culminacion=f_rec,
-                            tipo_recepcion="CONCRETO",
-                            codigo_laboratorio="F-LEM-P-01.02",
-                            version="01",
-                            emision_digital=True,
-                            emision_fisica=False,
-                            observaciones=desc_text,
-                        )
-                        db.add(nueva_recep)
-                        db.flush()
+                            with db.begin_nested():
+                                nueva_recep = RecepcionMuestra(
+                                    numero_recepcion=rec_num,
+                                    numero_ot=str(row[3] or rec_num).strip(),
+                                    cliente=str(row[6] or "Sin especificar").strip(),
+                                    proyecto=str(row[7] or "Sin especificar").strip(),
+                                    domicilio_legal="Sin especificar",
+                                    ruc="Sin especificar",
+                                    persona_contacto="Sin especificar",
+                                    email="Sin especificar",
+                                    telefono="Sin especificar",
+                                    solicitante=str(row[6] or "Sin especificar").strip(),
+                                    domicilio_solicitante="Sin especificar",
+                                    ubicacion="Sin especificar",
+                                    fecha_recepcion=f_rec,
+                                    fecha_estimada_culminacion=f_rec,
+                                    tipo_recepcion="CONCRETO",
+                                    codigo_laboratorio="F-LEM-P-01.02",
+                                    version="01",
+                                    emision_digital=True,
+                                    emision_fisica=False,
+                                    observaciones=desc_text,
+                                )
+                                db.add(nueva_recep)
+                                db.flush()
 
-                        for i, cod in enumerate(lem_codes, start=1):
-                            nueva_m = MuestraConcreto(
-                                recepcion_id=nueva_recep.id,
-                                item_numero=i,
-                                codigo_muestra=cod,
-                                codigo_muestra_lem=cod,
-                                identificacion_muestra=f"Probeta {i}",
-                                estructura="Sin especificar",
-                                fc_kg_cm2=None,
-                                edad=None,
-                                fecha_rotura=None,
-                                requiere_densidad=False,
-                                elemento="-",
-                            )
-                            db.add(nueva_m)
+                                for i, cod in enumerate(lem_codes, start=1):
+                                    nueva_m = MuestraConcreto(
+                                        recepcion_id=nueva_recep.id,
+                                        item_numero=i,
+                                        codigo_muestra=cod,
+                                        codigo_muestra_lem=cod,
+                                        identificacion_muestra=f"Probeta {i}",
+                                        estructura="Sin especificar",
+                                        fc_kg_cm2=None,
+                                        edad=None,
+                                        fecha_rotura=None,
+                                        requiere_densidad=False,
+                                        elemento="-",
+                                    )
+                                    db.add(nueva_m)
 
-                        existing_recs.add(rec_num)
+                            existing_recs.add(rec_num)
+                        except Exception as row_err:
+                            logger.warning("Error auto-creating reception for %s: %s", rec_num, row_err)
 
                 db.commit()
         except Exception as sync_err:
+            db.rollback()
             logger.warning("Auto-sync from seguimiento_cliente_laboratorio notice: %s", sync_err)
 
         total_query = self._apply_recepcion_search_filters(
