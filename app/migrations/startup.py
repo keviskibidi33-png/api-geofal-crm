@@ -456,33 +456,59 @@ def run_startup_cleanup(engine) -> None:
             if resultado.get("eliminados", 0) > 0 or resultado.get("sincronizados", 0) > 0:
                 logger.info("[STARTUP-CLEANUP] Saneamiento completado: %s", resultado)
 
-            # Saneamiento de Recepciones de Concreto espurias (creadas erróneamente para servicios que no son probetas)
+            # Saneamiento quirúrgico de Recepciones de Concreto espurias
             from app.modules.recepcion.models import RecepcionMuestra, MuestraConcreto
             from app.modules.ot.models import OrdenTrabajo
+            from sqlalchemy import text
 
+            # 1. Obtener todas las recepciones marcadas como auto-creadas
             auto_recs = db_session.query(RecepcionMuestra).filter(
                 RecepcionMuestra.tipo_recepcion == "CONCRETO",
                 RecepcionMuestra.domicilio_legal == "Sin especificar",
             ).all()
 
+            # 2. Consultar en programacion_lab los servicios legítimos de concreto
+            lab_concrete_records = {}
+            try:
+                rows = db_session.execute(text("""
+                    SELECT recep_numero, codigo_muestra, descripcion_servicio 
+                    FROM programacion_lab 
+                    WHERE recep_numero IS NOT NULL AND recep_numero != ''
+                """)).fetchall()
+                for r in rows:
+                    r_num = str(r[0]).strip()
+                    c_muestra = str(r[1] or "").upper()
+                    d_serv = str(r[2] or "").upper()
+                    
+                    is_real_concrete = (
+                        "-CO" in c_muestra or "CO-" in c_muestra or " CO" in c_muestra or
+                        any(w in d_serv for w in ["PROBETA", "PROBETAS", "COMPRESION", "CILINDRO", "TESTIGO"])
+                    )
+                    lab_concrete_records[r_num] = is_real_concrete
+            except Exception as e:
+                logger.warning("Could not read programacion_lab for cleanup: %s", e)
+
             for s_rec in auto_recs:
-                # Verificar si tiene una OT Concreto legítima asociada
-                has_ot = db_session.query(OrdenTrabajo).filter(OrdenTrabajo.numero_recepcion == s_rec.numero_recepcion).first()
-                if has_ot:
+                # Si tiene una OT creada manualmente con responsables asignados, no tocar
+                has_valid_ot = db_session.query(OrdenTrabajo).filter(
+                    OrdenTrabajo.numero_recepcion == s_rec.numero_recepcion,
+                    OrdenTrabajo.ot_aperturada_por.isnot(None),
+                    OrdenTrabajo.ot_aperturada_por != "",
+                    OrdenTrabajo.ot_aperturada_por != "-",
+                ).first()
+                if has_valid_ot:
                     continue
 
-                # Verificar si alguna muestra tiene código de concreto CO
-                muestras = db_session.query(MuestraConcreto).filter(MuestraConcreto.recepcion_id == s_rec.id).all()
-                has_co = any("CO" in str(m.codigo_muestra or "").upper() for m in muestras)
+                r_num = str(s_rec.numero_recepcion).strip()
+                is_legit_concrete = lab_concrete_records.get(r_num, False)
 
-                obs_upper = str(s_rec.observaciones or "").upper()
-                is_concrete_desc = any(k in obs_upper for k in ["PROBETA", "PROBETAS", "COMPRESION", "CILINDRO", "TESTIGO"])
-
-                if not (has_co or is_concrete_desc):
-                    logger.info("[STARTUP-CLEANUP] Eliminando recepcion de probetas espuria %s (%s)", s_rec.numero_recepcion, s_rec.observaciones)
+                # Si no está en programacion_lab como concreto legítimo -> ELIMINAR
+                if not is_legit_concrete:
+                    logger.info("[STARTUP-CLEANUP] Eliminando recepcion de probetas espuria: %s", r_num)
                     db_session.query(MuestraConcreto).filter(MuestraConcreto.recepcion_id == s_rec.id).delete()
                     db_session.delete(s_rec)
 
             db_session.commit()
+            logger.info("[STARTUP-CLEANUP] Purga de recepciones espurias finalizada.")
     except Exception as err:
         logger.warning("Startup trazabilidad cleanup skipped: %s", _short_err(err))
