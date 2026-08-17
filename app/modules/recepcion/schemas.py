@@ -189,6 +189,7 @@ class RecepcionListItem(BaseModel):
     fecha_recepcion: Optional[str] = None
     estado: Optional[str] = None
     muestras_count: int = 0
+    ot_emitida: bool = False
 
     @validator('fecha_recepcion', pre=True)
     def convert_datetime_to_string(cls, v):

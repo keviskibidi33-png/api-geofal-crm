@@ -328,9 +328,11 @@ class RecepcionService:
 
         page_ids = [r.id for r in page_records]
         page_num_recs = [r.numero_recepcion for r in page_records if r.numero_recepcion]
+        page_num_ots = [r.numero_ot for r in page_records if r.numero_ot]
 
         from app.modules.verificacion.models import VerificacionMuestras, MuestraVerificada
         from app.modules.compresion.models import EnsayoCompresion, ItemCompresion
+        from app.modules.ot.models import OrdenTrabajo
 
         # Consultas de conteo acotadas exclusivamente a los registros de la página actual
         muestras_dict = dict(
@@ -369,6 +371,20 @@ class RecepcionService:
                 .all()
             )
 
+        # OT emitida: verifica si existe una OT con estado EMITIDO o DESCARGADO
+        # para el numero_ot de cada recepción (1 recepción = 1 OT concreto)
+        ot_emitida_set: set = set()
+        if page_num_ots:
+            ots_emitidas = (
+                db.query(OrdenTrabajo.numero_recepcion)
+                .filter(
+                    OrdenTrabajo.numero_recepcion.in_(page_num_recs),
+                    OrdenTrabajo.estado.in_(["EMITIDO", "DESCARGADO", "COMPLETADO"])
+                )
+                .all()
+            )
+            ot_emitida_set = {row[0] for row in ots_emitidas}
+
         items = [
             {
                 "id": row.id,
@@ -385,6 +401,7 @@ class RecepcionService:
                     or comp_dict.get(row.numero_recepcion)
                     or 0
                 ),
+                "ot_emitida": row.numero_recepcion in ot_emitida_set,
             }
             for row in page_records
         ]
