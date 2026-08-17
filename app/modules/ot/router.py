@@ -96,6 +96,37 @@ def list_ordenes_trabajo(
     return OTListResponseSchema(items=items, total=total, page=page, limit=limit)
 
 
+def _to_iso_date(val: Any) -> str:
+    """Convierte cualquier formato de fecha (DD/MM/YYYY, YYYY/MM/DD, etc.) al estándar ISO YYYY-MM-DD."""
+    if not val:
+        return ""
+    s = str(val).strip()
+    if not s or s == "-":
+        return ""
+    s = s.split("T")[0].split(" ")[0].replace("/", "-")
+    parts = s.split("-")
+    if len(parts) == 3:
+        if len(parts[0]) == 4:
+            return f"{parts[0]}-{parts[1].zfill(2)}-{parts[2].zfill(2)}"
+        elif len(parts[2]) == 4:
+            return f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
+        elif len(parts[2]) == 2:
+            return f"20{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
+    return s
+
+
+def _resolve_densidad(m) -> str:
+    """Determina si la probeta requiere densidad ('SI' o 'NO')."""
+    d = str(getattr(m, "densidad", "") or "").strip().upper()
+    if d in ("SI", "SÍ"):
+        return "SI"
+    if d in ("NO", "N"):
+        return "NO"
+    if getattr(m, "requiere_densidad", None) is True:
+        return "SI"
+    return "NO"
+
+
 def _enrich_ot_data(ot: OrdenTrabajo, db: Session):
     """
     Garantiza la trazabilidad: si la OT tiene numero_recepcion, sincroniza
@@ -122,7 +153,7 @@ def _enrich_ot_data(ot: OrdenTrabajo, db: Session):
     if not ot.proyecto and recepcion.proyecto:
         ot.proyecto = recepcion.proyecto
     if not ot.fecha_recepcion and recepcion.fecha_recepcion:
-        ot.fecha_recepcion = str(recepcion.fecha_recepcion).replace("/", "-")
+        ot.fecha_recepcion = _to_iso_date(recepcion.fecha_recepcion)
 
     # Sincronizar probetas
     muestras = (
@@ -135,11 +166,16 @@ def _enrich_ot_data(ot: OrdenTrabajo, db: Session):
         return
 
     muestras_by_cod = {}
+    fechas_rotura = []
     for m in muestras:
         if m.codigo_muestra_lem:
             muestras_by_cod[m.codigo_muestra_lem.strip().upper()] = m
         if m.codigo_muestra:
             muestras_by_cod[m.codigo_muestra.strip().upper()] = m
+        if m.fecha_rotura:
+            f_iso = _to_iso_date(m.fecha_rotura)
+            if f_iso:
+                fechas_rotura.append(f_iso)
 
     items = list(ot.items) if isinstance(ot.items, list) else []
     for idx, it in enumerate(items):
@@ -150,16 +186,28 @@ def _enrich_ot_data(ot: OrdenTrabajo, db: Session):
         if m:
             if not it.get("elemento") or it.get("elemento") == "-":
                 it["elemento"] = m.elemento or "-"
-            if not it.get("fecha_rotura"):
-                it["fecha_rotura"] = str(m.fecha_rotura).replace("/", "-") if m.fecha_rotura else ""
+            if not it.get("fecha_rotura") or "/" in str(it.get("fecha_rotura", "")):
+                it["fecha_rotura"] = _to_iso_date(m.fecha_rotura)
             if not it.get("densidad") or it.get("densidad") == "-":
-                it["densidad"] = m.densidad if m.densidad in ("SI", "NO") else ("SI" if m.requiere_densidad else "-")
+                it["densidad"] = _resolve_densidad(m)
             if it.get("edad") is None or it.get("edad") == 0 or it.get("edad") == "":
                 it["edad"] = m.edad
             if it.get("fc_kg_cm2") is None or it.get("fc_kg_cm2") == 0 or it.get("fc_kg_cm2") == "":
                 it["fc_kg_cm2"] = int(m.fc_kg_cm2) if m.fc_kg_cm2 is not None else None
     
     ot.items = items
+
+    # Sincronizar fechas programadas si estaban vacías
+    if not ot.inicio_programado and fechas_rotura:
+        ot.inicio_programado = min(fechas_rotura)
+    if not ot.fin_programado and fechas_rotura:
+        ot.fin_programado = max(fechas_rotura)
+    if ot.fecha_recepcion:
+        ot.fecha_recepcion = _to_iso_date(ot.fecha_recepcion)
+    if ot.inicio_programado:
+        ot.inicio_programado = _to_iso_date(ot.inicio_programado)
+    if ot.fin_programado:
+        ot.fin_programado = _to_iso_date(ot.fin_programado)
 
 
 @router.get("/prefill/{numero_recepcion}")
@@ -205,11 +253,11 @@ def prefill_ot_from_recepcion(
     items_ot = []
     fechas_rotura = []
     for i, m in enumerate(muestras, start=1):
-        f_rot = str(m.fecha_rotura).replace("/", "-") if m.fecha_rotura else ""
+        f_rot = _to_iso_date(m.fecha_rotura)
         if f_rot:
             fechas_rotura.append(f_rot)
         
-        dens_val = m.densidad if m.densidad in ("SI", "NO") else ("SI" if m.requiere_densidad else "-")
+        dens_val = _resolve_densidad(m)
 
         items_ot.append({
             "item": i,
@@ -223,11 +271,8 @@ def prefill_ot_from_recepcion(
             "fc_kg_cm2": int(m.fc_kg_cm2) if m.fc_kg_cm2 is not None else None,
         })
 
-    # Normalizar fecha recepción
-    fecha_rec = None
-    if recepcion.fecha_recepcion:
-        fecha_str = str(recepcion.fecha_recepcion)
-        fecha_rec = fecha_str.replace("/", "-")
+    # Normalizar fecha recepción a ISO
+    fecha_rec = _to_iso_date(recepcion.fecha_recepcion)
 
     inicio_prog = min(fechas_rotura) if fechas_rotura else (fecha_rec or "")
     fin_prog = max(fechas_rotura) if fechas_rotura else inicio_prog
