@@ -542,7 +542,7 @@ class ControlAmbientalService:
 
                     fecha_lectura = r_parsed.get("fecha_lectura", r.fecha)
                     hum_min = r_parsed.get("hum_min", "-")
-                    rev_por = r_parsed.get("revisado_por", "ING. FABIAN")
+                    rev_por = r_parsed.get("revisado_por", "")
 
                     row = start_row + idx
                     set_cell(sheet_data, f"B{row}", r.fecha)
@@ -667,7 +667,7 @@ class ControlAmbientalService:
                             "temp_c": parsed_obs.get("temp_c", "-"),
                             "humedad_pct": parsed_obs.get("humedad_pct", "-"),
                             "verificado_por": r.verificado_por,
-                            "revisado_por": parsed_obs.get("revisado_por", "ING. FABIAN"),
+                            "revisado_por": parsed_obs.get("revisado_por", ""),
                             "pesadas": []
                         }
 
