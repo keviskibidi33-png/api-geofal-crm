@@ -66,6 +66,7 @@ def generate_quote_excel(payload: QuoteExportRequest) -> io.BytesIO:
             for item in payload.items
         ]
 
+    cliente_email_val = payload.correo or payload.email or payload.cliente_email or ''
     export_data = {
         'cotizacion_numero': cotizacion_numero,
         'fecha_emision': fecha_emision,
@@ -73,8 +74,8 @@ def generate_quote_excel(payload: QuoteExportRequest) -> io.BytesIO:
         'ruc': payload.ruc or '',
         'contacto': payload.contacto or '',
         'telefono': payload.telefono_contacto or '',
-        'email': payload.correo or '',
-        'correo': payload.correo_vendedor or payload.correo or '', # Logic from main.py
+        'email': cliente_email_val,
+        'correo': payload.correo_vendedor or cliente_email_val, # Logic from main.py
         'fecha_solicitud': payload.fecha_solicitud,
         'proyecto': payload.proyecto or '',
         'ubicacion': payload.ubicacion or '',

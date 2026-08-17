@@ -1,6 +1,6 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from datetime import date, datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 import re
 
 class QuoteItem(BaseModel):
@@ -20,6 +20,8 @@ class QuoteExportRequest(BaseModel):
     contacto: Optional[str] = None
     telefono_contacto: Optional[str] = None
     correo: Optional[str] = None
+    email: Optional[str] = None
+    cliente_email: Optional[str] = None
     proyecto: Optional[str] = None
     ubicacion: Optional[str] = None
     personal_comercial: Optional[str] = None
@@ -35,6 +37,23 @@ class QuoteExportRequest(BaseModel):
     user_id: Optional[str] = None
     proyecto_id: Optional[str] = None
     cliente_id: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def resolve_field_aliases(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            # Resolve email aliases
+            if not data.get("correo"):
+                data["correo"] = data.get("email") or data.get("cliente_email") or data.get("correo_contacto")
+            if not data.get("email") and data.get("correo"):
+                data["email"] = data.get("correo")
+            if not data.get("telefono_contacto"):
+                data["telefono_contacto"] = data.get("telefono") or data.get("cliente_telefono")
+            if not data.get("cliente"):
+                data["cliente"] = data.get("cliente_nombre") or data.get("empresa")
+            if not data.get("proyecto"):
+                data["proyecto"] = data.get("proyecto_nombre")
+        return data
 
     @field_validator("fecha_emision", "fecha_solicitud", mode="before")
     @classmethod

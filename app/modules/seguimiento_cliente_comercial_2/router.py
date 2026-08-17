@@ -23,7 +23,7 @@ router = APIRouter(prefix="/api/seguimiento-comercial-2", tags=["Seguimiento Cli
 logger = logging.getLogger(__name__)
 
 # Template path resolution
-TEMPLATE_PATH = str(find_template_path("Seguimiento.xlsx"))
+TEMPLATE_PATH = str(find_template_path("Template_Seguimiento_cliente.xlsx"))
 
 def _current_user(request: Request) -> tuple[str | None, str | None]:
     """

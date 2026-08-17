@@ -76,20 +76,23 @@ STATE_ALIASES = {
 }
 
 SEG_CLIENTE_HEADERS = [
-    "N°",
+    "No",
     "FECHA CONTACTO",
     "PERSONA CONTACTO",
-    "CELULAR",
-    "ASESOR COMENTARIO",
-    "EMPRESA",
-    "F.ULTIMO CONTACTO",
+    "NÚMERO CELULAR",
+    "E-MAIL",
+    "RAZON SOCIAL",
+    "RUC",
+    "ASESOR",
+    "CONTACTO",
     "RUBRO",
     "ESTADO CLIENTE",
     "SERVICIO SOLICITADO",
-    "N° COTIZACION",
-    "COSTO COTIZ SIN IGV",
-    "ESTADO SEGUIMIENTO",
-    "CATEGORIA CLIENTE",
+    "FECHA ÚLTIMO CONTACTO",
+    "ASISTENTE COMENTARIO",
+    "ASESOR COMENTARIO",
+    "N° DE COTIZACIÓN",
+    "ESTADO DE SEGUIMIENTO",
 ]
 
 class SeguimientoClienteComercialService:
@@ -1202,7 +1205,9 @@ class SeguimientoClienteComercialService:
         if not os.path.exists(template_path):
             try:
                 from app.modules.common.excel_xml import find_template_path
-                found = str(find_template_path("Seguimiento.xlsx"))
+                found = str(find_template_path("Template_Seguimiento_cliente.xlsx"))
+                if not os.path.exists(found):
+                    found = str(find_template_path("Seguimiento.xlsx"))
                 if os.path.exists(found):
                     template_path = found
             except Exception:
@@ -1246,16 +1251,21 @@ class SeguimientoClienteComercialService:
                 2: "fecha_contacto",
                 3: "persona_contacto",
                 4: "numero_celular",
-                5: "comentarios_asesor",
+                5: "email",
                 6: "razon_social",
-                7: "fecha_ultimo_contacto",
-                8: "rubro",
-                9: "estado_cliente",
-                10: "servicio_solicitado",
-                11: "numero_cotizacion",
-                12: "costo_cotiz_sin_igv",
-                13: "estado_seguimiento",
-                14: "categoria_servicio",
+                7: "ruc",
+                8: "asesor",
+                9: "contacto",
+                10: "rubro",
+                11: "estado_cliente",
+                12: "servicio_solicitado",
+                13: "fecha_ultimo_contacto",
+                14: "comentarios_asistente",
+                15: "comentarios_asesor",
+                16: "numero_cotizacion",
+                17: "costo_cotiz_sin_igv",
+                18: "estado_seguimiento",
+                19: "categoria_servicio",
             }
 
         # Pre-load cotizaciones lookup for quote/price auto-recovery

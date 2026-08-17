@@ -65,6 +65,7 @@ async def export_quote(payload: QuoteExportRequest) -> Response:
         condiciones_textos = get_condiciones_textos(payload.condiciones_ids) if payload.condiciones_ids else []
 
         # Prepare dict for export_xlsx_direct
+        cliente_email_val = payload.correo or payload.email or ''
         export_data = {
             'cotizacion_numero': cotizacion_numero,
             'fecha_emision': fecha_emision,
@@ -73,8 +74,8 @@ async def export_quote(payload: QuoteExportRequest) -> Response:
             'contacto': payload.contacto or '',
             'telefono': payload.telefono_contacto or '',
             'telefono_contacto': payload.telefono_contacto or '', # Add for safety
-            'email': payload.correo or '',
-            'correo': payload.correo_vendedor or payload.correo or '', 
+            'email': cliente_email_val,
+            'correo': payload.correo_vendedor or cliente_email_val, 
             'fecha_solicitud': payload.fecha_solicitud,
             'proyecto': payload.proyecto or '',
             'ubicacion': payload.ubicacion or '',
