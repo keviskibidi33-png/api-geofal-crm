@@ -24,7 +24,7 @@ from app.modules.compresion.models import EnsayoCompresion, ItemCompresion
 from app.modules.verificacion.models import VerificacionMuestras, MuestraVerificada
 from app.modules.common.notifications import resolve_actor_identity, log_audit_action
 from app.modules.ot.models import OrdenTrabajo
-from app.modules.ot.excel import generar_excel_ot
+from app.modules.ot.excel import generar_excel_ot, generar_excel_ot_concreto
 
 router = APIRouter(prefix="/api/control-probetas", tags=["Control Probetas"])
 logger = logging.getLogger(__name__)
@@ -101,7 +101,7 @@ class ProbetasKpis(BaseModel):
     vencido: int
 
 
-ALLOWED_ELEMENTOS = {"-", "PEQUEÑA", "GRANDE", "DIAMANTINA", "CUBO", "VIGA"}
+ALLOWED_ELEMENTOS = {"-", "4 in x 8 in", "6 in x 12 in", "VIGA", "CUBO", "PEQUEÑA", "GRANDE", "DIAMANTINA"}
 ALLOWED_POZAS = {"-", "ROTAS", "ANULADO", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"}
 ALLOWED_STATUS = {"-", "FALTA", "ENTREGADO", "INFORME LISTO", "ANULADO", "ENSAYADO"}
 ALLOWED_STATUS_ENSAYO = {"-", "ENSAYADO", "PENDIENTE", "FALTA", "ANULADO", "ENTREGADO", "INFORME LISTO"}
@@ -389,7 +389,12 @@ def importar_recepcion_probetas(
             {
                 "item": m.item_numero,
                 "codigo_muestra": m.codigo_muestra_lem or m.codigo_muestra or f"M-{m.item_numero}",
-                "descripcion": f"{m.elemento or 'PROBETA'} F'C={m.fc_kg_cm2} EDAD={m.edad}D",
+                "descripcion": "COMPRESION PROBETAS ASTM C39/C39M",
+                "elemento": m.elemento or "-",
+                "fecha_rotura": m.fecha_rotura or "",
+                "densidad": "SI" if m.requiere_densidad else "NO",
+                "edad": m.edad,
+                "fc_kg_cm2": m.fc_kg_cm2,
                 "cantidad": 1,
             }
             for m in muestras
@@ -754,7 +759,12 @@ def create_probeta(
             {
                 "item": m.item_numero,
                 "codigo_muestra": m.codigo_muestra_lem or m.codigo_muestra or f"M-{m.item_numero}",
-                "descripcion": f"{m.elemento or 'PROBETA'} F'C={m.fc_kg_cm2} EDAD={m.edad}D",
+                "descripcion": "COMPRESION PROBETAS ASTM C39/C39M",
+                "elemento": m.elemento or "-",
+                "fecha_rotura": m.fecha_rotura or "",
+                "densidad": "SI" if m.requiere_densidad else "NO",
+                "edad": m.edad,
+                "fc_kg_cm2": m.fc_kg_cm2,
                 "cantidad": 1,
             }
             for m in all_muestras
@@ -966,7 +976,12 @@ def download_ot_excel_by_recepcion(
         {
             "item": m.item_numero,
             "codigo_muestra": m.codigo_muestra_lem or m.codigo_muestra or f"M-{m.item_numero}",
-            "descripcion": f"{m.elemento or 'PROBETA'} F'C={m.fc_kg_cm2} EDAD={m.edad}D",
+            "descripcion": "COMPRESION PROBETAS ASTM C39/C39M",
+            "elemento": m.elemento or "-",
+            "fecha_rotura": m.fecha_rotura or "",
+            "densidad": "SI" if m.requiere_densidad else "NO",
+            "edad": m.edad,
+            "fc_kg_cm2": m.fc_kg_cm2,
             "cantidad": 1,
         }
         for m in muestras
@@ -1002,7 +1017,7 @@ def download_ot_excel_by_recepcion(
         db.commit()
 
     try:
-        excel_buffer = generar_excel_ot(ot)
+        excel_buffer = generar_excel_ot_concreto(ot)
         safe_name = (ot.numero_ot or f"OT-{ot.id}").replace("/", "-").replace("\\", "-")
         filename = f"OT-{safe_name}.xlsx"
 
@@ -1012,7 +1027,7 @@ def download_ot_excel_by_recepcion(
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
     except Exception as exc:
-        logger.error("Error al generar Excel de OT para recepción %s: %s", recepcion_id, exc, exc_info=True)
+        logger.error("Error al generar Excel de OT Concreto para recepción %s: %s", recepcion_id, exc, exc_info=True)
         raise HTTPException(status_code=500, detail=f"No se pudo generar el archivo Excel: {str(exc)}")
 
 

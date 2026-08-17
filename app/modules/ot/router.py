@@ -12,7 +12,7 @@ from app.database import get_db_session
 from app.modules.common.notifications import log_audit_action, resolve_actor_identity
 from .models import OrdenTrabajo
 from .schemas import OTCreateSchema, OTUpdateSchema, OTOutSchema, OTListResponseSchema
-from .excel import generar_excel_ot
+from .excel import generar_excel_ot, generar_excel_ot_concreto
 
 router = APIRouter(prefix="/api/ot", tags=["Ordenes de Trabajo (OT)"])
 logger = logging.getLogger(__name__)
@@ -40,7 +40,8 @@ def _extract_user_info(request: Request) -> tuple[str | None, str | None]:
 @router.get("", response_model=OTListResponseSchema)
 def list_ordenes_trabajo(
     search: Optional[str] = Query(None, description="Buscador por N° OT, Recepción, Cliente, etc."),
-    estado: Optional[str] = Query(None, description="Filtro por estado (PENDIENTE, EN PROCESO, COMPLETADO)"),
+    estado: Optional[str] = Query(None, description="Filtro por estado (PENDIENTE, EN PROCESO, COMPLETADO, DESCARGADO)"),
+    tipo: Optional[str] = Query(None, description="Filtro por tipo (CONCRETO, MUESTRAS, ALL)"),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db_session),
@@ -65,13 +66,32 @@ def list_ordenes_trabajo(
             )
         )
 
-    total = query.count()
-    items = (
-        query.order_by(desc(OrdenTrabajo.created_at), desc(OrdenTrabajo.id))
-        .offset((page - 1) * limit)
-        .limit(limit)
-        .all()
-    )
+    all_candidates = query.order_by(desc(OrdenTrabajo.created_at), desc(OrdenTrabajo.id)).all()
+
+    # Filtrar en memoria por tipo si se especifica
+    if tipo and tipo.strip() and tipo.upper() != "ALL":
+        target_tipo = tipo.strip().upper()
+        filtered = []
+        for ot in all_candidates:
+            is_conc = False
+            if ot.items and isinstance(ot.items, list):
+                for it in ot.items:
+                    if isinstance(it, dict):
+                        cod = str(it.get("codigo_muestra", "")).upper()
+                        desc_text = str(it.get("descripcion", "")).upper()
+                        if "CO" in cod or "PROBETA" in desc_text or "COMPRESION" in desc_text or it.get("fc_kg_cm2"):
+                            is_conc = True
+                            break
+            if target_tipo == "CONCRETO" and is_conc:
+                filtered.append(ot)
+            elif target_tipo == "MUESTRAS" and not is_conc:
+                filtered.append(ot)
+        all_candidates = filtered
+
+    total = len(all_candidates)
+    start = (page - 1) * limit
+    end = start + limit
+    items = all_candidates[start:end]
 
     return OTListResponseSchema(items=items, total=total, page=page, limit=limit)
 
@@ -98,29 +118,24 @@ def create_orden_trabajo(
         raise HTTPException(status_code=400, detail=f"Ya existe una Orden de Trabajo con N° OT: {payload.numero_ot}")
 
     ot_data = payload.model_dump()
-    ot_data["numero_ot"] = payload.numero_ot.strip()
-    ot_data["creado_por"] = user_name or "SISTEMA"
-    ot_data["actualizado_por"] = user_name or "SISTEMA"
+    ot_data["creado_por"] = user_name
 
-    # Convertir Pydantic items a diccionarios puros
-    if "items" in ot_data and ot_data["items"]:
-        ot_data["items"] = [item if isinstance(item, dict) else item.model_dump() for item in payload.items]
-
-    ot = OrdenTrabajo(**ot_data)
-    db.add(ot)
+    new_ot = OrdenTrabajo(**ot_data)
+    db.add(new_ot)
     db.commit()
-    db.refresh(ot)
+    db.refresh(new_ot)
 
     # Log auditoría
     log_audit_action(
         user_id=user_id,
         user_name=user_name,
-        action=f"Creación de Orden de Trabajo {ot.numero_ot}",
+        action=f"Creación de Orden de Trabajo {new_ot.numero_ot}",
         module="OT",
-        details={"ot_id": ot.id, "numero_ot": ot.numero_ot, "numero_recepcion": ot.numero_recepcion},
+        details={"ot_id": new_ot.id, "numero_ot": new_ot.numero_ot},
+        severity="info",
     )
 
-    return ot
+    return new_ot
 
 
 @router.put("/{ot_id}", response_model=OTOutSchema)
@@ -136,25 +151,20 @@ def update_orden_trabajo(
     if not ot:
         raise HTTPException(status_code=404, detail="Orden de Trabajo no encontrada")
 
-    data = payload.model_dump(exclude_unset=True)
+    update_data = payload.model_dump(exclude_unset=True)
 
-    # Verificar si intenta cambiar el numero_ot por uno que ya exista
-    if "numero_ot" in data and data["numero_ot"]:
-        new_num = data["numero_ot"].strip()
-        if new_num != ot.numero_ot:
-            dup = db.query(OrdenTrabajo).filter(OrdenTrabajo.numero_ot == new_num).first()
-            if dup:
-                raise HTTPException(status_code=400, detail=f"Ya existe una Orden de Trabajo con N° OT: {new_num}")
-            ot.numero_ot = new_num
+    if "numero_ot" in update_data and update_data["numero_ot"].strip() != ot.numero_ot:
+        existing = db.query(OrdenTrabajo).filter(
+            OrdenTrabajo.numero_ot == update_data["numero_ot"].strip(),
+            OrdenTrabajo.id != ot_id
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail=f"Ya existe otra Orden de Trabajo con N° OT: {update_data['numero_ot']}")
 
-    if "items" in data and data["items"] is not None:
-        data["items"] = [item if isinstance(item, dict) else item for item in data["items"]]
+    update_data["actualizado_por"] = user_name
 
-    for field, val in data.items():
-        if field != "numero_ot":
-            setattr(ot, field, val)
-
-    ot.actualizado_por = user_name or "SISTEMA"
+    for field, value in update_data.items():
+        setattr(ot, field, value)
 
     db.commit()
     db.refresh(ot)
@@ -164,7 +174,8 @@ def update_orden_trabajo(
         user_name=user_name,
         action=f"Actualización de Orden de Trabajo {ot.numero_ot}",
         module="OT",
-        details={"ot_id": ot.id, "numero_ot": ot.numero_ot, "cambios": list(data.keys())},
+        details={"ot_id": ot.id, "numero_ot": ot.numero_ot, "cambios": list(update_data.keys())},
+        severity="info",
     )
 
     return ot
@@ -199,13 +210,34 @@ def delete_orden_trabajo(
 
 
 @router.get("/{ot_id}/excel")
-def download_excel_ot(ot_id: int, db: Session = Depends(get_db_session)):
+def download_excel_ot(
+    ot_id: int,
+    tipo: Optional[str] = Query(None, description="Tipo de plantilla: CONCRETO o GENERAL"),
+    db: Session = Depends(get_db_session)
+):
     ot = db.query(OrdenTrabajo).filter(OrdenTrabajo.id == ot_id).first()
     if not ot:
         raise HTTPException(status_code=404, detail="Orden de Trabajo no encontrada")
 
+    # Auto-detección del tipo de plantilla
+    is_concreto = False
+    if tipo and tipo.upper() == "CONCRETO":
+        is_concreto = True
+    elif ot.items and isinstance(ot.items, list):
+        for it in ot.items:
+            if isinstance(it, dict):
+                cod = str(it.get("codigo_muestra", "")).upper()
+                desc_text = str(it.get("descripcion", "")).upper()
+                if "CO" in cod or "PROBETA" in desc_text or "COMPRESION" in desc_text or it.get("fc_kg_cm2"):
+                    is_concreto = True
+                    break
+
     try:
-        excel_buffer = generar_excel_ot(ot)
+        if is_concreto:
+            excel_buffer = generar_excel_ot_concreto(ot)
+        else:
+            excel_buffer = generar_excel_ot(ot)
+
         safe_name = (ot.numero_ot or f"OT-{ot.id}").replace("/", "-").replace("\\", "-")
         filename = f"OT-{safe_name}.xlsx"
 
