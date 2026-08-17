@@ -456,40 +456,17 @@ def run_startup_cleanup(engine) -> None:
             if resultado.get("eliminados", 0) > 0 or resultado.get("sincronizados", 0) > 0:
                 logger.info("[STARTUP-CLEANUP] Saneamiento completado: %s", resultado)
 
-            # Saneamiento quirúrgico de Recepciones de Concreto espurias
+            # Eliminación total de recepciones auto-inyectadas
             from app.modules.recepcion.models import RecepcionMuestra, MuestraConcreto
             from app.modules.ot.models import OrdenTrabajo
-            from sqlalchemy import text
 
-            # 1. Obtener todas las recepciones marcadas como auto-creadas
             auto_recs = db_session.query(RecepcionMuestra).filter(
                 RecepcionMuestra.tipo_recepcion == "CONCRETO",
                 RecepcionMuestra.domicilio_legal == "Sin especificar",
             ).all()
 
-            # 2. Consultar en programacion_lab los servicios legítimos de concreto
-            lab_concrete_records = {}
-            try:
-                rows = db_session.execute(text("""
-                    SELECT recep_numero, codigo_muestra, descripcion_servicio 
-                    FROM programacion_lab 
-                    WHERE recep_numero IS NOT NULL AND recep_numero != ''
-                """)).fetchall()
-                for r in rows:
-                    r_num = str(r[0]).strip()
-                    c_muestra = str(r[1] or "").upper()
-                    d_serv = str(r[2] or "").upper()
-                    
-                    is_real_concrete = (
-                        "-CO" in c_muestra or "CO-" in c_muestra or " CO" in c_muestra or
-                        any(w in d_serv for w in ["PROBETA", "PROBETAS", "COMPRESION", "CILINDRO", "TESTIGO"])
-                    )
-                    lab_concrete_records[r_num] = is_real_concrete
-            except Exception as e:
-                logger.warning("Could not read programacion_lab for cleanup: %s", e)
-
             for s_rec in auto_recs:
-                # Si tiene una OT creada manualmente con responsables asignados, no tocar
+                # Si tiene una OT creada manualmente con responsables asignados, preservar
                 has_valid_ot = db_session.query(OrdenTrabajo).filter(
                     OrdenTrabajo.numero_recepcion == s_rec.numero_recepcion,
                     OrdenTrabajo.ot_aperturada_por.isnot(None),
@@ -500,15 +477,11 @@ def run_startup_cleanup(engine) -> None:
                     continue
 
                 r_num = str(s_rec.numero_recepcion).strip()
-                is_legit_concrete = lab_concrete_records.get(r_num, False)
-
-                # Si no está en programacion_lab como concreto legítimo -> ELIMINAR
-                if not is_legit_concrete:
-                    logger.info("[STARTUP-CLEANUP] Eliminando recepcion de probetas espuria: %s", r_num)
-                    db_session.query(MuestraConcreto).filter(MuestraConcreto.recepcion_id == s_rec.id).delete()
-                    db_session.delete(s_rec)
+                logger.info("[STARTUP-CLEANUP] Eliminando recepcion auto-inyectada: %s", r_num)
+                db_session.query(MuestraConcreto).filter(MuestraConcreto.recepcion_id == s_rec.id).delete()
+                db_session.delete(s_rec)
 
             db_session.commit()
-            logger.info("[STARTUP-CLEANUP] Purga de recepciones espurias finalizada.")
+            logger.info("[STARTUP-CLEANUP] Purga total de recepciones auto-inyectadas completada.")
     except Exception as err:
         logger.warning("Startup trazabilidad cleanup skipped: %s", _short_err(err))
