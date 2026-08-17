@@ -328,7 +328,6 @@ class RecepcionService:
 
         page_ids = [r.id for r in page_records]
         page_num_recs = [r.numero_recepcion for r in page_records if r.numero_recepcion]
-        page_num_ots = [r.numero_ot for r in page_records if r.numero_ot]
 
         from app.modules.verificacion.models import VerificacionMuestras, MuestraVerificada
         from app.modules.compresion.models import EnsayoCompresion, ItemCompresion
@@ -371,19 +370,30 @@ class RecepcionService:
                 .all()
             )
 
-        # OT emitida: verifica si existe una OT con estado EMITIDO o DESCARGADO
-        # para el numero_ot de cada recepción (1 recepción = 1 OT concreto)
+        # ot_emitida: data-driven — verifica que exista una OT con todos los campos
+        # obligatorios llenos (numero_ot, cliente, proyecto, fecha_recepcion, items>=1).
+        # No depende del estado manual sino de la completitud de los datos.
         ot_emitida_set: set = set()
-        if page_num_ots:
-            ots_emitidas = (
-                db.query(OrdenTrabajo.numero_recepcion)
+        if page_num_recs:
+            ots_completas = (
+                db.query(OrdenTrabajo.numero_recepcion, OrdenTrabajo.items)
                 .filter(
                     OrdenTrabajo.numero_recepcion.in_(page_num_recs),
-                    OrdenTrabajo.estado.in_(["EMITIDO", "DESCARGADO", "COMPLETADO"])
+                    OrdenTrabajo.numero_ot.isnot(None),
+                    OrdenTrabajo.cliente.isnot(None),
+                    OrdenTrabajo.cliente != "",
+                    OrdenTrabajo.proyecto.isnot(None),
+                    OrdenTrabajo.proyecto != "",
+                    OrdenTrabajo.fecha_recepcion.isnot(None),
+                    OrdenTrabajo.fecha_recepcion != "",
                 )
                 .all()
             )
-            ot_emitida_set = {row[0] for row in ots_emitidas}
+            for row in ots_completas:
+                items_val = row[1] if row[1] is not None else []
+                # Verificar que tenga al menos 1 ítem con código de muestra
+                if isinstance(items_val, list) and len(items_val) >= 1:
+                    ot_emitida_set.add(row[0])
 
         items = [
             {

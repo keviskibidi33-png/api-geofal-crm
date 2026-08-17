@@ -96,6 +96,69 @@ def list_ordenes_trabajo(
     return OTListResponseSchema(items=items, total=total, page=page, limit=limit)
 
 
+@router.get("/prefill/{numero_recepcion}")
+def prefill_ot_from_recepcion(
+    numero_recepcion: str,
+    db: Session = Depends(get_db_session),
+):
+    """
+    Retorna los datos de una recepción formateados para pre-llenar
+    el formulario de OT Concreto automáticamente.
+    """
+    from app.modules.recepcion.models import RecepcionMuestra, MuestraConcreto
+
+    recepcion = (
+        db.query(RecepcionMuestra)
+        .filter(RecepcionMuestra.numero_recepcion == numero_recepcion.strip())
+        .first()
+    )
+    if not recepcion:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No se encontró la recepción '{numero_recepcion}'. Verifica el número e intenta de nuevo."
+        )
+
+    # Cargar probetas asociadas
+    muestras = (
+        db.query(MuestraConcreto)
+        .filter(MuestraConcreto.recepcion_id == recepcion.id)
+        .order_by(MuestraConcreto.item_numero)
+        .all()
+    )
+
+    # Construir items de OT desde probetas
+    items_ot = []
+    for i, m in enumerate(muestras, start=1):
+        items_ot.append({
+            "item": i,
+            "codigo_muestra": m.codigo_muestra_lem or m.codigo_muestra or f"PROB-{i:02d}",
+            "descripcion": "COMPRESION PROBETAS ASTM C39/C39M",
+            "cantidad": 1,
+            # Campos extras para info visual (no se guardan en OT pero se muestran)
+            "_elemento": m.elemento or "-",
+            "_fecha_rotura": m.fecha_rotura or "",
+            "_edad": m.edad,
+            "_fc_kg_cm2": m.fc_kg_cm2,
+        })
+
+    # Normalizar fecha
+    fecha_rec = None
+    if recepcion.fecha_recepcion:
+        fecha_str = str(recepcion.fecha_recepcion)
+        # Convertir YYYY/MM/DD a YYYY-MM-DD para input[type=date]
+        fecha_rec = fecha_str.replace("/", "-")
+
+    return {
+        "numero_recepcion": recepcion.numero_recepcion,
+        "cliente": recepcion.cliente or "",
+        "proyecto": recepcion.proyecto or "",
+        "fecha_recepcion": fecha_rec or "",
+        "observaciones": recepcion.observaciones or "",
+        "total_probetas": len(muestras),
+        "items": items_ot,
+    }
+
+
 @router.get("/{ot_id}", response_model=OTOutSchema)
 def get_orden_trabajo(ot_id: int, db: Session = Depends(get_db_session)):
     ot = db.query(OrdenTrabajo).filter(OrdenTrabajo.id == ot_id).first()
