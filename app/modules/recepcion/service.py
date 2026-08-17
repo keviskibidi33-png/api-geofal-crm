@@ -370,30 +370,48 @@ class RecepcionService:
                 .all()
             )
 
-        # ot_emitida: data-driven — verifica que exista una OT con todos los campos
-        # obligatorios llenos (numero_ot, cliente, proyecto, fecha_recepcion, items>=1).
-        # No depende del estado manual sino de la completitud de los datos.
+        # ot_emitida: data-driven y riguroso — verifica que la OT tenga:
+        # 1. numero_ot, cliente, proyecto, fecha_recepcion no vacíos
+        # 2. ot_aperturada_por y ot_designada_a asignados (no vacíos ni null)
+        # 3. items >= 1
+        # 4. Todos los ítems con 'elemento' asignado (distinto de '-' y no vacío)
         ot_emitida_set: set = set()
+        ot_missing_map: dict = {}
         if page_num_recs:
-            ots_completas = (
-                db.query(OrdenTrabajo.numero_recepcion, OrdenTrabajo.items)
-                .filter(
-                    OrdenTrabajo.numero_recepcion.in_(page_num_recs),
-                    OrdenTrabajo.numero_ot.isnot(None),
-                    OrdenTrabajo.cliente.isnot(None),
-                    OrdenTrabajo.cliente != "",
-                    OrdenTrabajo.proyecto.isnot(None),
-                    OrdenTrabajo.proyecto != "",
-                    OrdenTrabajo.fecha_recepcion.isnot(None),
-                    OrdenTrabajo.fecha_recepcion != "",
-                )
+            ots_existentes = (
+                db.query(OrdenTrabajo)
+                .filter(OrdenTrabajo.numero_recepcion.in_(page_num_recs))
                 .all()
             )
-            for row in ots_completas:
-                items_val = row[1] if row[1] is not None else []
-                # Verificar que tenga al menos 1 ítem con código de muestra
-                if isinstance(items_val, list) and len(items_val) >= 1:
-                    ot_emitida_set.add(row[0])
+            for ot in ots_existentes:
+                rec_k = ot.numero_recepcion
+                missing = []
+                if not ot.cliente:
+                    missing.append("Cliente en OT")
+                if not ot.proyecto:
+                    missing.append("Proyecto en OT")
+                if not ot.fecha_recepcion:
+                    missing.append("Fecha de recepción en OT")
+                if not ot.ot_aperturada_por or str(ot.ot_aperturada_por).strip() in ("", "-", "None"):
+                    missing.append("OT Aperturada Por (Responsable)")
+                if not ot.ot_designada_a or str(ot.ot_designada_a).strip() in ("", "-", "None"):
+                    missing.append("OT Designada A (Responsable)")
+                
+                items_val = ot.items if isinstance(ot.items, list) else []
+                if len(items_val) < 1:
+                    missing.append("Al menos 1 probeta en OT")
+                else:
+                    elementos_vacios = [
+                        it for it in items_val
+                        if isinstance(it, dict) and (not it.get("elemento") or str(it.get("elemento")).strip() in ("", "-", "None"))
+                    ]
+                    if elementos_vacios:
+                        missing.append("Elemento asignado en todas las probetas de OT")
+
+                if not missing:
+                    ot_emitida_set.add(rec_k)
+                else:
+                    ot_missing_map[rec_k] = missing
 
         items = [
             {
@@ -412,6 +430,7 @@ class RecepcionService:
                     or 0
                 ),
                 "ot_emitida": row.numero_recepcion in ot_emitida_set,
+                "ot_missing_fields": ot_missing_map.get(row.numero_recepcion, [] if row.numero_recepcion in ot_emitida_set else ["OT Concreto no creada"]),
             }
             for row in page_records
         ]

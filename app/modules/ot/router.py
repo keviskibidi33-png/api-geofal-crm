@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Optional
+from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -236,6 +236,52 @@ def prefill_ot_from_recepcion(
         )
 
     if not recepcion:
+        # Fallback inteligente: buscar en seguimiento_cliente_laboratorio o trazabilidad
+        try:
+            from sqlalchemy import text
+            import re
+            row = db.execute(
+                text("""
+                    SELECT cliente, proyecto, fecha_recepcion, descripcion_servicio, no_recepcion, ot, item
+                    FROM seguimiento_cliente_laboratorio
+                    WHERE no_recepcion ILIKE :num OR ot ILIKE :num OR item = :exact_num
+                    ORDER BY id DESC LIMIT 1
+                """),
+                {"num": f"%{clean_num}%", "exact_num": clean_num}
+            ).first()
+            if row:
+                f_rec = _to_iso_date(row[2]) if row[2] else ""
+                desc_text = str(row[3] or "")
+                num_match = re.search(r"(\d+)\s*PROBETA", desc_text, re.IGNORECASE)
+                cant_probetas = int(num_match.group(1)) if num_match else 0
+                items_autogen = []
+                for i in range(1, cant_probetas + 1):
+                    items_autogen.append({
+                        "item": i,
+                        "codigo_muestra": f"{clean_num}-CO-26-{i:02d}",
+                        "descripcion": "COMPRESION PROBETAS ASTM C39/C39M",
+                        "cantidad": 1,
+                        "elemento": "-",
+                        "fecha_rotura": f_rec,
+                        "densidad": "NO",
+                        "edad": "",
+                        "fc_kg_cm2": "",
+                    })
+
+                return {
+                    "numero_recepcion": row[4] or numero_recepcion,
+                    "cliente": row[0] or "",
+                    "proyecto": row[1] or "",
+                    "fecha_recepcion": f_rec,
+                    "inicio_programado": f_rec,
+                    "fin_programado": f_rec,
+                    "observaciones": desc_text,
+                    "total_probetas": cant_probetas,
+                    "items": items_autogen,
+                }
+        except Exception:
+            pass
+
         raise HTTPException(
             status_code=404,
             detail=f"No se encontró la recepción '{numero_recepcion}'. Verifica el número e intenta de nuevo."
