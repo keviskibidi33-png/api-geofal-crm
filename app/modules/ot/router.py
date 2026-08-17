@@ -96,6 +96,72 @@ def list_ordenes_trabajo(
     return OTListResponseSchema(items=items, total=total, page=page, limit=limit)
 
 
+def _enrich_ot_data(ot: OrdenTrabajo, db: Session):
+    """
+    Garantiza la trazabilidad: si la OT tiene numero_recepcion, sincroniza
+    y enriquece los datos de probetas (elemento, fecha_rotura, densidad, edad, fc_kg_cm2)
+    y cabecera desde la recepción correspondiente.
+    """
+    if not ot.numero_recepcion:
+        return
+    from app.modules.recepcion.models import RecepcionMuestra, MuestraConcreto
+
+    rec_num = ot.numero_recepcion.strip()
+    recepcion = db.query(RecepcionMuestra).filter(RecepcionMuestra.numero_recepcion == rec_num).first()
+    if not recepcion:
+        # Intentar búsqueda flexible (ej. 1977-26 vs 1977)
+        clean_num = rec_num.split("-")[0] if "-" in rec_num else rec_num
+        recepcion = db.query(RecepcionMuestra).filter(RecepcionMuestra.numero_recepcion.like(f"%{clean_num}%")).first()
+    
+    if not recepcion:
+        return
+
+    # Sincronizar cabecera si estaba vacía
+    if not ot.cliente and recepcion.cliente:
+        ot.cliente = recepcion.cliente
+    if not ot.proyecto and recepcion.proyecto:
+        ot.proyecto = recepcion.proyecto
+    if not ot.fecha_recepcion and recepcion.fecha_recepcion:
+        ot.fecha_recepcion = str(recepcion.fecha_recepcion).replace("/", "-")
+
+    # Sincronizar probetas
+    muestras = (
+        db.query(MuestraConcreto)
+        .filter(MuestraConcreto.recepcion_id == recepcion.id)
+        .order_by(MuestraConcreto.item_numero)
+        .all()
+    )
+    if not muestras:
+        return
+
+    muestras_by_cod = {}
+    for m in muestras:
+        if m.codigo_muestra_lem:
+            muestras_by_cod[m.codigo_muestra_lem.strip().upper()] = m
+        if m.codigo_muestra:
+            muestras_by_cod[m.codigo_muestra.strip().upper()] = m
+
+    items = list(ot.items) if isinstance(ot.items, list) else []
+    for idx, it in enumerate(items):
+        if not isinstance(it, dict):
+            continue
+        cod = str(it.get("codigo_muestra", "")).strip().upper()
+        m = muestras_by_cod.get(cod) or (muestras[idx] if idx < len(muestras) else None)
+        if m:
+            if not it.get("elemento") or it.get("elemento") == "-":
+                it["elemento"] = m.elemento or "-"
+            if not it.get("fecha_rotura"):
+                it["fecha_rotura"] = str(m.fecha_rotura).replace("/", "-") if m.fecha_rotura else ""
+            if not it.get("densidad") or it.get("densidad") == "-":
+                it["densidad"] = m.densidad if m.densidad in ("SI", "NO") else ("SI" if m.requiere_densidad else "-")
+            if it.get("edad") is None or it.get("edad") == 0 or it.get("edad") == "":
+                it["edad"] = m.edad
+            if it.get("fc_kg_cm2") is None or it.get("fc_kg_cm2") == 0 or it.get("fc_kg_cm2") == "":
+                it["fc_kg_cm2"] = int(m.fc_kg_cm2) if m.fc_kg_cm2 is not None else None
+    
+    ot.items = items
+
+
 @router.get("/prefill/{numero_recepcion}")
 def prefill_ot_from_recepcion(
     numero_recepcion: str,
@@ -103,15 +169,24 @@ def prefill_ot_from_recepcion(
 ):
     """
     Retorna los datos de una recepción formateados para pre-llenar
-    el formulario de OT Concreto automáticamente.
+    el formulario de OT Concreto automáticamente con trazabilidad total.
     """
     from app.modules.recepcion.models import RecepcionMuestra, MuestraConcreto
 
+    rec_num = numero_recepcion.strip()
     recepcion = (
         db.query(RecepcionMuestra)
-        .filter(RecepcionMuestra.numero_recepcion == numero_recepcion.strip())
+        .filter(RecepcionMuestra.numero_recepcion == rec_num)
         .first()
     )
+    if not recepcion:
+        clean_num = rec_num.split("-")[0] if "-" in rec_num else rec_num
+        recepcion = (
+            db.query(RecepcionMuestra)
+            .filter(RecepcionMuestra.numero_recepcion.like(f"%{clean_num}%"))
+            .first()
+        )
+
     if not recepcion:
         raise HTTPException(
             status_code=404,
@@ -126,33 +201,44 @@ def prefill_ot_from_recepcion(
         .all()
     )
 
-    # Construir items de OT desde probetas
+    # Construir items de OT desde probetas con datos reales
     items_ot = []
+    fechas_rotura = []
     for i, m in enumerate(muestras, start=1):
+        f_rot = str(m.fecha_rotura).replace("/", "-") if m.fecha_rotura else ""
+        if f_rot:
+            fechas_rotura.append(f_rot)
+        
+        dens_val = m.densidad if m.densidad in ("SI", "NO") else ("SI" if m.requiere_densidad else "-")
+
         items_ot.append({
             "item": i,
             "codigo_muestra": m.codigo_muestra_lem or m.codigo_muestra or f"PROB-{i:02d}",
             "descripcion": "COMPRESION PROBETAS ASTM C39/C39M",
             "cantidad": 1,
-            # Campos extras para info visual (no se guardan en OT pero se muestran)
-            "_elemento": m.elemento or "-",
-            "_fecha_rotura": m.fecha_rotura or "",
-            "_edad": m.edad,
-            "_fc_kg_cm2": m.fc_kg_cm2,
+            "elemento": m.elemento if m.elemento and m.elemento != "-" else "-",
+            "fecha_rotura": f_rot,
+            "densidad": dens_val,
+            "edad": m.edad,
+            "fc_kg_cm2": int(m.fc_kg_cm2) if m.fc_kg_cm2 is not None else None,
         })
 
-    # Normalizar fecha
+    # Normalizar fecha recepción
     fecha_rec = None
     if recepcion.fecha_recepcion:
         fecha_str = str(recepcion.fecha_recepcion)
-        # Convertir YYYY/MM/DD a YYYY-MM-DD para input[type=date]
         fecha_rec = fecha_str.replace("/", "-")
+
+    inicio_prog = min(fechas_rotura) if fechas_rotura else (fecha_rec or "")
+    fin_prog = max(fechas_rotura) if fechas_rotura else inicio_prog
 
     return {
         "numero_recepcion": recepcion.numero_recepcion,
         "cliente": recepcion.cliente or "",
         "proyecto": recepcion.proyecto or "",
         "fecha_recepcion": fecha_rec or "",
+        "inicio_programado": inicio_prog or "",
+        "fin_programado": fin_prog or "",
         "observaciones": recepcion.observaciones or "",
         "total_probetas": len(muestras),
         "items": items_ot,
@@ -164,6 +250,7 @@ def get_orden_trabajo(ot_id: int, db: Session = Depends(get_db_session)):
     ot = db.query(OrdenTrabajo).filter(OrdenTrabajo.id == ot_id).first()
     if not ot:
         raise HTTPException(status_code=404, detail="Orden de Trabajo no encontrada")
+    _enrich_ot_data(ot, db)
     return ot
 
 

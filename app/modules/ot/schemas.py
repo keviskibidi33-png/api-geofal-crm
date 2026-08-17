@@ -10,6 +10,11 @@ class OTItemSchema(BaseModel):
     codigo_muestra: str = ""
     descripcion: str = ""
     cantidad: Any = 1
+    elemento: Optional[str] = "-"
+    fecha_rotura: Optional[str] = None
+    densidad: Optional[str] = "-"
+    edad: Optional[Any] = None
+    fc_kg_cm2: Optional[Any] = None
 
 
 class OTCreateSchema(BaseModel):
