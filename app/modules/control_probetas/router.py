@@ -36,11 +36,11 @@ class ProbetaListItem(BaseModel):
     codigo_muestra_lem: Optional[str] = ""
     identificacion_muestra: Optional[str] = ""
     estructura: Optional[str] = ""
-    fc_kg_cm2: float
+    fc_kg_cm2: Optional[float] = None
     fecha_moldeo: Optional[str] = ""
-    edad: int
+    edad: Optional[int] = None
     fecha_rotura: Optional[str] = ""
-    requiere_densidad: bool
+    requiere_densidad: Optional[bool] = False
     elemento: Optional[str] = "-"
     poza: Optional[str] = "-"
     # densidad: "SI" or "NO" derived from requiere_densidad; numeric value kept internally
@@ -73,11 +73,11 @@ class ProbetaCreatePayload(BaseModel):
     codigo_muestra_lem: Optional[str] = ""
     identificacion_muestra: Optional[str] = ""
     estructura: Optional[str] = ""
-    fc_kg_cm2: float = 280.0
+    fc_kg_cm2: Optional[float] = 280.0
     fecha_moldeo: Optional[str] = ""
-    edad: int = 28
+    edad: Optional[int] = 28
     fecha_rotura: Optional[str] = ""
-    requiere_densidad: bool = False
+    requiere_densidad: Optional[bool] = False
     elemento: Optional[str] = "-"
     poza: Optional[str] = "-"
     densidad: Optional[str] = "-"
