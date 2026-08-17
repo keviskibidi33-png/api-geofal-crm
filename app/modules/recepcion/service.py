@@ -297,6 +297,28 @@ class RecepcionService:
         safe_page_size = max(1, min(page_size, 100))
         requested_page = max(1, page)
 
+        # Auto-sincronización: asegurar que OTs de concreto existentes se reflejen en RecepcionMuestra
+        try:
+            from app.modules.ot.models import OrdenTrabajo
+            subq = db.query(RecepcionMuestra.numero_recepcion).filter(RecepcionMuestra.numero_recepcion.isnot(None))
+            ots_sin_recepcion = (
+                db.query(OrdenTrabajo)
+                .filter(
+                    OrdenTrabajo.numero_recepcion.isnot(None),
+                    OrdenTrabajo.numero_recepcion != "",
+                    ~OrdenTrabajo.numero_recepcion.in_(subq)
+                )
+                .limit(20)
+                .all()
+            )
+            if ots_sin_recepcion:
+                from app.modules.ot.router import _sync_ot_to_recepcion
+                for ot_missing in ots_sin_recepcion:
+                    _sync_ot_to_recepcion(ot_missing, db)
+                db.commit()
+        except Exception as sync_err:
+            logger.warning("Auto-sync OTs to Recepcion notice: %s", sync_err)
+
         total_query = self._apply_recepcion_search_filters(
             db.query(func.count(RecepcionMuestra.id)),
             search,

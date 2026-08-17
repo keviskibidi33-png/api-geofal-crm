@@ -345,6 +345,124 @@ def get_orden_trabajo(ot_id: int, db: Session = Depends(get_db_session)):
     return ot
 
 
+def _sync_ot_to_recepcion(ot: OrdenTrabajo, db: Session):
+    """
+    Sincronización Bidireccional Automática:
+    Cuando se crea o actualiza una OT Concreto, garantiza que exista la RecepcionMuestra
+    y sus MuestraConcreto correspondientes para que se reflejen en Recepción de Probetas y trazabilidad.
+    """
+    if not ot.numero_recepcion:
+        return
+    
+    from app.modules.recepcion.models import RecepcionMuestra, MuestraConcreto
+    from app.modules.recepcion.service import parse_flexible_date
+    from datetime import datetime
+
+    rec_num = ot.numero_recepcion.strip()
+    recepcion = db.query(RecepcionMuestra).filter(RecepcionMuestra.numero_recepcion == rec_num).first()
+    if not recepcion:
+        clean_num = rec_num.split("-")[0] if "-" in rec_num else rec_num
+        recepcion = db.query(RecepcionMuestra).filter(RecepcionMuestra.numero_recepcion == clean_num).first()
+
+    parsed_fecha = parse_flexible_date(ot.fecha_recepcion) or datetime.utcnow()
+
+    if not recepcion:
+        recepcion = RecepcionMuestra(
+            numero_recepcion=rec_num,
+            numero_ot=ot.numero_ot or rec_num,
+            cliente=ot.cliente or "Sin especificar",
+            proyecto=ot.proyecto or "Sin especificar",
+            domicilio_legal="Sin especificar",
+            ruc="Sin especificar",
+            persona_contacto="Sin especificar",
+            email="Sin especificar",
+            telefono="Sin especificar",
+            solicitante=ot.cliente or "Sin especificar",
+            domicilio_solicitante="Sin especificar",
+            ubicacion="Sin especificar",
+            fecha_recepcion=parsed_fecha,
+            fecha_estimada_culminacion=parse_flexible_date(ot.fin_programado) or parsed_fecha,
+            tipo_recepcion="CONCRETO",
+            codigo_laboratorio="F-LEM-P-01.02",
+            version="01",
+            emision_digital=True,
+            emision_fisica=False,
+            observaciones=ot.observaciones or "",
+            recibido_por=ot.ot_aperturada_por or "Sin asignar",
+        )
+        db.add(recepcion)
+        db.flush()
+    else:
+        if ot.cliente and recepcion.cliente in ("", "Sin especificar", None):
+            recepcion.cliente = ot.cliente
+        if ot.proyecto and recepcion.proyecto in ("", "Sin especificar", None):
+            recepcion.proyecto = ot.proyecto
+        if ot.fecha_recepcion:
+            recepcion.fecha_recepcion = parsed_fecha
+        if ot.numero_ot:
+            recepcion.numero_ot = ot.numero_ot
+
+    items = ot.items if isinstance(ot.items, list) else []
+    if items:
+        muestras_existentes = (
+            db.query(MuestraConcreto)
+            .filter(MuestraConcreto.recepcion_id == recepcion.id)
+            .order_by(MuestraConcreto.item_numero)
+            .all()
+        )
+        muestras_map = {m.item_numero: m for m in muestras_existentes}
+
+        for idx, it in enumerate(items, start=1):
+            if not isinstance(it, dict):
+                continue
+            
+            elem_val = it.get("elemento") if it.get("elemento") not in ("-", "", None) else None
+            dens_val = True if str(it.get("densidad", "")).upper() in ("SI", "SÍ") else False
+            f_rot_val = it.get("fecha_rotura") or None
+            
+            try:
+                edad_val = int(it.get("edad")) if it.get("edad") not in (None, "", "-") else None
+            except Exception:
+                edad_val = None
+                
+            try:
+                fc_val = float(it.get("fc_kg_cm2")) if it.get("fc_kg_cm2") not in (None, "", "-") else None
+            except Exception:
+                fc_val = None
+
+            cod_lem = it.get("codigo_muestra") or f"{rec_num}-CO-26-{idx:02d}"
+
+            if idx in muestras_map:
+                m = muestras_map[idx]
+                if elem_val:
+                    m.elemento = elem_val
+                if dens_val is not None:
+                    m.requiere_densidad = dens_val
+                if f_rot_val:
+                    m.fecha_rotura = f_rot_val
+                if edad_val is not None:
+                    m.edad = edad_val
+                if fc_val is not None:
+                    m.fc_kg_cm2 = fc_val
+                if not m.codigo_muestra_lem:
+                    m.codigo_muestra_lem = cod_lem
+            else:
+                nueva_m = MuestraConcreto(
+                    recepcion_id=recepcion.id,
+                    item_numero=idx,
+                    codigo_muestra=cod_lem,
+                    codigo_muestra_lem=cod_lem,
+                    identificacion_muestra=it.get("descripcion") or f"Probeta {idx}",
+                    estructura="Sin especificar",
+                    fc_kg_cm2=fc_val if fc_val is not None else 280.0,
+                    edad=edad_val if edad_val is not None else 28,
+                    fecha_rotura=f_rot_val,
+                    requiere_densidad=dens_val,
+                    elemento=elem_val or "-",
+                )
+                db.add(nueva_m)
+
+
 @router.post("", response_model=OTOutSchema)
 def create_orden_trabajo(
     payload: OTCreateSchema,
@@ -363,6 +481,11 @@ def create_orden_trabajo(
 
     new_ot = OrdenTrabajo(**ot_data)
     db.add(new_ot)
+    db.flush()
+
+    # Sincronización automática con Recepción de Muestras
+    _sync_ot_to_recepcion(new_ot, db)
+
     db.commit()
     db.refresh(new_ot)
 
@@ -406,6 +529,9 @@ def update_orden_trabajo(
 
     for field, value in update_data.items():
         setattr(ot, field, value)
+
+    # Sincronización automática con Recepción de Muestras
+    _sync_ot_to_recepcion(ot, db)
 
     db.commit()
     db.refresh(ot)
