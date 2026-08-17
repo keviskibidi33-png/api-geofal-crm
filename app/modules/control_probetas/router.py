@@ -66,6 +66,7 @@ class ProbetaListItem(BaseModel):
 
     # Calculated Status: "curado", "pendiente", "ensayado", "vencido"
     estado_probeta: str
+    ot_descargada: bool = False
 
 class ProbetaCreatePayload(BaseModel):
     recepcion_id: int
@@ -219,6 +220,7 @@ def build_probeta_response(
     recep: RecepcionMuestra,
     item_comp: Optional[ItemCompresion],
     ensayo: Optional[EnsayoCompresion],
+    ot_descargada: bool = False,
 ) -> ProbetaListItem:
     est_prob = calculate_status(muestra, item_comp)
     fecha_ensayo_str = item_comp.fecha_ensayo.strftime("%Y/%m/%d") if (item_comp and item_comp.fecha_ensayo) else None
@@ -255,6 +257,7 @@ def build_probeta_response(
         carga_maxima=item_comp.carga_maxima if item_comp else None,
         tipo_fractura=item_comp.tipo_fractura if item_comp else None,
         estado_probeta=est_prob,
+        ot_descargada=ot_descargada,
     )
 
 
@@ -455,8 +458,20 @@ def importar_recepcion_probetas(
         )
     ).order_by(asc(MuestraConcreto.item_numero))
 
+    recep = db.query(RecepcionMuestra).filter(RecepcionMuestra.id == recepcion_id).first()
+    is_ot_descargada = False
+    if recep:
+        ot_rec = db.query(OrdenTrabajo).filter(
+            or_(
+                OrdenTrabajo.numero_recepcion == recep.numero_recepcion,
+                OrdenTrabajo.numero_ot == recep.numero_ot
+            )
+        ).first()
+        if ot_rec and str(ot_rec.estado or "").strip().upper() == "DESCARGADO":
+            is_ot_descargada = True
+
     results = query.all()
-    return [build_probeta_response(m, r, ic, e) for m, r, ic, e in results]
+    return [build_probeta_response(m, r, ic, e, ot_descargada=is_ot_descargada) for m, r, ic, e in results]
 
 
 @router.get("/", response_model=ProbetaPaginatedResponse)
@@ -526,7 +541,29 @@ def get_control_probetas(
     # 4. Fetch all candidates to process status in-memory (highly safe and correct)
     results = query.all()
     
-    mapped_items = [build_probeta_response(muestra, recep, item_comp, ensayo) for muestra, recep, item_comp, ensayo in results]
+    # Pre-fetch OT statuses for all receptions in results
+    ot_records = db.query(OrdenTrabajo.numero_recepcion, OrdenTrabajo.numero_ot, OrdenTrabajo.estado).filter(
+        or_(
+            OrdenTrabajo.numero_recepcion.in_([r.numero_recepcion for _, r, _, _ in results if r.numero_recepcion]),
+            OrdenTrabajo.numero_ot.in_([r.numero_ot for _, r, _, _ in results if r.numero_ot])
+        )
+    ).all() if results else []
+
+    descargadas_set = set()
+    for ot_rec in ot_records:
+        if str(ot_rec.estado or "").strip().upper() == "DESCARGADO":
+            if ot_rec.numero_recepcion:
+                descargadas_set.add(ot_rec.numero_recepcion)
+            if ot_rec.numero_ot:
+                descargadas_set.add(ot_rec.numero_ot)
+
+    mapped_items = [
+        build_probeta_response(
+            muestra, recep, item_comp, ensayo,
+            ot_descargada=(recep.numero_recepcion in descargadas_set or recep.numero_ot in descargadas_set)
+        )
+        for muestra, recep, item_comp, ensayo in results
+    ]
         
     # 5. Apply Status Filter in memory
     if estado:
@@ -950,7 +987,7 @@ def download_ot_excel_by_recepcion(
             proyecto=recep.proyecto,
             fecha_recepcion=_format_fecha_recepcion(recep),
             items=ot_items,
-            estado="PENDIENTE"
+            estado="DESCARGADO"
         )
         db.add(ot)
         db.commit()
@@ -959,6 +996,7 @@ def download_ot_excel_by_recepcion(
         ot.items = ot_items
         ot.cliente = recep.cliente
         ot.proyecto = recep.proyecto
+        ot.estado = "DESCARGADO"
         if not ot.fecha_recepcion:
             ot.fecha_recepcion = _format_fecha_recepcion(recep)
         db.commit()
