@@ -210,6 +210,43 @@ def _enrich_ot_data(ot: OrdenTrabajo, db: Session):
         ot.fin_programado = _to_iso_date(ot.fin_programado)
 
 
+def generate_correlative_lem_codes(raw_code_or_range: str, raw_recepcion: str, count: int = 1, year_suffix: str = "26") -> list[str]:
+    """
+    Genera una secuencia correlativa estricta de códigos LEM.
+    Ejemplos:
+    - '7777-CO-26 AL 7786-CO-26' -> ['7777-CO-26', '7778-CO-26', ..., '7786-CO-26']
+    - '7777-26', count=3 -> ['7777-CO-26', '7778-CO-26', '7779-CO-26']
+    - '1981', count=4 -> ['1981-CO-26', '1982-CO-26', '1983-CO-26', '1984-CO-26']
+    """
+    import re
+    text_input = str(raw_code_or_range or "").strip()
+    recep_input = str(raw_recepcion or "").strip()
+    
+    # 1. Detectar si hay rango con 'AL' o '-' (ej. 7777-CO-26 AL 7786-CO-26 o 7777 AL 7786)
+    range_match = re.search(r"(\d+).*?(?:AL|-|A)\s*(\d+)", text_input, re.IGNORECASE)
+    if range_match:
+        try:
+            start_n = int(range_match.group(1))
+            end_n = int(range_match.group(2))
+            if start_n <= end_n and (end_n - start_n + 1) <= 100:
+                return [f"{n}-CO-{year_suffix}" for n in range(start_n, end_n + 1)]
+        except Exception:
+            pass
+
+    # 2. Extraer número base desde raw_code_or_range o raw_recepcion
+    num_match = re.search(r"(\d+)", text_input) or re.search(r"(\d+)", recep_input)
+    if num_match:
+        try:
+            start_n = int(num_match.group(1))
+            safe_count = max(1, count)
+            return [f"{start_n + i - 1}-CO-{year_suffix}" for i in range(1, safe_count + 1)]
+        except Exception:
+            pass
+
+    safe_base = recep_input or "MUESTRA"
+    return [f"{safe_base}-{i}-CO-{year_suffix}" for i in range(1, max(1, count) + 1)]
+
+
 @router.get("/prefill/{numero_recepcion}")
 def prefill_ot_from_recepcion(
     numero_recepcion: str,
@@ -242,7 +279,7 @@ def prefill_ot_from_recepcion(
             import re
             row = db.execute(
                 text("""
-                    SELECT cliente, proyecto, fecha_recepcion, descripcion_servicio, no_recepcion, ot, item
+                    SELECT cliente, proyecto, fecha_recepcion, descripcion_servicio, no_recepcion, ot, item, codigo_muestra
                     FROM seguimiento_cliente_laboratorio
                     WHERE no_recepcion ILIKE :num OR ot ILIKE :num OR item = :exact_num
                     ORDER BY id DESC LIMIT 1
@@ -252,13 +289,29 @@ def prefill_ot_from_recepcion(
             if row:
                 f_rec = _to_iso_date(row[2]) if row[2] else ""
                 desc_text = str(row[3] or "")
-                num_match = re.search(r"(\d+)\s*PROBETA", desc_text, re.IGNORECASE)
-                cant_probetas = int(num_match.group(1)) if num_match else 0
+                raw_codigo_muestra = str(row[7] or "")
+                
+                # Detectar cantidad de probetas
+                cant_probetas = 0
+                range_match = re.search(r"(\d+).*?(?:AL|-|A)\s*(\d+)", raw_codigo_muestra, re.IGNORECASE)
+                if range_match:
+                    try:
+                        cant_probetas = int(range_match.group(2)) - int(range_match.group(1)) + 1
+                    except Exception:
+                        pass
+                
+                if cant_probetas <= 0:
+                    num_match = re.search(r"(\d+)\s*PROBETA", desc_text, re.IGNORECASE)
+                    cant_probetas = int(num_match.group(1)) if num_match else 3
+
+                cant_probetas = max(1, min(cant_probetas, 50))
+                lem_codes = generate_correlative_lem_codes(raw_codigo_muestra or clean_num, clean_num, count=cant_probetas)
+
                 items_autogen = []
-                for i in range(1, cant_probetas + 1):
+                for i, cod in enumerate(lem_codes, start=1):
                     items_autogen.append({
                         "item": i,
-                        "codigo_muestra": f"{clean_num}-CO-26-{i:02d}",
+                        "codigo_muestra": cod,
                         "descripcion": "COMPRESION PROBETAS ASTM C39/C39M",
                         "cantidad": 1,
                         "elemento": "-",
@@ -276,7 +329,7 @@ def prefill_ot_from_recepcion(
                     "inicio_programado": f_rec,
                     "fin_programado": f_rec,
                     "observaciones": desc_text,
-                    "total_probetas": cant_probetas,
+                    "total_probetas": len(items_autogen),
                     "items": items_autogen,
                 }
         except Exception:
