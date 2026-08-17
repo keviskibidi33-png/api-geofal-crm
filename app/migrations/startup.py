@@ -456,28 +456,29 @@ def run_startup_cleanup(engine) -> None:
             if resultado.get("eliminados", 0) > 0 or resultado.get("sincronizados", 0) > 0:
                 logger.info("[STARTUP-CLEANUP] Saneamiento completado: %s", resultado)
 
-            # Saneamiento de Recepciones de Concreto espurias (creadas erróneamente para servicios de suelos/agregados)
+            # Saneamiento de Recepciones de Concreto espurias (creadas erróneamente para servicios que no son probetas)
             from app.modules.recepcion.models import RecepcionMuestra, MuestraConcreto
-            from sqlalchemy import or_, not_
+            from app.modules.ot.models import OrdenTrabajo
 
-            spurious_recs = db_session.query(RecepcionMuestra).filter(
+            auto_recs = db_session.query(RecepcionMuestra).filter(
                 RecepcionMuestra.tipo_recepcion == "CONCRETO",
                 RecepcionMuestra.domicilio_legal == "Sin especificar",
-                or_(
-                    RecepcionMuestra.observaciones.ilike("%MUESTRA DE SUELO%"),
-                    RecepcionMuestra.observaciones.ilike("%MUESTRA DE AGREGADO%"),
-                    RecepcionMuestra.observaciones.ilike("%CALICATA%"),
-                    RecepcionMuestra.observaciones.ilike("%DENSIDAD DE CAMPO%"),
-                ),
-                not_(RecepcionMuestra.observaciones.ilike("%PROBETA%")),
-                not_(RecepcionMuestra.observaciones.ilike("%COMPRESION%")),
             ).all()
 
-            for s_rec in spurious_recs:
-                # Verificar que no tenga muestras con -CO-
+            for s_rec in auto_recs:
+                # Verificar si tiene una OT Concreto legítima asociada
+                has_ot = db_session.query(OrdenTrabajo).filter(OrdenTrabajo.numero_recepcion == s_rec.numero_recepcion).first()
+                if has_ot:
+                    continue
+
+                # Verificar si alguna muestra tiene código de concreto CO
                 muestras = db_session.query(MuestraConcreto).filter(MuestraConcreto.recepcion_id == s_rec.id).all()
-                has_co = any("-CO" in str(m.codigo_muestra or "").upper() for m in muestras)
-                if not has_co:
+                has_co = any("CO" in str(m.codigo_muestra or "").upper() for m in muestras)
+
+                obs_upper = str(s_rec.observaciones or "").upper()
+                is_concrete_desc = any(k in obs_upper for k in ["PROBETA", "PROBETAS", "COMPRESION", "CILINDRO", "TESTIGO"])
+
+                if not (has_co or is_concrete_desc):
                     logger.info("[STARTUP-CLEANUP] Eliminando recepcion de probetas espuria %s (%s)", s_rec.numero_recepcion, s_rec.observaciones)
                     db_session.query(MuestraConcreto).filter(MuestraConcreto.recepcion_id == s_rec.id).delete()
                     db_session.delete(s_rec)

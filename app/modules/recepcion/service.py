@@ -297,14 +297,11 @@ class RecepcionService:
         safe_page_size = max(1, min(page_size, 100))
         requested_page = max(1, page)
 
-        # Auto-sincronización y Auto-creación desde seguimiento_cliente_laboratorio y OrdenTrabajo
+        # Sincronizar OTs de concreto existentes sin recepción si las hay
         try:
-            from sqlalchemy import text
-            import re
             from app.modules.ot.models import OrdenTrabajo
-            from app.modules.ot.router import generate_correlative_lem_codes, _sync_ot_to_recepcion
+            from app.modules.ot.router import _sync_ot_to_recepcion
 
-            # 1. Sincronizar OTs de concreto existentes sin recepción
             subq = db.query(RecepcionMuestra.numero_recepcion).filter(RecepcionMuestra.numero_recepcion.isnot(None))
             ots_sin_recepcion = (
                 db.query(OrdenTrabajo)
@@ -313,143 +310,16 @@ class RecepcionService:
                     OrdenTrabajo.numero_recepcion != "",
                     ~OrdenTrabajo.numero_recepcion.in_(subq)
                 )
-                .limit(20)
+                .limit(10)
                 .all()
             )
             if ots_sin_recepcion:
                 for ot_missing in ots_sin_recepcion:
                     _sync_ot_to_recepcion(ot_missing, db)
                 db.commit()
-
-            # 2. Auto-crear recepciones originadas en Control de Laboratorio (programacion_lab / cuadro_control / seguimiento_cliente_laboratorio)
-            lab_rows = []
-            for candidate_sql in [
-                """
-                SELECT id, item_numero, recep_numero, ot, codigo_muestra, fecha_recepcion, cliente_nombre, proyecto, descripcion_servicio
-                FROM programacion_lab
-                WHERE recep_numero IS NOT NULL AND recep_numero != ''
-                ORDER BY id DESC
-                LIMIT 50
-                """,
-                """
-                SELECT id, item_numero, recep_numero, ot, codigo_muestra, fecha_recepcion, cliente_nombre, proyecto, descripcion_servicio
-                FROM cuadro_control
-                WHERE recep_numero IS NOT NULL AND recep_numero != ''
-                ORDER BY id DESC
-                LIMIT 50
-                """,
-                """
-                SELECT id, item, no_recepcion, ot, codigo_muestra, fecha_recepcion, cliente, proyecto, descripcion_servicio
-                FROM seguimiento_cliente_laboratorio
-                WHERE no_recepcion IS NOT NULL AND no_recepcion != ''
-                ORDER BY id DESC
-                LIMIT 50
-                """,
-            ]:
-                try:
-                    with db.begin_nested():
-                        rows = db.execute(text(candidate_sql)).fetchall()
-                        if rows:
-                            lab_rows.extend(rows)
-                            break
-                except Exception:
-                    pass
-
-            if lab_rows:
-                existing_recs = set(
-                    r[0] for r in db.query(RecepcionMuestra.numero_recepcion).filter(RecepcionMuestra.numero_recepcion.isnot(None)).all()
-                )
-                for row in lab_rows:
-                    rec_num = str(row[2]).strip()
-                    if rec_num and rec_num not in existing_recs:
-                        try:
-                            clean_num = rec_num.split("-")[0] if "-" in rec_num else rec_num
-                            f_rec = parse_flexible_date(row[5]) or datetime.utcnow()
-                            desc_text = str(row[8] or "")
-                            raw_codigo_muestra = str(row[4] or "")
-
-                            # Validación Estricta: Solo auto-crear si es servicio inequívoco de probetas de concreto
-                            raw_upper = raw_codigo_muestra.upper()
-                            desc_upper = desc_text.upper()
-
-                            # Descartar suelos, agregados, rocas, albañilería
-                            if any(k in raw_upper for k in ["-AG-", "-SU-", "-RO-", "-AL-", "-AG", "-SU", "-RO", "-AL"]):
-                                continue
-                            if any(k in desc_upper for k in ["MUESTRA DE SUELO", "MUESTRA DE AGREGADO", "SUELO", "AGREGADO", "CALICATA", "DENSIDAD DE CAMPO", "DENSIDADES"]):
-                                if not ("PROBETA" in desc_upper or "COMPRESION" in desc_upper or "-CO-" in raw_upper or "-CO" in raw_upper):
-                                    continue
-
-                            is_concrete = (
-                                "-CO-" in raw_upper or "-CO" in raw_upper or "CO-" in raw_upper or
-                                any(k in desc_upper for k in ["PROBETA", "PROBETAS", "COMPRESION", "CILINDRO", "TESTIGO"])
-                            )
-                            if not is_concrete:
-                                continue
-
-                            cant_probetas = 0
-                            range_match = re.search(r"(\d+).*?(?:AL|-|A)\s*(\d+)", raw_codigo_muestra, re.IGNORECASE)
-                            if range_match:
-                                try:
-                                    cant_probetas = int(range_match.group(2)) - int(range_match.group(1)) + 1
-                                except Exception:
-                                    pass
-                            if cant_probetas <= 0:
-                                num_match = re.search(r"(\d+)\s*PROBETA", desc_text, re.IGNORECASE)
-                                cant_probetas = int(num_match.group(1)) if num_match else 3
-
-                            cant_probetas = max(1, min(cant_probetas, 50))
-                            lem_codes = generate_correlative_lem_codes(raw_codigo_muestra or clean_num, clean_num, count=cant_probetas)
-
-                            with db.begin_nested():
-                                nueva_recep = RecepcionMuestra(
-                                    numero_recepcion=rec_num,
-                                    numero_ot=str(row[3] or rec_num).strip(),
-                                    cliente=str(row[6] or "Sin especificar").strip(),
-                                    proyecto=str(row[7] or "Sin especificar").strip(),
-                                    domicilio_legal="Sin especificar",
-                                    ruc="Sin especificar",
-                                    persona_contacto="Sin especificar",
-                                    email="Sin especificar",
-                                    telefono="Sin especificar",
-                                    solicitante=str(row[6] or "Sin especificar").strip(),
-                                    domicilio_solicitante="Sin especificar",
-                                    ubicacion="Sin especificar",
-                                    fecha_recepcion=f_rec,
-                                    fecha_estimada_culminacion=f_rec,
-                                    tipo_recepcion="CONCRETO",
-                                    codigo_laboratorio="F-LEM-P-01.02",
-                                    version="01",
-                                    emision_digital=True,
-                                    emision_fisica=False,
-                                    observaciones=desc_text,
-                                )
-                                db.add(nueva_recep)
-                                db.flush()
-
-                                for i, cod in enumerate(lem_codes, start=1):
-                                    nueva_m = MuestraConcreto(
-                                        recepcion_id=nueva_recep.id,
-                                        item_numero=i,
-                                        codigo_muestra=cod,
-                                        codigo_muestra_lem=cod,
-                                        identificacion_muestra=f"Probeta {i}",
-                                        estructura="Sin especificar",
-                                        fc_kg_cm2=None,
-                                        edad=None,
-                                        fecha_rotura=None,
-                                        requiere_densidad=False,
-                                        elemento="-",
-                                    )
-                                    db.add(nueva_m)
-
-                            existing_recs.add(rec_num)
-                        except Exception as row_err:
-                            logger.warning("Error auto-creating reception for %s: %s", rec_num, row_err)
-
-                db.commit()
         except Exception as sync_err:
             db.rollback()
-            logger.warning("Auto-sync from seguimiento_cliente_laboratorio notice: %s", sync_err)
+            logger.warning("OT sync notice: %s", sync_err)
 
         total_query = self._apply_recepcion_search_filters(
             db.query(func.count(RecepcionMuestra.id)),
