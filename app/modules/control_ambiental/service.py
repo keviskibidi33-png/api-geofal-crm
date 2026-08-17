@@ -22,6 +22,7 @@ from app.modules.common.excel_xml import (
 from openpyxl import Workbook, load_workbook
 
 from .models import ControlTemperatura, ControlBalanza
+from app.audit import emit_audit_log
 from .schemas import (
     ControlTemperaturaCreate,
     ControlTemperaturaResponse,
