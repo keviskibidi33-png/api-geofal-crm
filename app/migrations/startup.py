@@ -408,7 +408,34 @@ def run_startup_migrations(engine) -> None:
     except Exception as err:
         logger.warning("Migration 059 skipped: %s", _short_err(err))
 
+    # ── Migration 060: Normalizar revisado_por 'ING. FABIAN' → 'FABIAN LA ROSA' ──
+    # Backfill de registros históricos en tablas de control ambiental.
+    # Se ejecuta siempre (idempotente por el WHERE), costo cero si ya fue migrado.
+    try:
+        with engine.begin() as conn:
+            # Tabla de filas de verificación de balanzas
+            conn.execute(text("""
+                UPDATE public.control_verificacion_balanzas_filas
+                SET revisado_por = 'FABIAN LA ROSA'
+                WHERE revisado_por = 'ING. FABIAN';
+            """))
+            # Tabla de filas de control de temperatura y humedad
+            conn.execute(text("""
+                UPDATE public.control_temperatura_humedad_filas
+                SET responsable_revision = 'FABIAN LA ROSA'
+                WHERE responsable_revision = 'ING. FABIAN';
+            """))
+            # Corregir también el DEFAULT de la columna en balanzas (para futuros registros)
+            conn.execute(text("""
+                ALTER TABLE public.control_verificacion_balanzas_filas
+                ALTER COLUMN revisado_por SET DEFAULT '';
+            """))
+            logger.info("Migration 060 applied (ING. FABIAN → FABIAN LA ROSA backfill en control ambiental).")
+    except Exception as err:
+        logger.warning("Migration 060 skipped: %s", _short_err(err))
+
     _MIGRATIONS_RUN = True
+
 
 
 
