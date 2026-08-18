@@ -119,8 +119,18 @@ class RecepcionEmailService:
                     logger.warning(f"No se pudo leer la imagen de firma: {e}")
                     has_signature_img = False
 
-        # Generar versión HTML con la firma corporativa oficial si existe
-        paragraphs_html = "".join([f"<p style='margin: 6px 0;'>{p.strip()}</p>" for p in final_body_text.split("\n\n") if p.strip()])
+        # Generar versión HTML con soporte de negritas markdown (**)
+        formatted_paragraphs = []
+        for p in final_body_text.split("\n\n"):
+            clean_p = p.strip()
+            if not clean_p:
+                continue
+            p_html = clean_p.replace("\n", "<br/>")
+            # Convertir **texto** a <strong>texto</strong>
+            p_html = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', p_html)
+            formatted_paragraphs.append(f"<p style='margin: 6px 0;'>{p_html}</p>")
+
+        paragraphs_html = "".join(formatted_paragraphs)
         
         if has_signature_img:
             # Firma gráfica oficial (banner corporativo completo con datos y firma)
@@ -146,6 +156,9 @@ body {{ font-family: Arial, Helvetica, sans-serif; font-size: 13px; line-height:
 </body>
 </html>"""
 
+        # Versión de texto plano limpia (sin asteriscos)
+        plain_body_text = re.sub(r'\*\*(.+?)\*\*', r'\1', final_body_text)
+
         # 7. Construcción del mensaje MIME multipart/related y multipart/mixed
         msg = MIMEMultipart("mixed")
         msg["From"] = formataddr((from_name, from_email))
@@ -157,7 +170,7 @@ body {{ font-family: Arial, Helvetica, sans-serif; font-size: 13px; line-height:
         # Subparte multipart/related para permitir imágenes inline (CID)
         related_part = MIMEMultipart("related")
         alt_part = MIMEMultipart("alternative")
-        alt_part.attach(MIMEText(final_body_text, "plain", "utf-8"))
+        alt_part.attach(MIMEText(plain_body_text, "plain", "utf-8"))
         alt_part.attach(MIMEText(html_content, "html", "utf-8"))
         related_part.attach(alt_part)
 
