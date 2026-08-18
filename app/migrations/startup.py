@@ -434,6 +434,26 @@ def run_startup_migrations(engine) -> None:
     except Exception as err:
         logger.warning("Migration 060 skipped: %s", _short_err(err))
 
+    # ── Migration 061: ot & ot_concreto permissions ──────────────────
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                UPDATE role_definitions
+                SET permissions = jsonb_set(
+                    jsonb_set(permissions, '{ot_concreto}', '{"read": true, "write": true, "delete": true}'::jsonb, true),
+                    '{ot}', '{"read": true, "write": true, "delete": true}'::jsonb, true
+                )
+                WHERE role_id IN (
+                    'admin', 'admin_general', 'jefe_laboratorio', 'oficina_tecnica',
+                    'oficina_tecnica_humedad', 'oficina_tecnica_humedad_tipificador',
+                    'oficina_tecnica_sup', 'laboratorio', 'laboratorio_tipificador'
+                );
+            """))
+            conn.execute(text("NOTIFY pgrst, 'reload schema';"))
+            logger.info("Migration 061 applied (ot & ot_concreto permissions for jefe_laboratorio and lab roles).")
+    except Exception as err:
+        logger.warning("Migration 061 skipped: %s", _short_err(err))
+
     _MIGRATIONS_RUN = True
 
 

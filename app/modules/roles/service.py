@@ -37,7 +37,7 @@ def _permission(read: bool = False, write: bool = False, delete: bool = False) -
 
 _PERMISSION_MODULE_KEYS: tuple[str, ...] = (
     "tracing", "ingenieria_archivos", "clientes", "proyectos", "cotizadora",
-    "programacion", "recepcion", "verificacion_muestras", "compresion",
+    "programacion", "ot", "ot_concreto", "recepcion", "recepcion_lima", "verificacion_muestras", "compresion",
     "control_probetas", "humedad", "cont_humedad", "cbr", "proctor", "llp",
     "gran_suelo", "gran_agregado", "cont_mat_organica", "terrones_fino_grueso",
     "azul_metileno", "part_livianas", "imp_organicas", "sul_magnesio",
