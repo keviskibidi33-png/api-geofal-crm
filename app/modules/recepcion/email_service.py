@@ -122,11 +122,12 @@ class RecepcionEmailService:
         # Generar versión HTML estilizada con la firma corporativa
         paragraphs_html = "".join([f"<p style='margin: 6px 0;'>{p.strip()}</p>" for p in final_body_text.split("\n\n") if p.strip()])
         
-        signature_visual_html = f"""
+        if has_signature_img:
+            signature_visual_html = f"""
 <table style="border:none; border-collapse:collapse; font-family: Arial, Helvetica, sans-serif; margin-top: 15px;">
   <tr>
     <td style="vertical-align:middle; padding-right: 16px;">
-      {f'<img src="cid:geofal_signature_img" alt="Geofal" style="max-height: 70px; display:block;" />' if has_signature_img else '<div style="background-color: #ff5500; color: #ffffff; font-weight: bold; font-size: 20px; padding: 12px 16px; border-radius: 10px; text-align: center;">Geofal</div>'}
+      <img src="cid:geofal_signature_img" alt="Geofal" style="max-height: 70px; display:block;" />
     </td>
     <td style="border-left: 2px solid #ea580c; padding-left: 16px; vertical-align:middle;">
       <div style="font-size: 13px; font-weight: bold; color: #ea580c; text-transform: uppercase;">
@@ -144,6 +145,23 @@ class RecepcionEmailService:
     </td>
   </tr>
 </table>"""
+        else:
+            # Sin imagen de firma (Oficina Técnica o perfil sin firma gráfica)
+            signature_visual_html = f"""
+<div style="font-family: Arial, Helvetica, sans-serif; margin-top: 15px; border-left: 2px solid #ea580c; padding-left: 12px;">
+  <div style="font-size: 13px; font-weight: bold; color: #ea580c; text-transform: uppercase;">
+    {cargo_title.upper()}
+  </div>
+  <div style="font-size: 12px; color: #0284c7; font-weight: bold; margin-top: 2px;">
+    GEOFAL S.A.C. — Laboratorio de Ensayo de Materiales
+  </div>
+  <div style="font-size: 11px; color: #475569; margin-top: 4px;">
+    <strong>T:</strong> +51 1 9051911 &nbsp;|&nbsp; <strong>E:</strong> {from_email}
+  </div>
+  <div style="font-size: 11px; color: #64748b; margin-top: 2px;">
+    <strong>W:</strong> <a href="https://www.geofal.com.pe" style="color: #0284c7; text-decoration: none;">www.geofal.com.pe</a>
+  </div>
+</div>"""
 
         html_content = f"""<!DOCTYPE html>
 <html>
