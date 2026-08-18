@@ -1031,7 +1031,8 @@ def download_ot_excel_by_recepcion(
         VerificacionMuestras.numero_verificacion == recep.numero_recepcion
     ).first()
 
-    tecnico_verif = (verif.verificado_por if verif and verif.verificado_por else None) or recep.designada_a or "DEIVI INFANSON"
+    raw_tecnico = (verif.verificado_por if verif and verif.verificado_por else None) or (recep.designada_a if recep.designada_a and recep.designada_a != "-" else None)
+    tecnico_verif = raw_tecnico or ""
     aperturada = recep.aperturada_por or "BETZABETH ZARABIA"
 
     fecha_rec_str = _format_fecha_recepcion(recep) or ""

@@ -172,7 +172,7 @@ def _enrich_ot_data(ot: OrdenTrabajo, db: Session):
         verif = db.query(VerificacionMuestras).filter(
             VerificacionMuestras.numero_verificacion == recepcion.numero_recepcion
         ).first()
-        tecnico_verif = (verif.verificado_por if verif and verif.verificado_por else None) or recepcion.designada_a
+        tecnico_verif = (verif.verificado_por if verif and verif.verificado_por else None) or (recepcion.designada_a if recepcion.designada_a and recepcion.designada_a != "-" else None)
         if tecnico_verif:
             ot.ot_designada_a = tecnico_verif
             modified = True
