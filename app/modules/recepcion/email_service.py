@@ -119,44 +119,29 @@ class RecepcionEmailService:
                     logger.warning(f"No se pudo leer la imagen de firma: {e}")
                     has_signature_img = False
 
-        # Generar versión HTML estilizada con la firma corporativa
+        # Generar versión HTML con la firma corporativa oficial si existe
         paragraphs_html = "".join([f"<p style='margin: 6px 0;'>{p.strip()}</p>" for p in final_body_text.split("\n\n") if p.strip()])
         
         if has_signature_img:
             # Firma gráfica oficial (banner corporativo completo con datos y firma)
             signature_visual_html = f"""
-<div style="margin-top: 25px; padding-top: 10px;">
+<div style="margin-top: 20px;">
   <img src="cid:geofal_signature_img" alt="{cargo_title} - GEOFAL S.A.C." style="width: 100%; max-width: 550px; height: auto; display: block; border: none;" />
 </div>"""
         else:
-            # Sin imagen de firma (Oficina Técnica o perfil sin firma gráfica)
-            signature_visual_html = f"""
-<div style="font-family: Arial, Helvetica, sans-serif; margin-top: 20px; border-left: 3px solid #ea580c; padding-left: 14px;">
-  <div style="font-size: 13px; font-weight: bold; color: #ea580c; text-transform: uppercase;">
-    {cargo_title.upper()}
-  </div>
-  <div style="font-size: 12px; color: #0284c7; font-weight: bold; margin-top: 2px;">
-    GEOFAL S.A.C. — Laboratorio de Ensayo de Materiales
-  </div>
-  <div style="font-size: 11px; color: #475569; margin-top: 4px;">
-    <strong>T:</strong> +51 1 9051911 &nbsp;|&nbsp; <strong>E:</strong> {from_email}
-  </div>
-  <div style="font-size: 11px; color: #64748b; margin-top: 2px;">
-    <strong>W:</strong> <a href="https://www.geofal.com.pe" style="color: #0284c7; text-decoration: none;">www.geofal.com.pe</a>
-  </div>
-</div>"""
+            # Sin imagen de firma: no se crea ninguna firma ficticia
+            signature_visual_html = ""
 
         html_content = f"""<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
 <style>
-body {{ font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #1e293b; line-height: 1.6; }}
+body {{ font-family: Arial, Helvetica, sans-serif; font-size: 13px; line-height: 1.6; }}
 </style>
 </head>
 <body>
 {paragraphs_html}
-<br/>
 {signature_visual_html}
 </body>
 </html>"""

@@ -397,42 +397,18 @@ def generar_outlook_draft(
         )
         body_text = (payload.body_text if payload and payload.body_text else default_body).strip()
         
-        # HTML enriquecido con la Firma Institucional Geofal
+        # HTML limpio para el correo
         html_paragraphs = "".join([f"<p style='margin: 6px 0;'>{p.strip()}</p>" for p in body_text.split("\n\n") if p.strip()])
         html_body = f"""<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
 <style>
-body {{ font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #1e293b; line-height: 1.6; }}
+body {{ font-family: Arial, Helvetica, sans-serif; font-size: 13px; line-height: 1.6; }}
 </style>
 </head>
 <body>
 {html_paragraphs}
-<br/>
-<table style="border:none; border-collapse:collapse; font-family: Arial, Helvetica, sans-serif; margin-top: 15px;">
-  <tr>
-    <td style="vertical-align:middle; padding-right: 16px;">
-      <div style="background-color: #ff5500; color: #ffffff; font-weight: bold; font-size: 20px; padding: 12px 16px; border-radius: 10px; text-align: center;">
-        Geofal
-      </div>
-    </td>
-    <td style="border-left: 2px solid #ea580c; padding-left: 16px; vertical-align:middle;">
-      <div style="font-size: 14px; font-weight: bold; color: #ea580c; text-transform: uppercase;">
-        OFICINA TÉCNICA
-      </div>
-      <div style="font-size: 12px; color: #0284c7; font-weight: bold; margin-top: 2px;">
-        GEOFAL S.A.C. — Laboratorio de Ensayo de Materiales
-      </div>
-      <div style="font-size: 11px; color: #475569; margin-top: 4px;">
-        <strong>T:</strong> +51 1 9051911 &nbsp;|&nbsp; <strong>E:</strong> oficinatecnica1@geofal.com.pe
-      </div>
-      <div style="font-size: 11px; color: #64748b; margin-top: 2px;">
-        <strong>W:</strong> <a href="https://www.geofal.com.pe" style="color: #0284c7; text-decoration: none;">www.geofal.com.pe</a>
-      </div>
-    </td>
-  </tr>
-</table>
 </body>
 </html>"""
 
