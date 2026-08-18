@@ -347,7 +347,7 @@ def generar_outlook_draft(
     payload: Optional[RecepcionOutlookDraftRequest] = None,
     db: Session = Depends(get_db_session)
 ):
-    """Genera un archivo .eml listo para abrir directamente en Microsoft Outlook de Windows con el Excel adjunto"""
+    """Genera un archivo .eml listo para abrir directamente en Microsoft Outlook de Windows con el Excel adjunto y firma corporativa"""
     recepcion = recepcion_service.obtener_recepcion(db, recepcion_id)
     if not recepcion:
         raise HTTPException(status_code=404, detail="Recepción no encontrada")
@@ -363,10 +363,18 @@ def generar_outlook_draft(
         
         excel_filename = f"REC N-{recepcion.numero_recepcion} {cliente_safe}.xlsx"
         
-        # Valores de correo
-        to_email = (payload.to_email if payload and payload.to_email else recepcion.email) or ""
+        # Valores de correo y normalización de destinatarios múltiples
+        raw_to = (payload.to_email if payload and payload.to_email else recepcion.email) or ""
+        to_tokens = [t.strip() for t in re.split(r'[\r\n;,]+', str(raw_to)) if t.strip()]
+        to_formatted = ", ".join(to_tokens)
+        
         default_cc = ["oficinatecnica3@geofal.com.pe", "asesorcomercial1@geofal.com.pe"]
-        cc_emails = payload.cc_emails if (payload and payload.cc_emails is not None) else default_cc
+        raw_ccs = payload.cc_emails if (payload and payload.cc_emails is not None) else default_cc
+        cc_tokens = []
+        for c in raw_ccs:
+            for sub_c in re.split(r'[\r\n;,]+', str(c)):
+                if sub_c.strip() and sub_c.strip() not in cc_tokens:
+                    cc_tokens.append(sub_c.strip())
         
         default_subject = f"RECEPCIÓN DE PROBETAS DE CONCRETO N° {recepcion.numero_recepcion or ''} - {recepcion.cliente or ''}".strip()
         subject = (payload.subject if payload and payload.subject else default_subject).strip()
@@ -382,30 +390,64 @@ def generar_outlook_draft(
             f"• Cantidad de Probetas: {muestras_count} probetas\n\n"
             f"Adjuntamos en este correo el formato oficial de registro de recepción de probetas para su respectiva conformidad. "
             f"Estaremos procediendo con los ensayos programados de rotura según las edades solicitadas.\n\n"
-            f"Cualquier consulta técnica o comercial, quedamos a su entera disposición.\n\n"
-            f"Atentamente,\n"
-            f"OFICINA TÉCNICA\n"
-            f"GEOFAL S.A.C.\n"
-            f"Control de Calidad de Materiales | Concreto, Suelos y Pavimentos\n"
-            f"oficinatecnica1@geofal.com.pe"
+            f"Cualquier consulta técnica o comercial, quedamos a su entera disposición."
         )
         body_text = (payload.body_text if payload and payload.body_text else default_body).strip()
         
+        # HTML enriquecido con la Firma Institucional Geofal
+        html_paragraphs = "".join([f"<p style='margin: 6px 0;'>{p.strip()}</p>" for p in body_text.split("\n\n") if p.strip()])
+        html_body = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+body {{ font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #1e293b; line-height: 1.6; }}
+</style>
+</head>
+<body>
+{html_paragraphs}
+<br/>
+<table style="border:none; border-collapse:collapse; font-family: Arial, Helvetica, sans-serif; margin-top: 15px;">
+  <tr>
+    <td style="vertical-align:middle; padding-right: 16px;">
+      <div style="background-color: #ff5500; color: #ffffff; font-weight: bold; font-size: 20px; padding: 12px 16px; border-radius: 10px; text-align: center;">
+        Geofal
+      </div>
+    </td>
+    <td style="border-left: 2px solid #ea580c; padding-left: 16px; vertical-align:middle;">
+      <div style="font-size: 14px; font-weight: bold; color: #ea580c; text-transform: uppercase;">
+        OFICINA TÉCNICA
+      </div>
+      <div style="font-size: 12px; color: #0284c7; font-weight: bold; margin-top: 2px;">
+        GEOFAL S.A.C. — Laboratorio de Ensayo de Materiales
+      </div>
+      <div style="font-size: 11px; color: #475569; margin-top: 4px;">
+        <strong>T:</strong> +51 1 9051911 &nbsp;|&nbsp; <strong>E:</strong> oficinatecnica1@geofal.com.pe
+      </div>
+      <div style="font-size: 11px; color: #64748b; margin-top: 2px;">
+        <strong>W:</strong> <a href="https://www.geofal.com.pe" style="color: #0284c7; text-decoration: none;">www.geofal.com.pe</a>
+      </div>
+    </td>
+  </tr>
+</table>
+</body>
+</html>"""
+
         # Construcción del mensaje MIME estándar RFC 822 con encabezado X-Unsent: 1 para abrir en modo borrador en Outlook
         msg = MIMEMultipart("mixed")
         msg["From"] = formataddr(("Oficina Técnica - GEOFAL", "oficinatecnica1@geofal.com.pe"))
-        if to_email.strip():
-            msg["To"] = to_email.strip()
-        if cc_emails:
-            valid_ccs = [c.strip() for c in cc_emails if c.strip()]
-            if valid_ccs:
-                msg["Cc"] = ", ".join(valid_ccs)
+        if to_formatted:
+            msg["To"] = to_formatted
+        if cc_tokens:
+            msg["Cc"] = ", ".join(cc_tokens)
         msg["Subject"] = Header(subject, "utf-8")
         msg["X-Unsent"] = "1"  # Indica a Microsoft Outlook que abra la ventana de redacción / borrador
         
-        # Cuerpo del mensaje
-        text_part = MIMEText(body_text, "plain", "utf-8")
-        msg.attach(text_part)
+        # Sub-contenedor multipart/alternative para texto plano + HTML con firma
+        alt_part = MIMEMultipart("alternative")
+        alt_part.attach(MIMEText(body_text, "plain", "utf-8"))
+        alt_part.attach(MIMEText(html_body, "html", "utf-8"))
+        msg.attach(alt_part)
         
         # Adjuntar archivo Excel oficial
         part = MIMEBase("application", "vnd.openxmlformats-officedocument.spreadsheetml.sheet")
