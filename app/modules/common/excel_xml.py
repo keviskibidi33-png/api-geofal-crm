@@ -260,7 +260,10 @@ def resolve_sheet_path(zin: zipfile.ZipFile, sheet_name: str) -> str | None:
     if not target:
         return None
 
-    return f"xl/{target.lstrip('/')}"
+    target_clean = target.lstrip("/")
+    if target_clean.startswith("xl/"):
+        return target_clean
+    return f"xl/{target_clean}"
 
 
 def resolve_sheet_and_drawing_paths(zin: zipfile.ZipFile, sheet_name: str) -> tuple[str | None, str | None]:

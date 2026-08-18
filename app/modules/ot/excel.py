@@ -185,18 +185,18 @@ def generar_excel_ot_concreto(ot: OrdenTrabajo) -> io.BytesIO:
         # 1. Limpiar filas de probetas
         total_rows_capacity = base_capacity + extra_count
         for r in range(9, 9 + total_rows_capacity):
-            set_cell(sheet_data, f"A{r}", "", merge_anchor_map=merge_map)
-            set_cell(sheet_data, f"B{r}", "", merge_anchor_map=merge_map)
-            set_cell(sheet_data, f"C{r}", "", merge_anchor_map=merge_map)
-            set_cell(sheet_data, f"F{r}", "", merge_anchor_map=merge_map)
-            set_cell(sheet_data, f"G{r}", "", merge_anchor_map=merge_map)
-            set_cell(sheet_data, f"H{r}", "", merge_anchor_map=merge_map)
-            set_cell(sheet_data, f"I{r}", "", merge_anchor_map=merge_map)
-            set_cell(sheet_data, f"J{r}", "", merge_anchor_map=merge_map)
+            set_cell(sheet_data, f"A{r}", "", merge_anchor_map=merge_map, style_ref="A9")
+            set_cell(sheet_data, f"B{r}", "", merge_anchor_map=merge_map, style_ref="B9")
+            set_cell(sheet_data, f"C{r}", "", merge_anchor_map=merge_map, style_ref="C9")
+            set_cell(sheet_data, f"F{r}", "", merge_anchor_map=merge_map, style_ref="F9")
+            set_cell(sheet_data, f"G{r}", "", merge_anchor_map=merge_map, style_ref="G9")
+            set_cell(sheet_data, f"H{r}", "", merge_anchor_map=merge_map, style_ref="H9")
+            set_cell(sheet_data, f"I{r}", "", merge_anchor_map=merge_map, style_ref="I9")
+            set_cell(sheet_data, f"J{r}", "", merge_anchor_map=merge_map, style_ref="J9")
 
         # 2. Encabezado
-        set_cell(sheet_data, "C6", ot.numero_ot or "", merge_anchor_map=merge_map)
-        set_cell(sheet_data, "G6", ot.numero_recepcion or "", merge_anchor_map=merge_map)
+        set_cell(sheet_data, "C6", ot.numero_ot or "", merge_anchor_map=merge_map, style_ref="C6")
+        set_cell(sheet_data, "G6", ot.numero_recepcion or "", merge_anchor_map=merge_map, style_ref="G6")
 
         # 3. Filas de probetas (todas las probetas, sin límite fijo de 12)
         fechas_rotura = []
@@ -216,25 +216,25 @@ def generar_excel_ot_concreto(ot: OrdenTrabajo) -> io.BytesIO:
             # Descripción siempre fija según estándar de calidad Geofal
             desc_fija = "COMPRESION PROBETAS ASTM C39/C39M"
 
-            set_cell(sheet_data, f"A{row_num}", item_val, is_number=True, merge_anchor_map=merge_map)
-            set_cell(sheet_data, f"B{row_num}", str(codigo), merge_anchor_map=merge_map)
-            set_cell(sheet_data, f"C{row_num}", desc_fija, merge_anchor_map=merge_map)
-            set_cell(sheet_data, f"F{row_num}", str(elemento or "-"), merge_anchor_map=merge_map)
-            set_cell(sheet_data, f"G{row_num}", str(fecha_rotura).replace("-", "/"), merge_anchor_map=merge_map)
-            set_cell(sheet_data, f"H{row_num}", str(densidad or "-"), merge_anchor_map=merge_map)
+            set_cell(sheet_data, f"A{row_num}", item_val, is_number=True, merge_anchor_map=merge_map, style_ref="A9")
+            set_cell(sheet_data, f"B{row_num}", str(codigo), merge_anchor_map=merge_map, style_ref="B9")
+            set_cell(sheet_data, f"C{row_num}", desc_fija, merge_anchor_map=merge_map, style_ref="C9")
+            set_cell(sheet_data, f"F{row_num}", str(elemento or "-"), merge_anchor_map=merge_map, style_ref="F9")
+            set_cell(sheet_data, f"G{row_num}", str(fecha_rotura).replace("-", "/"), merge_anchor_map=merge_map, style_ref="G9")
+            set_cell(sheet_data, f"H{row_num}", str(densidad or "-"), merge_anchor_map=merge_map, style_ref="H9")
             if edad != "" and edad is not None:
                 try:
                     edad_val = float(str(edad))
-                    set_cell(sheet_data, f"I{row_num}", int(edad_val), is_number=True, merge_anchor_map=merge_map)
+                    set_cell(sheet_data, f"I{row_num}", int(edad_val), is_number=True, merge_anchor_map=merge_map, style_ref="I9")
                 except (ValueError, TypeError):
-                    set_cell(sheet_data, f"I{row_num}", str(edad), merge_anchor_map=merge_map)
+                    set_cell(sheet_data, f"I{row_num}", str(edad), merge_anchor_map=merge_map, style_ref="I9")
             if fc != "" and fc is not None:
                 try:
                     fc_val = float(str(fc))
                     # Sin decimales: 210.0 → 210
-                    set_cell(sheet_data, f"J{row_num}", int(fc_val), is_number=True, merge_anchor_map=merge_map)
+                    set_cell(sheet_data, f"J{row_num}", int(fc_val), is_number=True, merge_anchor_map=merge_map, style_ref="J9")
                 except (ValueError, TypeError):
-                    set_cell(sheet_data, f"J{row_num}", str(fc), merge_anchor_map=merge_map)
+                    set_cell(sheet_data, f"J{row_num}", str(fc), merge_anchor_map=merge_map, style_ref="J9")
 
         # 4. Pie de página y programación (filas dinámicas según extra_count)
         footer_fechas_row = 24 + extra_count
