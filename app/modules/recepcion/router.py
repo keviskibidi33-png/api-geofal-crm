@@ -23,6 +23,7 @@ from .schemas import (
 from .service import RecepcionService
 from .exceptions import DuplicateRecepcionError
 from .excel import ExcelLogic
+from .email_service import RecepcionEmailService
 from app.modules.tracing.service import TracingService
 from app.utils.date_format import parse_flexible_date
 from app.modules.common.notifications import notify_laboratory_essay_event, resolve_actor_identity
@@ -31,6 +32,7 @@ from app.modules.common.notifications import notify_laboratory_essay_event, reso
 router = APIRouter(prefix="/api/recepcion", tags=["Laboratorio Recepciones"])
 recepcion_service = RecepcionService()
 excel_logic = ExcelLogic()
+email_service = RecepcionEmailService()
 
 @router.post("/", response_model=RecepcionMuestraResponse)
 async def crear_recepcion(
@@ -474,6 +476,42 @@ body {{ font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #1e29
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error generando borrador de Outlook: {str(e)}")
+
+@router.post("/{recepcion_id}/enviar-correo")
+async def enviar_correo_recepcion_directo(
+    recepcion_id: int,
+    payload: Optional[RecepcionOutlookDraftRequest] = None,
+    request: Request = None,
+    db: Session = Depends(get_db_session)
+):
+    """Envía el correo directamente desde el servidor SMTP de cPanel con el archivo Excel adjunto y firma corporativa"""
+    recepcion = recepcion_service.obtener_recepcion(db, recepcion_id)
+    if not recepcion:
+        raise HTTPException(status_code=404, detail="Recepción no encontrada")
+    
+    actor = resolve_actor_identity(db, request) if request else {"full_name": "Usuario CRM", "user_id": None}
+    to_email = (payload.to_email if payload and payload.to_email else recepcion.email) or ""
+    if not to_email or not str(to_email).strip():
+        raise HTTPException(status_code=400, detail="Debe especificar al menos un correo de destinatario para el cliente.")
+    
+    try:
+        result = email_service.enviar_correo_recepcion(
+            db=db,
+            recepcion=recepcion,
+            to_email=to_email,
+            cc_emails=payload.cc_emails if payload else None,
+            subject=payload.subject if payload else None,
+            body_text=payload.body_text if payload else None,
+            actor_name=actor.get("full_name"),
+            actor_user_id=actor.get("user_id"),
+        )
+        return result
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error al enviar correo: {str(e)}")
 
 @router.delete("/{recepcion_id}")
 async def eliminar_recepcion(
