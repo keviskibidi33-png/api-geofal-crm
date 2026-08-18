@@ -304,30 +304,6 @@ class RecepcionService:
         safe_page_size = max(1, min(page_size, 100))
         requested_page = max(1, page)
 
-        # Sincronizar OTs de concreto existentes sin recepción si las hay
-        try:
-            from app.modules.ot.models import OrdenTrabajo
-            from app.modules.ot.router import _sync_ot_to_recepcion
-
-            subq = db.query(RecepcionMuestra.numero_recepcion).filter(RecepcionMuestra.numero_recepcion.isnot(None))
-            ots_sin_recepcion = (
-                db.query(OrdenTrabajo)
-                .filter(
-                    OrdenTrabajo.numero_recepcion.isnot(None),
-                    OrdenTrabajo.numero_recepcion != "",
-                    ~OrdenTrabajo.numero_recepcion.in_(subq)
-                )
-                .limit(10)
-                .all()
-            )
-            if ots_sin_recepcion:
-                for ot_missing in ots_sin_recepcion:
-                    _sync_ot_to_recepcion(ot_missing, db)
-                db.commit()
-        except Exception as sync_err:
-            db.rollback()
-            logger.warning("OT sync notice: %s", sync_err)
-
         total_query = self._apply_recepcion_search_filters(
             db.query(func.count(RecepcionMuestra.id)),
             search,

@@ -130,6 +130,33 @@ def _normalize_code_suffix(code: Optional[str], default_year: str = "26") -> Opt
     return s
 
 
+def _evaluate_ot_estado(ot: OrdenTrabajo) -> str:
+    """
+    Evalúa si la OT cuenta con todos sus datos completos.
+    Si está completa y en estado PENDIENTE, la promueve a EMITIDO.
+    Si ya fue DESCARGADO, COMPLETADO o ANULADO, preserva dicho estado.
+    """
+    if ot.estado in ("DESCARGADO", "COMPLETADO", "ANULADO"):
+        return ot.estado
+
+    has_cliente = bool(ot.cliente and ot.cliente.strip() and ot.cliente.strip() != "-")
+    has_proyecto = bool(ot.proyecto and ot.proyecto.strip() and ot.proyecto.strip() != "-")
+    has_fecha = bool(ot.fecha_recepcion and str(ot.fecha_recepcion).strip() not in ("-", ""))
+    has_aperturada = bool(ot.ot_aperturada_por and str(ot.ot_aperturada_por).strip() not in ("-", ""))
+    has_designada = bool(ot.ot_designada_a and str(ot.ot_designada_a).strip() not in ("-", ""))
+
+    items = ot.items if isinstance(ot.items, list) else []
+    has_items = len(items) > 0
+    all_elements_set = has_items and all(
+        bool(item.get("elemento") and str(item.get("elemento")).strip() not in ("-", ""))
+        for item in items if isinstance(item, dict)
+    )
+
+    if has_cliente and has_proyecto and has_fecha and has_aperturada and has_designada and all_elements_set:
+        return "EMITIDO"
+    return ot.estado or "PENDIENTE"
+
+
 def _resolve_densidad(m) -> str:
     """Determina si la probeta requiere densidad ('SI' o 'NO')."""
     d = str(getattr(m, "densidad", "") or "").strip().upper()
@@ -200,6 +227,10 @@ def _enrich_ot_data(ot: OrdenTrabajo, db: Session):
         .all()
     )
     if not muestras:
+        new_est = _evaluate_ot_estado(ot)
+        if ot.estado != new_est:
+            ot.estado = new_est
+            modified = True
         if modified:
             db.commit()
         return
@@ -253,14 +284,21 @@ def _enrich_ot_data(ot: OrdenTrabajo, db: Session):
         flag_modified(ot, "items")
 
     # Sincronizar fechas programadas
-    if fechas_rotura:
-        min_rot = min(fechas_rotura)
-        max_rot = max(fechas_rotura)
-        if ot.inicio_programado != min_rot:
-            ot.inicio_programado = min_rot
+    if recepcion.fecha_estimada_culminacion:
+        est_iso = _to_iso_date(recepcion.fecha_estimada_culminacion)
+        if est_iso and ot.fin_programado != est_iso:
+            ot.fin_programado = est_iso
             modified = True
+    elif fechas_rotura:
+        max_rot = max(fechas_rotura)
         if ot.fin_programado != max_rot:
             ot.fin_programado = max_rot
+            modified = True
+
+    if fechas_rotura:
+        min_rot = min(fechas_rotura)
+        if ot.inicio_programado != min_rot:
+            ot.inicio_programado = min_rot
             modified = True
             
     if ot.fecha_recepcion:
@@ -278,6 +316,12 @@ def _enrich_ot_data(ot: OrdenTrabajo, db: Session):
         if ot.fin_programado != formatted_fin:
             ot.fin_programado = formatted_fin
             modified = True
+
+    # Evaluar estado
+    new_est = _evaluate_ot_estado(ot)
+    if ot.estado != new_est:
+        ot.estado = new_est
+        modified = True
 
     if modified:
         db.commit()
@@ -383,9 +427,10 @@ def prefill_ot_from_recepcion(
 
     # Normalizar fecha recepción a ISO
     fecha_rec = _to_iso_date(recepcion.fecha_recepcion)
+    fecha_estimada = _to_iso_date(recepcion.fecha_estimada_culminacion)
 
     inicio_prog = min(fechas_rotura) if fechas_rotura else (fecha_rec or "")
-    fin_prog = max(fechas_rotura) if fechas_rotura else inicio_prog
+    fin_prog = fecha_estimada or (max(fechas_rotura) if fechas_rotura else inicio_prog)
 
     from app.modules.verificacion.models import VerificacionMuestras
     verif = (
@@ -572,6 +617,9 @@ def create_orden_trabajo(
         if verif and verif.verificado_por and verif.verificado_por != "-":
             new_ot.ot_designada_a = verif.verificado_por
 
+    # Evaluar estado inicial (EMITIDO si está completo)
+    new_ot.estado = _evaluate_ot_estado(new_ot)
+
     db.add(new_ot)
     db.flush()
 
@@ -640,6 +688,9 @@ def update_orden_trabajo(
         ).first()
         if verif and verif.verificado_por and verif.verificado_por != "-":
             ot.ot_designada_a = verif.verificado_por
+
+    # Evaluar estado (EMITIDO si está completo)
+    ot.estado = _evaluate_ot_estado(ot)
 
     # Sincronización automática con Recepción de Muestras
     _sync_ot_to_recepcion(ot, db)

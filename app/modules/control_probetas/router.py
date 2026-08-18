@@ -1040,11 +1040,11 @@ def download_ot_excel_by_recepcion(
     tecnico_verif = raw_tecnico or ""
     aperturada = recep.aperturada_por or "BETZABETH ZARABIA"
 
+    from app.modules.ot.router import _to_iso_date, _normalize_code_suffix
     fecha_rec_str = _format_fecha_recepcion(recep) or ""
+    fecha_estimada = _to_iso_date(recep.fecha_estimada_culminacion)
     inicio_prog = min(fechas_rotura) if fechas_rotura else (fecha_rec_str or None)
-    fin_prog = max(fechas_rotura) if fechas_rotura else inicio_prog
-
-    from app.modules.ot.router import _normalize_code_suffix
+    fin_prog = fecha_estimada or (max(fechas_rotura) if fechas_rotura else inicio_prog)
     num_ot_norm = _normalize_code_suffix(recep.numero_ot) or _normalize_code_suffix(recep.numero_recepcion)
     num_rec_norm = _normalize_code_suffix(recep.numero_recepcion)
 

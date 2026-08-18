@@ -262,8 +262,9 @@ def generar_excel_ot_concreto(ot: OrdenTrabajo) -> io.BytesIO:
         if ot.observaciones:
             set_cell(sheet_data, f"A{obs_row}", f"OBSERVACIONES: {ot.observaciones}", merge_anchor_map=merge_map)
 
-        # Responsables — C{resp_row}: Aperturada por, I{resp_row} (merged I:J): Designada a (F:H conserva el texto estático de la plantilla)
+        # Responsables — C{resp_row}: Aperturada por, F{resp_row}: Label ajustada, I{resp_row} (merged I:J): Designada a
         set_cell(sheet_data, f"C{responsables_row}", ot.ot_aperturada_por or "BETZABETH ZARABIA", merge_anchor_map=merge_map)
+        set_cell(sheet_data, f"F{responsables_row}", "OT DESIGNADA A:\n(Colocar el nombre de los técnicos)", merge_anchor_map=merge_map)
         set_cell(sheet_data, f"I{responsables_row}", ot.ot_designada_a or "", merge_anchor_map=merge_map)
 
         return etree.tostring(root, xml_declaration=True, encoding="UTF-8")

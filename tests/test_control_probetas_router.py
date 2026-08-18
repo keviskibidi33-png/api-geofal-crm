@@ -251,7 +251,7 @@ class TestControlProbetasRouter(unittest.TestCase):
         wb = openpyxl.load_workbook(buf)
         ws = wb["MYP"]
         self.assertEqual(ws["C33"].value, "BETZABETH ZARABIA")
-        self.assertTrue("OT DESIGADA A:" in (ws["F33"].value or ""))
+        self.assertTrue("OT DESIGNADA A:" in (ws["F33"].value or ""))
         self.assertEqual(ws["I33"].value, "DEYVI INFANZÓN")
 
     def test_ot_excel_concreto_dynamic_row_expansion_15_items(self):
@@ -302,8 +302,38 @@ class TestControlProbetasRouter(unittest.TestCase):
         self.assertEqual(ws["F27"].value, "2026/08/20")
         self.assertEqual(ws["J27"].value, "2026/08/20")
         self.assertEqual(ws["C36"].value, "BETZABETH ZARABIA")
-        self.assertTrue("OT DESIGADA A:" in (ws["F36"].value or ""))
+        self.assertTrue("OT DESIGNADA A:" in (ws["F36"].value or ""))
         self.assertEqual(ws["I36"].value, "DEYVI INFANZÓN")
+
+    def test_evaluate_ot_estado_complete_and_incomplete(self):
+        from app.modules.ot.models import OrdenTrabajo
+        from app.modules.ot.router import _evaluate_ot_estado
+
+        ot_complete = OrdenTrabajo(
+            numero_ot="OT-1960-26",
+            numero_recepcion="1960-26",
+            cliente="De Vicente Constructora",
+            proyecto="LIMA SUR UCS",
+            fecha_recepcion="2026-08-17",
+            ot_aperturada_por="BETZABETH ZARABIA",
+            ot_designada_a="DEYVI INFANZON",
+            items=[{"item": 1, "elemento": "VIGA", "codigo_muestra": "14678-CO-26"}],
+            estado="PENDIENTE",
+        )
+        self.assertEqual(_evaluate_ot_estado(ot_complete), "EMITIDO")
+
+        ot_incomplete = OrdenTrabajo(
+            numero_ot="OT-1961-26",
+            numero_recepcion="1961-26",
+            cliente="De Vicente Constructora",
+            proyecto="LIMA SUR UCS",
+            fecha_recepcion="2026-08-17",
+            ot_aperturada_por="BETZABETH ZARABIA",
+            ot_designada_a="DEYVI INFANZON",
+            items=[{"item": 1, "elemento": "-", "codigo_muestra": "14678-CO-26"}],
+            estado="PENDIENTE",
+        )
+        self.assertEqual(_evaluate_ot_estado(ot_incomplete), "PENDIENTE")
 
 
 if __name__ == "__main__":
