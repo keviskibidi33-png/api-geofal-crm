@@ -162,6 +162,21 @@ def _enrich_ot_data(ot: OrdenTrabajo, db: Session):
         ot.fecha_recepcion = fecha_rec_iso
         modified = True
 
+    # Sincronizar responsables (aperturada por Betzabeth / asignada a verificador)
+    if not ot.ot_aperturada_por or ot.ot_aperturada_por == "-":
+        ot.ot_aperturada_por = recepcion.aperturada_por or "BETZABETH ZARABIA"
+        modified = True
+
+    if not ot.ot_designada_a or ot.ot_designada_a == "-":
+        from app.modules.verificacion.models import VerificacionMuestras
+        verif = db.query(VerificacionMuestras).filter(
+            VerificacionMuestras.numero_verificacion == recepcion.numero_recepcion
+        ).first()
+        tecnico_verif = (verif.verificado_por if verif and verif.verificado_por else None) or recepcion.designada_a
+        if tecnico_verif:
+            ot.ot_designada_a = tecnico_verif
+            modified = True
+
     # Sincronizar probetas
     muestras = (
         db.query(MuestraConcreto)
@@ -357,6 +372,15 @@ def prefill_ot_from_recepcion(
     inicio_prog = min(fechas_rotura) if fechas_rotura else (fecha_rec or "")
     fin_prog = max(fechas_rotura) if fechas_rotura else inicio_prog
 
+    from app.modules.verificacion.models import VerificacionMuestras
+    verif = (
+        db.query(VerificacionMuestras)
+        .filter(VerificacionMuestras.numero_verificacion == recepcion.numero_recepcion)
+        .first()
+    )
+    tecnico_verif = (verif.verificado_por if verif and verif.verificado_por else None) or recepcion.designada_a or ""
+    aperturada = recepcion.aperturada_por or "BETZABETH ZARABIA"
+
     return {
         "numero_recepcion": recepcion.numero_recepcion,
         "cliente": recepcion.cliente or "",
@@ -365,6 +389,8 @@ def prefill_ot_from_recepcion(
         "inicio_programado": inicio_prog or "",
         "fin_programado": fin_prog or "",
         "observaciones": recepcion.observaciones or "",
+        "ot_aperturada_por": aperturada,
+        "ot_designada_a": tecnico_verif,
         "total_probetas": len(muestras),
         "items": items_ot,
     }

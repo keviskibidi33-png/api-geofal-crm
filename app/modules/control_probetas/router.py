@@ -853,9 +853,11 @@ def update_probeta(
             elif normalized_status == "FALTA":
                 muestra.status_ensayo = "FALTA"
                 muestra.status_entrega = "-"
+                muestra.fecha_entrega = "-"
             elif normalized_status == "ANULADO":
                 muestra.status_ensayo = "ANULADO"
                 muestra.status_entrega = "ANULADO"
+                muestra.fecha_entrega = "-"
             else:
                 muestra.status_ensayo = normalized_status if normalized_status in ALLOWED_STATUS else "FALTA"
             continue
@@ -994,6 +996,7 @@ def download_ot_excel_by_recepcion(
     """
     Genera y descarga la Orden de Trabajo (OT) oficial en formato Excel
     inyectando los datos e ítems de probetas correspondientes a la recepción.
+    Enlaza automáticamente el técnico verificador y responsable de apertura.
     """
     recep = db.query(RecepcionMuestra).filter(RecepcionMuestra.id == recepcion_id).first()
     if not recep:
@@ -1003,20 +1006,37 @@ def download_ot_excel_by_recepcion(
         MuestraConcreto.recepcion_id == recepcion_id
     ).order_by(asc(MuestraConcreto.item_numero)).all()
 
-    ot_items = [
-        {
+    fechas_rotura = []
+    ot_items = []
+    for m in muestras:
+        f_rot = (m.fecha_rotura or "").replace("-", "/")
+        if f_rot and f_rot != "-":
+            fechas_rotura.append(f_rot)
+
+        ot_items.append({
             "item": m.item_numero,
             "codigo_muestra": m.codigo_muestra_lem or m.codigo_muestra or f"M-{m.item_numero}",
             "descripcion": "COMPRESION PROBETAS ASTM C39/C39M",
             "elemento": m.elemento or "-",
-            "fecha_rotura": m.fecha_rotura or "",
+            "fecha_rotura": f_rot,
             "densidad": "SI" if m.requiere_densidad else "NO",
             "edad": m.edad,
             "fc_kg_cm2": m.fc_kg_cm2,
             "cantidad": 1,
-        }
-        for m in muestras
-    ]
+        })
+
+    # Buscar información del técnico que realizó la verificación
+    from app.modules.verificacion.models import VerificacionMuestras
+    verif = db.query(VerificacionMuestras).filter(
+        VerificacionMuestras.numero_verificacion == recep.numero_recepcion
+    ).first()
+
+    tecnico_verif = (verif.verificado_por if verif and verif.verificado_por else None) or recep.designada_a or "DEIVI INFANSON"
+    aperturada = recep.aperturada_por or "BETZABETH ZARABIA"
+
+    fecha_rec_str = _format_fecha_recepcion(recep) or ""
+    inicio_prog = min(fechas_rotura) if fechas_rotura else (fecha_rec_str or None)
+    fin_prog = max(fechas_rotura) if fechas_rotura else inicio_prog
 
     ot = db.query(OrdenTrabajo).filter(
         or_(
@@ -1025,17 +1045,25 @@ def download_ot_excel_by_recepcion(
         )
     ).first()
 
+    from sqlalchemy.orm.attributes import flag_modified
+
     if not ot:
         ot = OrdenTrabajo(
-            numero_ot=recep.numero_ot,
+            numero_ot=recep.numero_ot or recep.numero_recepcion,
             numero_recepcion=recep.numero_recepcion,
             cliente=recep.cliente,
             proyecto=recep.proyecto,
-            fecha_recepcion=_format_fecha_recepcion(recep),
+            fecha_recepcion=fecha_rec_str,
+            inicio_programado=inicio_prog,
+            fin_programado=fin_prog,
+            ot_aperturada_por=aperturada,
+            ot_designada_a=tecnico_verif,
             items=ot_items,
             estado="DESCARGADO"
         )
         db.add(ot)
+        db.flush()
+        flag_modified(ot, "items")
         db.commit()
         db.refresh(ot)
     else:
@@ -1044,8 +1072,18 @@ def download_ot_excel_by_recepcion(
         ot.proyecto = recep.proyecto
         ot.estado = "DESCARGADO"
         if not ot.fecha_recepcion:
-            ot.fecha_recepcion = _format_fecha_recepcion(recep)
+            ot.fecha_recepcion = fecha_rec_str
+        if not ot.inicio_programado and inicio_prog:
+            ot.inicio_programado = inicio_prog
+        if not ot.fin_programado and fin_prog:
+            ot.fin_programado = fin_prog
+        if not ot.ot_aperturada_por or ot.ot_aperturada_por == "-":
+            ot.ot_aperturada_por = aperturada
+        if not ot.ot_designada_a or ot.ot_designada_a == "-":
+            ot.ot_designada_a = tecnico_verif
+        flag_modified(ot, "items")
         db.commit()
+        db.refresh(ot)
 
     try:
         excel_buffer = generar_excel_ot_concreto(ot)
