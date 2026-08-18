@@ -435,10 +435,12 @@ class RecepcionService:
                 )
 
             for ot in ots_existentes:
-                # ── Evaluar estado dinámicamente (idéntico a _evaluate_ot_estado) ──
-                if ot.estado in ("DESCARGADO", "COMPLETADO", "ANULADO"):
-                    estado_calc = ot.estado
+                # ── Estado directo desde OT (Single Source of Truth) ──
+                # Si la OT ya tiene estado EMITIDO, COMPLETADO, DESCARGADO o ANULADO, se respeta tal cual.
+                if ot.estado and ot.estado.upper() in ("EMITIDO", "DESCARGADO", "COMPLETADO", "ANULADO"):
+                    estado_calc = ot.estado.upper()
                 else:
+                    # Si la OT está en PENDIENTE o sin estado, evaluar si ya cumple los campos para ser EMITIDO
                     has_cliente   = bool(ot.cliente and str(ot.cliente).strip() not in ("", "-"))
                     has_proyecto  = bool(ot.proyecto and str(ot.proyecto).strip() not in ("", "-"))
                     has_fecha     = bool(ot.fecha_recepcion and str(ot.fecha_recepcion).strip() not in ("", "-"))
