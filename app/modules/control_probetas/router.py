@@ -864,8 +864,13 @@ def update_probeta(
         if key == "elemento":
             muestra.elemento = normalize_option(val, ALLOWED_ELEMENTOS)
             continue
-        if key in {"fecha_rotura", "fecha_entrega", "fecha_moldeo"}:
-            setattr(muestra, key, normalize_date_payload(val) or ("-" if key == "fecha_entrega" else ""))
+        if key == "fecha_entrega":
+            normalized_d = normalize_date_payload(val)
+            if normalized_d:
+                muestra.fecha_entrega = normalized_d
+            continue
+        if key in {"fecha_rotura", "fecha_moldeo"}:
+            setattr(muestra, key, normalize_date_payload(val) or "")
             continue
         if hasattr(muestra, key):
             setattr(muestra, key, val)

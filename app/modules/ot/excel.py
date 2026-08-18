@@ -183,9 +183,9 @@ def generar_excel_ot_concreto(ot: OrdenTrabajo) -> io.BytesIO:
         if ot.observaciones:
             set_cell(sheet_data, "A26", f"OBSERVACIONES: {ot.observaciones}", merge_anchor_map=merge_map)
 
-        # Responsables — inyectar valor seleccionado o limpiar celda para no dejar residuos de la plantilla
-        set_cell(sheet_data, "C33", ot.ot_aperturada_por or "", merge_anchor_map=merge_map)
-        set_cell(sheet_data, "F33", ot.ot_designada_a or "", merge_anchor_map=merge_map)
+        # Responsables — C33: Aperturada por, I33 (merged I33:J33): Designada a (F33:H33 conserva el texto estático de la plantilla)
+        set_cell(sheet_data, "C33", ot.ot_aperturada_por or "BETZABETH ZARABIA", merge_anchor_map=merge_map)
+        set_cell(sheet_data, "I33", ot.ot_designada_a or "", merge_anchor_map=merge_map)
 
         return etree.tostring(root, xml_declaration=True, encoding="UTF-8")
 
