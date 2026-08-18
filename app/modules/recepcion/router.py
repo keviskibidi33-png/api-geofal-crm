@@ -6,12 +6,19 @@ import unicodedata
 import re
 import io
 import openpyxl
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
+from email.header import Header
+from email.utils import formataddr
 from app.database import get_db, get_db_session
 from .schemas import (
     RecepcionMuestraCreate,
     RecepcionMuestraResponse,
     RecepcionMuestraUpdate,
     RecepcionListPaginatedResponse,
+    RecepcionOutlookDraftRequest,
 )
 from .service import RecepcionService
 from .exceptions import DuplicateRecepcionError
@@ -333,6 +340,98 @@ def generar_excel_recepcion(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error generando Excel: {str(e)}")
+
+@router.post("/{recepcion_id}/outlook-draft")
+def generar_outlook_draft(
+    recepcion_id: int,
+    payload: Optional[RecepcionOutlookDraftRequest] = None,
+    db: Session = Depends(get_db_session)
+):
+    """Genera un archivo .eml listo para abrir directamente en Microsoft Outlook de Windows con el Excel adjunto"""
+    recepcion = recepcion_service.obtener_recepcion(db, recepcion_id)
+    if not recepcion:
+        raise HTTPException(status_code=404, detail="Recepción no encontrada")
+    
+    try:
+        # Generar Excel oficial al vuelo
+        excel_content = excel_logic.generar_excel_recepcion(recepcion)
+        
+        # Sanitize client name for filename
+        cliente_raw = recepcion.cliente or "Sin Cliente"
+        cliente_safe = unicodedata.normalize('NFKD', cliente_raw).encode('ascii', 'ignore').decode('ascii')
+        cliente_safe = re.sub(r'[^\w\s\-]', '', cliente_safe).strip()
+        
+        excel_filename = f"REC N-{recepcion.numero_recepcion} {cliente_safe}.xlsx"
+        
+        # Valores de correo
+        to_email = (payload.to_email if payload and payload.to_email else recepcion.email) or ""
+        default_cc = ["oficinatecnica3@geofal.com.pe", "asesorcomercial1@geofal.com.pe"]
+        cc_emails = payload.cc_emails if (payload and payload.cc_emails is not None) else default_cc
+        
+        default_subject = f"RECEPCIÓN DE PROBETAS DE CONCRETO N° {recepcion.numero_recepcion or ''} - {recepcion.cliente or ''}".strip()
+        subject = (payload.subject if payload and payload.subject else default_subject).strip()
+        
+        muestras_count = len(recepcion.muestras) if recepcion.muestras else 0
+        default_body = (
+            f"Estimado(s) {recepcion.cliente or 'Cliente'},\n\n"
+            f"Por medio de la presente, confirmamos la recepción satisfactoria de sus muestras/probetas de concreto en nuestro laboratorio GEOFAL S.A.C.:\n\n"
+            f"• N° Recepción: {recepcion.numero_recepcion or '-'}\n"
+            f"• N° Orden de Trabajo: {recepcion.numero_ot or '-'}\n"
+            f"• Proyecto: {recepcion.proyecto or '-'}\n"
+            f"• Fecha de Recepción: {recepcion.fecha_recepcion or '-'}\n"
+            f"• Cantidad de Probetas: {muestras_count} probetas\n\n"
+            f"Adjuntamos en este correo el formato oficial de registro de recepción de probetas para su respectiva conformidad. "
+            f"Estaremos procediendo con los ensayos programados de rotura según las edades solicitadas.\n\n"
+            f"Cualquier consulta técnica o comercial, quedamos a su entera disposición.\n\n"
+            f"Atentamente,\n"
+            f"OFICINA TÉCNICA\n"
+            f"GEOFAL S.A.C.\n"
+            f"Control de Calidad de Materiales | Concreto, Suelos y Pavimentos\n"
+            f"oficinatecnica1@geofal.com.pe"
+        )
+        body_text = (payload.body_text if payload and payload.body_text else default_body).strip()
+        
+        # Construcción del mensaje MIME estándar RFC 822 con encabezado X-Unsent: 1 para abrir en modo borrador en Outlook
+        msg = MIMEMultipart("mixed")
+        msg["From"] = formataddr(("Oficina Técnica - GEOFAL", "oficinatecnica1@geofal.com.pe"))
+        if to_email.strip():
+            msg["To"] = to_email.strip()
+        if cc_emails:
+            valid_ccs = [c.strip() for c in cc_emails if c.strip()]
+            if valid_ccs:
+                msg["Cc"] = ", ".join(valid_ccs)
+        msg["Subject"] = Header(subject, "utf-8")
+        msg["X-Unsent"] = "1"  # Indica a Microsoft Outlook que abra la ventana de redacción / borrador
+        
+        # Cuerpo del mensaje
+        text_part = MIMEText(body_text, "plain", "utf-8")
+        msg.attach(text_part)
+        
+        # Adjuntar archivo Excel oficial
+        part = MIMEBase("application", "vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        part.set_payload(excel_content)
+        encoders.encode_base64(part)
+        part.add_header(
+            "Content-Disposition",
+            f'attachment; filename="{excel_filename}"'
+        )
+        msg.attach(part)
+        
+        eml_content = msg.as_bytes()
+        download_name = f"Correo_Recepcion_{recepcion.numero_recepcion or recepcion_id}.eml"
+        
+        return Response(
+            content=eml_content,
+            media_type="message/rfc822",
+            headers={
+                "Content-Disposition": f'attachment; filename="{download_name}"',
+                "Access-Control-Expose-Headers": "Content-Disposition",
+            }
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error generando borrador de Outlook: {str(e)}")
 
 @router.delete("/{recepcion_id}")
 async def eliminar_recepcion(

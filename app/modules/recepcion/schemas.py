@@ -297,3 +297,12 @@ class RecepcionPlantillaResponse(RecepcionPlantillaBase):
     
     class Config:
         from_attributes = True
+
+
+# ===== SCHEMA PARA GENERAR BORRADOR OUTLOOK (.EML CON ADJUNTO) =====
+class RecepcionOutlookDraftRequest(BaseModel):
+    to_email: Optional[str] = Field(None, description="Destinatario principal (cliente)")
+    cc_emails: Optional[List[str]] = Field(None, description="Lista de correos en copia")
+    subject: Optional[str] = Field(None, description="Asunto del correo")
+    body_text: Optional[str] = Field(None, description="Cuerpo del correo / speech")
+
