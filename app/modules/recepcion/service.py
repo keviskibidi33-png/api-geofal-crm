@@ -196,6 +196,13 @@ class RecepcionService:
             # Crear recepción
             recepcion_dict = recepcion_data.dict(exclude={'muestras'})
             
+            # Normalizar sufijo de año (-26) en numero_ot y numero_recepcion
+            from app.modules.ot.router import _normalize_code_suffix
+            if recepcion_dict.get("numero_ot"):
+                recepcion_dict["numero_ot"] = _normalize_code_suffix(recepcion_dict["numero_ot"])
+            if recepcion_dict.get("numero_recepcion"):
+                recepcion_dict["numero_recepcion"] = _normalize_code_suffix(recepcion_dict["numero_recepcion"])
+
             # Auto-asignar codigo_laboratorio y version si tipo_recepcion esta en TIPO_RECEPCION_CONFIG
             tipo_rec = (recepcion_dict.get("tipo_recepcion") or "CONCRETO").upper()
             recepcion_dict["tipo_recepcion"] = tipo_rec
@@ -484,6 +491,13 @@ class RecepcionService:
         # Separar muestras del resto de datos
         muestras_data = recepcion_data.pop('muestras', None)
         
+        # Normalizar sufijos de año (-26)
+        from app.modules.ot.router import _normalize_code_suffix
+        if recepcion_data.get("numero_ot"):
+            recepcion_data["numero_ot"] = _normalize_code_suffix(recepcion_data["numero_ot"])
+        if recepcion_data.get("numero_recepcion"):
+            recepcion_data["numero_recepcion"] = _normalize_code_suffix(recepcion_data["numero_recepcion"])
+
         # Actualizar campos de cabecera
         for campo, valor in recepcion_data.items():
             if hasattr(recepcion, campo):

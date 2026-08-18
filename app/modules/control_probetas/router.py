@@ -1044,10 +1044,16 @@ def download_ot_excel_by_recepcion(
     inicio_prog = min(fechas_rotura) if fechas_rotura else (fecha_rec_str or None)
     fin_prog = max(fechas_rotura) if fechas_rotura else inicio_prog
 
+    from app.modules.ot.router import _normalize_code_suffix
+    num_ot_norm = _normalize_code_suffix(recep.numero_ot) or _normalize_code_suffix(recep.numero_recepcion)
+    num_rec_norm = _normalize_code_suffix(recep.numero_recepcion)
+
     ot = db.query(OrdenTrabajo).filter(
         or_(
             OrdenTrabajo.numero_ot == recep.numero_ot,
-            OrdenTrabajo.numero_recepcion == recep.numero_recepcion
+            OrdenTrabajo.numero_ot == num_ot_norm,
+            OrdenTrabajo.numero_recepcion == recep.numero_recepcion,
+            OrdenTrabajo.numero_recepcion == num_rec_norm
         )
     ).first()
 
@@ -1055,8 +1061,8 @@ def download_ot_excel_by_recepcion(
 
     if not ot:
         ot = OrdenTrabajo(
-            numero_ot=recep.numero_ot or recep.numero_recepcion,
-            numero_recepcion=recep.numero_recepcion,
+            numero_ot=num_ot_norm,
+            numero_recepcion=num_rec_norm,
             cliente=recep.cliente,
             proyecto=recep.proyecto,
             fecha_recepcion=fecha_rec_str,

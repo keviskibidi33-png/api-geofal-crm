@@ -115,6 +115,21 @@ def _to_iso_date(val: Any) -> str:
     return s
 
 
+def _normalize_code_suffix(code: Optional[str], default_year: str = "26") -> Optional[str]:
+    """Garantiza consistencia en sufijo de año (ej. 1924 -> 1924-26)."""
+    if not code:
+        return code
+    s = str(code).strip()
+    if not s or s == "-":
+        return s
+    import re
+    if re.match(r"^\d+$", s):
+        return f"{s}-{default_year}"
+    if re.match(r"^OT-\d+$", s, re.IGNORECASE):
+        return f"{s}-{default_year}"
+    return s
+
+
 def _resolve_densidad(m) -> str:
     """Determina si la probeta requiere densidad ('SI' o 'NO')."""
     d = str(getattr(m, "densidad", "") or "").strip().upper()
@@ -531,13 +546,17 @@ def create_orden_trabajo(
 ):
     user_id, user_name = _extract_user_info(request)
 
-    # Verificar duplicados por numero_ot
-    existing = db.query(OrdenTrabajo).filter(OrdenTrabajo.numero_ot == payload.numero_ot.strip()).first()
-    if existing:
-        raise HTTPException(status_code=400, detail=f"Ya existe una Orden de Trabajo con N° OT: {payload.numero_ot}")
-
     ot_data = payload.model_dump()
     ot_data["creado_por"] = user_name
+    if ot_data.get("numero_ot"):
+        ot_data["numero_ot"] = _normalize_code_suffix(ot_data["numero_ot"])
+    if ot_data.get("numero_recepcion"):
+        ot_data["numero_recepcion"] = _normalize_code_suffix(ot_data["numero_recepcion"])
+
+    # Verificar duplicados por numero_ot
+    existing = db.query(OrdenTrabajo).filter(OrdenTrabajo.numero_ot == ot_data["numero_ot"].strip()).first()
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Ya existe una Orden de Trabajo con N° OT: {ot_data['numero_ot']}")
 
     new_ot = OrdenTrabajo(**ot_data)
 
@@ -592,6 +611,10 @@ def update_orden_trabajo(
         raise HTTPException(status_code=404, detail="Orden de Trabajo no encontrada")
 
     update_data = payload.model_dump(exclude_unset=True)
+    if update_data.get("numero_ot"):
+        update_data["numero_ot"] = _normalize_code_suffix(update_data["numero_ot"])
+    if update_data.get("numero_recepcion"):
+        update_data["numero_recepcion"] = _normalize_code_suffix(update_data["numero_recepcion"])
 
     if "numero_ot" in update_data and update_data["numero_ot"].strip() != ot.numero_ot:
         existing = db.query(OrdenTrabajo).filter(

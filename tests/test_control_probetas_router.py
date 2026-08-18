@@ -254,6 +254,57 @@ class TestControlProbetasRouter(unittest.TestCase):
         self.assertTrue("OT DESIGADA A:" in (ws["F33"].value or ""))
         self.assertEqual(ws["I33"].value, "DEYVI INFANZÓN")
 
+    def test_ot_excel_concreto_dynamic_row_expansion_15_items(self):
+        import openpyxl
+        from app.modules.ot.models import OrdenTrabajo
+        from app.modules.ot.excel import generar_excel_ot_concreto
+
+        items_15 = [
+            {
+                "item": i,
+                "codigo_muestra": f"PROB-{i:02d}",
+                "elemento": "4 in x 8 in",
+                "fecha_rotura": "2026/08/20",
+                "densidad": "SI",
+                "edad": 7,
+                "fc_kg_cm2": 210,
+            }
+            for i in range(1, 16)
+        ]
+        ot = OrdenTrabajo(
+            numero_ot="OT-1924-26",
+            numero_recepcion="1920-26",
+            cliente="CLIENTE DE PRUEBA 15",
+            proyecto="PROYECTO DE PRUEBA 15",
+            fecha_recepcion="2026/08/15",
+            ot_aperturada_por="BETZABETH ZARABIA",
+            ot_designada_a="DEYVI INFANZÓN",
+            items=items_15,
+        )
+        buf = generar_excel_ot_concreto(ot)
+        wb = openpyxl.load_workbook(buf)
+        ws = wb["MYP"]
+
+        # Check all 15 items in rows 9 to 23
+        for i in range(1, 16):
+            r = 8 + i
+            self.assertEqual(ws[f"A{r}"].value, i)
+            self.assertEqual(ws[f"B{r}"].value, f"PROB-{i:02d}")
+            self.assertEqual(ws[f"C{r}"].value, "COMPRESION PROBETAS ASTM C39/C39M")
+            self.assertEqual(ws[f"F{r}"].value, "4 in x 8 in")
+            self.assertEqual(ws[f"G{r}"].value, "2026/08/20")
+            self.assertEqual(ws[f"H{r}"].value, "SI")
+            self.assertEqual(ws[f"I{r}"].value, 7)
+            self.assertEqual(ws[f"J{r}"].value, 210)
+
+        # Check shifted footer (24 + 3 = 27, 33 + 3 = 36)
+        self.assertEqual(ws["C27"].value, "2026/08/15")
+        self.assertEqual(ws["F27"].value, "2026/08/20")
+        self.assertEqual(ws["J27"].value, "2026/08/20")
+        self.assertEqual(ws["C36"].value, "BETZABETH ZARABIA")
+        self.assertTrue("OT DESIGADA A:" in (ws["F36"].value or ""))
+        self.assertEqual(ws["I36"].value, "DEYVI INFANZÓN")
+
 
 if __name__ == "__main__":
     unittest.main()
