@@ -540,11 +540,27 @@ def create_orden_trabajo(
     ot_data["creado_por"] = user_name
 
     new_ot = OrdenTrabajo(**ot_data)
+
+    # Auto-detección de apertura y responsable desde Verificación si no vienen especificados
+    if not new_ot.ot_aperturada_por or new_ot.ot_aperturada_por == "-":
+        new_ot.ot_aperturada_por = "BETZABETH ZARABIA"
+
+    if (not new_ot.ot_designada_a or new_ot.ot_designada_a == "-") and new_ot.numero_recepcion:
+        from app.modules.verificacion.models import VerificacionMuestras
+        verif = db.query(VerificacionMuestras).filter(
+            VerificacionMuestras.numero_verificacion == new_ot.numero_recepcion.strip()
+        ).first()
+        if verif and verif.verificado_por and verif.verificado_por != "-":
+            new_ot.ot_designada_a = verif.verificado_por
+
     db.add(new_ot)
     db.flush()
 
     # Sincronización automática con Recepción de Muestras
     _sync_ot_to_recepcion(new_ot, db)
+
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(new_ot, "items")
 
     db.commit()
     db.refresh(new_ot)
@@ -590,8 +606,23 @@ def update_orden_trabajo(
     for field, value in update_data.items():
         setattr(ot, field, value)
 
+    # Auto-detección de apertura y responsable desde Verificación si no vienen especificados
+    if not ot.ot_aperturada_por or ot.ot_aperturada_por == "-":
+        ot.ot_aperturada_por = "BETZABETH ZARABIA"
+
+    if (not ot.ot_designada_a or ot.ot_designada_a == "-") and ot.numero_recepcion:
+        from app.modules.verificacion.models import VerificacionMuestras
+        verif = db.query(VerificacionMuestras).filter(
+            VerificacionMuestras.numero_verificacion == ot.numero_recepcion.strip()
+        ).first()
+        if verif and verif.verificado_por and verif.verificado_por != "-":
+            ot.ot_designada_a = verif.verificado_por
+
     # Sincronización automática con Recepción de Muestras
     _sync_ot_to_recepcion(ot, db)
+
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(ot, "items")
 
     db.commit()
     db.refresh(ot)
