@@ -16,7 +16,7 @@ EMAIL_PROFILES: Dict[str, Dict[str, Any]] = {
         "smtp_password": os.getenv("SMTP_PASSWORD_OT", "Geo_Fal2025*-/"),
         "default_cc": ["oficinatecnica3@geofal.com.pe", "asesorcomercial1@geofal.com.pe"],
         "signature_type": "IMAGE_AND_HTML",
-        "signature_image_filename": "ImagenAbrasionesMenores.png",
+        "signature_image_filename": "FirmaCoordinadoraLabBetzabethSaravia.png",
         "telefono": "+51 1 9051911",
         "web": "www.geofal.com.pe",
         "is_default": True,
@@ -34,7 +34,7 @@ EMAIL_PROFILES: Dict[str, Dict[str, Any]] = {
         "smtp_password": os.getenv("SMTP_PASSWORD_COORD", "SM*fyYI&=VOA"),
         "default_cc": ["oficinatecnica1@geofal.com.pe", "oficinatecnica3@geofal.com.pe", "asesorcomercial1@geofal.com.pe"],
         "signature_type": "IMAGE_AND_HTML",
-        "signature_image_filename": "ImagenAbrasionesMenores.png",
+        "signature_image_filename": "FirmaCoordinadoraLabBetzabethSaravia.png",
         "telefono": "+51 1 9051911",
         "web": "www.geofal.com.pe",
         "is_default": False,
@@ -53,6 +53,7 @@ def list_email_profiles() -> List[Dict[str, Any]]:
     """Devuelve la lista pública de perfiles de correo disponibles para el frontend (sin passwords)"""
     profiles = []
     for key, p in EMAIL_PROFILES.items():
+        sig_file = p.get("signature_image_filename", "FirmaCoordinadoraLabBetzabethSaravia.png")
         profiles.append({
             "id": p["id"],
             "codigo": p["codigo"],
@@ -62,7 +63,7 @@ def list_email_profiles() -> List[Dict[str, Any]]:
             "from_email": p["from_email"],
             "default_cc": p["default_cc"],
             "signature_type": p["signature_type"],
-            "signature_image_url": f"/ImagenAbrasionesMenores.png",
+            "signature_image_url": f"/{sig_file}",
             "telefono": p["telefono"],
             "web": p["web"],
             "is_default": p.get("is_default", False),

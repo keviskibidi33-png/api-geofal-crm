@@ -105,8 +105,9 @@ class RecepcionEmailService:
         )
         final_body_text = (body_text if body_text and body_text.strip() else default_body).strip()
 
-        # 6. Intentar cargar imagen de firma oficial
-        img_path = Path(__file__).resolve().parents[2] / "src" / "Firmas_Correo" / "ImagenAbrasionesMenores.png"
+        # 6. Intentar cargar imagen de firma oficial del perfil
+        sig_filename = profile.get("signature_image_filename", "FirmaCoordinadoraLabBetzabethSaravia.png")
+        img_path = Path(__file__).resolve().parents[2] / "src" / "Firmas_Correo" / sig_filename
         has_signature_img = img_path.exists()
         sig_img_bytes = None
         if has_signature_img:
