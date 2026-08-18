@@ -377,29 +377,67 @@ class RecepcionService:
                 .all()
             )
 
-        # ot_estado: obtiene el estado real de la OT asociada y determina si existe.
-        # - ot_exists=False  → no hay OT creada en sistema para esta recepción
-        # - ot_exists=True, ot_estado=PENDIENTE  → OT creada pero le faltan datos
-        # - ot_exists=True, ot_estado=EMITIDO    → OT completa y lista
-        # - ot_exists=True, ot_estado=COMPLETADO → OT terminada
-        ot_emitida_set: set = set()
-        ot_missing_map: dict = {}
-        ot_estado_map: dict = {}   # numero_recepcion → estado de la OT
-        ot_exists_set: set = set() # recepciones que sí tienen OT creada
-        if page_num_recs:
+        # ── OT MATCHING & ESTADO EVALUATION ─────────────────────────────────────
+        # Resuelve OTs asociadas usando coincidencia flexible tanto por numero_recepcion
+        # como por numero_ot, normalizando sufijos (-26) y prefijos (OT-).
+        import re
+
+        def _get_norm_keys(val: Optional[str]) -> set:
+            if not val:
+                return set()
+            s = str(val).strip().upper()
+            if not s or s == "-":
+                return set()
+            keys = {s}
+            # Quitar prefijo OT- o REC-
+            s_noprefix = re.sub(r"^(OT|REC)-?", "", s)
+            keys.add(s_noprefix)
+            # Solo dígitos
+            digits = re.sub(r"[^0-9]", "", s)
+            if digits:
+                keys.add(digits)
+            # Con y sin sufijo de año (ej. 1995 vs 1995-26)
+            base_num = s_noprefix.split("-")[0] if "-" in s_noprefix else s_noprefix
+            if base_num:
+                keys.add(base_num)
+                keys.add(f"{base_num}-26")
+                keys.add(f"OT-{base_num}-26")
+                keys.add(f"OT-{base_num}")
+            return keys
+
+        # Recolectar todas las claves de búsqueda de la página
+        page_search_keys = set()
+        for r in page_records:
+            page_search_keys.update(_get_norm_keys(r.numero_recepcion))
+            page_search_keys.update(_get_norm_keys(r.numero_ot))
+
+        ot_lookup_map: dict = {}  # norm_key -> evaluated OT dict
+        if page_search_keys:
+            # Buscar OTs que coincidan por numero_recepcion O numero_ot
             ots_existentes = (
                 db.query(OrdenTrabajo)
-                .filter(OrdenTrabajo.numero_recepcion.in_(page_num_recs))
+                .filter(
+                    or_(
+                        OrdenTrabajo.numero_recepcion.in_(list(page_search_keys)),
+                        OrdenTrabajo.numero_ot.in_(list(page_search_keys)),
+                    )
+                )
                 .all()
             )
-            for ot in ots_existentes:
-                rec_k = ot.numero_recepcion
-                ot_exists_set.add(rec_k)
 
-                # ── Evaluar estado dinámicamente (igual que _evaluate_ot_estado) ──
-                # No usar ot.estado directamente porque puede estar desactualizado en BD.
+            # Si no encontró por coincidencia exacta de tokens, intentar fallback con las OTs recientes
+            if not ots_existentes:
+                ots_existentes = (
+                    db.query(OrdenTrabajo)
+                    .order_by(OrdenTrabajo.id.desc())
+                    .limit(200)
+                    .all()
+                )
+
+            for ot in ots_existentes:
+                # ── Evaluar estado dinámicamente (idéntico a _evaluate_ot_estado) ──
                 if ot.estado in ("DESCARGADO", "COMPLETADO", "ANULADO"):
-                    estado_calculado = ot.estado
+                    estado_calc = ot.estado
                 else:
                     has_cliente   = bool(ot.cliente and str(ot.cliente).strip() not in ("", "-"))
                     has_proyecto  = bool(ot.proyecto and str(ot.proyecto).strip() not in ("", "-"))
@@ -413,11 +451,9 @@ class RecepcionService:
                         for it in items_v if isinstance(it, dict)
                     )
                     if has_cliente and has_proyecto and has_fecha and has_apertura and has_designada and all_elements:
-                        estado_calculado = "EMITIDO"
+                        estado_calc = "EMITIDO"
                     else:
-                        estado_calculado = "PENDIENTE"
-
-                ot_estado_map[rec_k] = estado_calculado
+                        estado_calc = "PENDIENTE"
 
                 # Construir lista de campos faltantes para el tooltip
                 missing = []
@@ -443,13 +479,41 @@ class RecepcionService:
                     if elementos_vacios:
                         missing.append("Elemento asignado en todas las probetas de OT")
 
-                if not missing:
-                    ot_emitida_set.add(rec_k)
-                else:
-                    ot_missing_map[rec_k] = missing
+                ot_info = {
+                    "id": ot.id,
+                    "numero_ot": ot.numero_ot,
+                    "numero_recepcion": ot.numero_recepcion,
+                    "estado": estado_calc,
+                    "missing": missing,
+                    "is_emitida": estado_calc in ("EMITIDO", "DESCARGADO", "COMPLETADO"),
+                }
 
-        items = [
-            {
+                # Mapear a todas las claves posibles
+                for k in _get_norm_keys(ot.numero_recepcion):
+                    ot_lookup_map[k] = ot_info
+                for k in _get_norm_keys(ot.numero_ot):
+                    ot_lookup_map[k] = ot_info
+
+        def _resolve_ot_for_row(row_rec) -> Optional[dict]:
+            # Probar claves derivadas del número de recepción
+            for k in _get_norm_keys(row_rec.numero_recepcion):
+                if k in ot_lookup_map:
+                    return ot_lookup_map[k]
+            # Probar claves derivadas del número de OT
+            for k in _get_norm_keys(row_rec.numero_ot):
+                if k in ot_lookup_map:
+                    return ot_lookup_map[k]
+            return None
+
+        items = []
+        for row in page_records:
+            ot_match = _resolve_ot_for_row(row)
+            ot_exists = ot_match is not None
+            ot_estado = ot_match["estado"] if ot_match else "PENDIENTE"
+            ot_emitida = ot_match["is_emitida"] if ot_match else False
+            ot_missing = ot_match["missing"] if ot_match else ["OT Concreto no ha sido creada para esta recepción"]
+
+            items.append({
                 "id": row.id,
                 "numero_ot": row.numero_ot,
                 "numero_recepcion": row.numero_recepcion,
@@ -464,18 +528,11 @@ class RecepcionService:
                     or comp_dict.get(row.numero_recepcion)
                     or 0
                 ),
-                "ot_emitida": row.numero_recepcion in ot_emitida_set,
-                "ot_exists": row.numero_recepcion in ot_exists_set,
-                "ot_estado": ot_estado_map.get(row.numero_recepcion, None),
-                "ot_missing_fields": ot_missing_map.get(
-                    row.numero_recepcion,
-                    [] if row.numero_recepcion in ot_emitida_set else (
-                        [] if row.numero_recepcion not in ot_exists_set else ["OT Concreto incompleta"]
-                    ),
-                ),
-            }
-            for row in page_records
-        ]
+                "ot_emitida": ot_emitida,
+                "ot_exists": ot_exists,
+                "ot_estado": ot_estado,
+                "ot_missing_fields": ot_missing,
+            })
 
         return {
             "items": items,
