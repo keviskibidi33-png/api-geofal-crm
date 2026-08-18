@@ -68,23 +68,33 @@ class RecepcionEmailService:
                 if sub_c.strip() and sub_c.strip() not in cc_tokens:
                     cc_tokens.append(sub_c.strip())
 
-        # 3. Asunto
-        default_subject = f"RECEPCIÓN DE PROBETAS DE CONCRETO N° {recepcion.numero_recepcion or ''} - {recepcion.cliente or ''}".strip()
+        # 3. Asunto dinámico según tipo de muestra
+        tipo_map = {
+            "CONCRETO": "Concreto",
+            "SUELO_AGREGADO": "Suelo/Agregado",
+            "ALBANILERIA": "Albañilería",
+            "ROCA": "Roca",
+            "AGUA": "Agua",
+        }
+        tipo_label = tipo_map.get(str(recepcion.tipo_recepcion or "").upper(), "Concreto")
+        num_recepcion = recepcion.numero_recepcion or "-"
+        default_subject = f"Recepción (N° {num_recepcion} muestra {tipo_label})"
         mail_subject = (subject if subject and subject.strip() else default_subject).strip()
 
-        # 4. Cuerpo de texto y HTML
-        muestras_count = len(recepcion.muestras) if recepcion.muestras else 0
+        # 4. Cuerpo de texto y HTML con saludo dinámico según hora peruana (UTC-5)
+        from datetime import datetime, timezone, timedelta
+        peru_tz = timezone(timedelta(hours=-5))
+        peru_hour = datetime.now(peru_tz).hour
+        saludo = "Buenos días," if peru_hour < 12 else "Buenas tardes,"
+        persona = (recepcion.persona_contacto or recepcion.cliente or "Cliente").strip()
+
         default_body = (
-            f"Estimado(s) {recepcion.cliente or 'Cliente'},\n\n"
-            f"Por medio de la presente, confirmamos la recepción satisfactoria de sus muestras/probetas de concreto en nuestro laboratorio GEOFAL S.A.C.:\n\n"
-            f"• N° Recepción: {recepcion.numero_recepcion or '-'}\n"
-            f"• N° Orden de Trabajo: {recepcion.numero_ot or '-'}\n"
-            f"• Proyecto: {recepcion.proyecto or '-'}\n"
-            f"• Fecha de Recepción: {recepcion.fecha_recepcion or '-'}\n"
-            f"• Cantidad de Probetas: {muestras_count} probetas\n\n"
-            f"Adjuntamos en este correo el formato oficial de registro de recepción de probetas para su respectiva conformidad. "
-            f"Estaremos procediendo con los ensayos programados de rotura según las edades solicitadas.\n\n"
-            f"Cualquier consulta técnica o comercial, quedamos a su entera disposición."
+            f"{saludo}\n"
+            f"Estimado(a) {persona}\n\n"
+            f"De acuerdo con la muestra recepcionada en laboratorio, le hacemos llegar el Formato de Recepción (N° {num_recepcion}) con el fin de completar y/o verifique que los datos consignados sean correctos y tenga conocimiento de la fecha de entrega de los informes de ensayo.\n\n"
+            f"Cualquier modificación solicitada una vez emitidos los informes de ensayo, deberá justificar el motivo del cambio por correo, el área comercial se pondrá en contacto.\n\n"
+            f"Agradeceremos nos brinde su conformidad por este medio para emitir el informe de ensayo.\n\n"
+            f"Atentamente,"
         )
         final_body_text = (body_text if body_text and body_text.strip() else default_body).strip()
 
