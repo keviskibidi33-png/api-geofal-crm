@@ -455,7 +455,10 @@ def importar_recepcion_probetas(
         MuestraConcreto.recepcion_id == recepcion_id,
         MuestraConcreto.es_control_probetas == True
     ).outerjoin(
-        EnsayoCompresion, RecepcionMuestra.id == EnsayoCompresion.recepcion_id
+        EnsayoCompresion, or_(
+            RecepcionMuestra.id == EnsayoCompresion.recepcion_id,
+            RecepcionMuestra.numero_recepcion == EnsayoCompresion.numero_recepcion
+        )
     ).outerjoin(
         ItemCompresion, and_(
             EnsayoCompresion.id == ItemCompresion.ensayo_id,
@@ -506,7 +509,10 @@ def get_control_probetas(
     ).filter(
         MuestraConcreto.es_control_probetas == True
     ).outerjoin(
-        EnsayoCompresion, RecepcionMuestra.id == EnsayoCompresion.recepcion_id
+        EnsayoCompresion, or_(
+            RecepcionMuestra.id == EnsayoCompresion.recepcion_id,
+            RecepcionMuestra.numero_recepcion == EnsayoCompresion.numero_recepcion
+        )
     ).outerjoin(
         ItemCompresion, and_(
             EnsayoCompresion.id == ItemCompresion.ensayo_id,
@@ -800,7 +806,10 @@ def create_probeta(
     q = db.query(MuestraConcreto, RecepcionMuestra, ItemCompresion, EnsayoCompresion).join(
         RecepcionMuestra, MuestraConcreto.recepcion_id == RecepcionMuestra.id
     ).outerjoin(
-        EnsayoCompresion, RecepcionMuestra.id == EnsayoCompresion.recepcion_id
+        EnsayoCompresion, or_(
+            RecepcionMuestra.id == EnsayoCompresion.recepcion_id,
+            RecepcionMuestra.numero_recepcion == EnsayoCompresion.numero_recepcion
+        )
     ).outerjoin(
         ItemCompresion, and_(
             EnsayoCompresion.id == ItemCompresion.ensayo_id,
@@ -874,6 +883,25 @@ def update_probeta(
                 
     db.commit()
     db.refresh(muestra)
+
+    # Sincronizar con la Orden de Trabajo correspondiente si existe
+    try:
+        from app.modules.ot.models import OrdenTrabajo
+        from app.modules.ot.router import _enrich_ot_data
+        
+        # Buscar OT por numero_recepcion o numero_ot
+        recep = db.query(RecepcionMuestra).filter(RecepcionMuestra.id == muestra.recepcion_id).first()
+        if recep:
+            ot = db.query(OrdenTrabajo).filter(
+                or_(
+                    OrdenTrabajo.numero_recepcion == recep.numero_recepcion,
+                    OrdenTrabajo.numero_ot == recep.numero_ot
+                )
+            ).first()
+            if ot:
+                _enrich_ot_data(ot, db)
+    except Exception as e:
+        logger.error("Error al sincronizar OT tras actualizar probeta: %s", e)
     
     cambios = {}
     campos_modificados = []
@@ -909,7 +937,10 @@ def update_probeta(
     q = db.query(MuestraConcreto, RecepcionMuestra, ItemCompresion, EnsayoCompresion).join(
         RecepcionMuestra, MuestraConcreto.recepcion_id == RecepcionMuestra.id
     ).outerjoin(
-        EnsayoCompresion, RecepcionMuestra.id == EnsayoCompresion.recepcion_id
+        EnsayoCompresion, or_(
+            RecepcionMuestra.id == EnsayoCompresion.recepcion_id,
+            RecepcionMuestra.numero_recepcion == EnsayoCompresion.numero_recepcion
+        )
     ).outerjoin(
         ItemCompresion, and_(
             EnsayoCompresion.id == ItemCompresion.ensayo_id,
@@ -1050,7 +1081,10 @@ def exportar_control_probetas(
     ).filter(
         MuestraConcreto.es_control_probetas == True
     ).outerjoin(
-        EnsayoCompresion, RecepcionMuestra.id == EnsayoCompresion.recepcion_id
+        EnsayoCompresion, or_(
+            RecepcionMuestra.id == EnsayoCompresion.recepcion_id,
+            RecepcionMuestra.numero_recepcion == EnsayoCompresion.numero_recepcion
+        )
     ).outerjoin(
         ItemCompresion, and_(
             EnsayoCompresion.id == ItemCompresion.ensayo_id,

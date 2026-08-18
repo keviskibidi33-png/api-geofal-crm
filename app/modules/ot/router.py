@@ -147,13 +147,20 @@ def _enrich_ot_data(ot: OrdenTrabajo, db: Session):
     if not recepcion:
         return
 
-    # Sincronizar cabecera si estaba vacía
-    if not ot.cliente and recepcion.cliente:
+    modified = False
+
+    # Sincronizar cabecera
+    if recepcion.cliente and ot.cliente != recepcion.cliente:
         ot.cliente = recepcion.cliente
-    if not ot.proyecto and recepcion.proyecto:
+        modified = True
+    if recepcion.proyecto and ot.proyecto != recepcion.proyecto:
         ot.proyecto = recepcion.proyecto
-    if not ot.fecha_recepcion and recepcion.fecha_recepcion:
-        ot.fecha_recepcion = _to_iso_date(recepcion.fecha_recepcion)
+        modified = True
+    
+    fecha_rec_iso = _to_iso_date(recepcion.fecha_recepcion)
+    if fecha_rec_iso and ot.fecha_recepcion != fecha_rec_iso:
+        ot.fecha_recepcion = fecha_rec_iso
+        modified = True
 
     # Sincronizar probetas
     muestras = (
@@ -163,6 +170,8 @@ def _enrich_ot_data(ot: OrdenTrabajo, db: Session):
         .all()
     )
     if not muestras:
+        if modified:
+            db.commit()
         return
 
     muestras_by_cod = {}
@@ -184,30 +193,62 @@ def _enrich_ot_data(ot: OrdenTrabajo, db: Session):
         cod = str(it.get("codigo_muestra", "")).strip().upper()
         m = muestras_by_cod.get(cod) or (muestras[idx] if idx < len(muestras) else None)
         if m:
-            if not it.get("elemento") or it.get("elemento") == "-":
-                it["elemento"] = m.elemento or "-"
-            if not it.get("fecha_rotura") or "/" in str(it.get("fecha_rotura", "")):
-                it["fecha_rotura"] = _to_iso_date(m.fecha_rotura)
-            if not it.get("densidad") or it.get("densidad") == "-":
-                it["densidad"] = _resolve_densidad(m)
-            if it.get("edad") is None or it.get("edad") == 0 or it.get("edad") == "":
+            elemento_val = m.elemento or "-"
+            if it.get("elemento") != elemento_val:
+                it["elemento"] = elemento_val
+                modified = True
+                
+            f_rot_iso = _to_iso_date(m.fecha_rotura)
+            if it.get("fecha_rotura") != f_rot_iso:
+                it["fecha_rotura"] = f_rot_iso
+                modified = True
+                
+            dens_val = _resolve_densidad(m)
+            if it.get("densidad") != dens_val:
+                it["densidad"] = dens_val
+                modified = True
+                
+            if it.get("edad") != m.edad:
                 it["edad"] = m.edad
-            if it.get("fc_kg_cm2") is None or it.get("fc_kg_cm2") == 0 or it.get("fc_kg_cm2") == "":
-                it["fc_kg_cm2"] = int(m.fc_kg_cm2) if m.fc_kg_cm2 is not None else None
+                modified = True
+                
+            fc_val = int(m.fc_kg_cm2) if m.fc_kg_cm2 is not None else None
+            if it.get("fc_kg_cm2") != fc_val:
+                it["fc_kg_cm2"] = fc_val
+                modified = True
     
-    ot.items = items
+    if modified:
+        ot.items = items
 
-    # Sincronizar fechas programadas si estaban vacías
-    if not ot.inicio_programado and fechas_rotura:
-        ot.inicio_programado = min(fechas_rotura)
-    if not ot.fin_programado and fechas_rotura:
-        ot.fin_programado = max(fechas_rotura)
+    # Sincronizar fechas programadas
+    if fechas_rotura:
+        min_rot = min(fechas_rotura)
+        max_rot = max(fechas_rotura)
+        if ot.inicio_programado != min_rot:
+            ot.inicio_programado = min_rot
+            modified = True
+        if ot.fin_programado != max_rot:
+            ot.fin_programado = max_rot
+            modified = True
+            
     if ot.fecha_recepcion:
-        ot.fecha_recepcion = _to_iso_date(ot.fecha_recepcion)
+        formatted_rec = _to_iso_date(ot.fecha_recepcion)
+        if ot.fecha_recepcion != formatted_rec:
+            ot.fecha_recepcion = formatted_rec
+            modified = True
     if ot.inicio_programado:
-        ot.inicio_programado = _to_iso_date(ot.inicio_programado)
+        formatted_ini = _to_iso_date(ot.inicio_programado)
+        if ot.inicio_programado != formatted_ini:
+            ot.inicio_programado = formatted_ini
+            modified = True
     if ot.fin_programado:
-        ot.fin_programado = _to_iso_date(ot.fin_programado)
+        formatted_fin = _to_iso_date(ot.fin_programado)
+        if ot.fin_programado != formatted_fin:
+            ot.fin_programado = formatted_fin
+            modified = True
+
+    if modified:
+        db.commit()
 
 
 def generate_correlative_lem_codes(raw_code_or_range: str, raw_recepcion: str, count: int = 1, year_suffix: str = "26") -> list[str]:
@@ -576,6 +617,9 @@ def download_excel_ot(
     ot = db.query(OrdenTrabajo).filter(OrdenTrabajo.id == ot_id).first()
     if not ot:
         raise HTTPException(status_code=404, detail="Orden de Trabajo no encontrada")
+
+    # Enrich OT data before generating Excel to ensure latest values from MuestraConcreto are exported
+    _enrich_ot_data(ot, db)
 
     # Auto-detección del tipo de plantilla
     is_concreto = False
