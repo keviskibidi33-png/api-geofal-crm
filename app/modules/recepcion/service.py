@@ -377,13 +377,15 @@ class RecepcionService:
                 .all()
             )
 
-        # ot_emitida: data-driven y riguroso — verifica que la OT tenga:
-        # 1. numero_ot, cliente, proyecto, fecha_recepcion no vacíos
-        # 2. ot_aperturada_por y ot_designada_a asignados (no vacíos ni null)
-        # 3. items >= 1
-        # 4. Todos los ítems con 'elemento' asignado (distinto de '-' y no vacío)
+        # ot_estado: obtiene el estado real de la OT asociada y determina si existe.
+        # - ot_exists=False  → no hay OT creada en sistema para esta recepción
+        # - ot_exists=True, ot_estado=PENDIENTE  → OT creada pero le faltan datos
+        # - ot_exists=True, ot_estado=EMITIDO    → OT completa y lista
+        # - ot_exists=True, ot_estado=COMPLETADO → OT terminada
         ot_emitida_set: set = set()
         ot_missing_map: dict = {}
+        ot_estado_map: dict = {}   # numero_recepcion → estado de la OT
+        ot_exists_set: set = set() # recepciones que sí tienen OT creada
         if page_num_recs:
             ots_existentes = (
                 db.query(OrdenTrabajo)
@@ -392,6 +394,9 @@ class RecepcionService:
             )
             for ot in ots_existentes:
                 rec_k = ot.numero_recepcion
+                ot_exists_set.add(rec_k)
+                ot_estado_map[rec_k] = ot.estado or "PENDIENTE"
+
                 missing = []
                 if not ot.cliente:
                     missing.append("Cliente en OT")
@@ -403,7 +408,7 @@ class RecepcionService:
                     missing.append("OT Aperturada Por (Responsable)")
                 if not ot.ot_designada_a or str(ot.ot_designada_a).strip() in ("", "-", "None"):
                     missing.append("OT Designada A (Responsable)")
-                
+
                 items_val = ot.items if isinstance(ot.items, list) else []
                 if len(items_val) < 1:
                     missing.append("Al menos 1 probeta en OT")
@@ -437,7 +442,14 @@ class RecepcionService:
                     or 0
                 ),
                 "ot_emitida": row.numero_recepcion in ot_emitida_set,
-                "ot_missing_fields": ot_missing_map.get(row.numero_recepcion, [] if row.numero_recepcion in ot_emitida_set else ["OT Concreto no creada"]),
+                "ot_exists": row.numero_recepcion in ot_exists_set,
+                "ot_estado": ot_estado_map.get(row.numero_recepcion, None),
+                "ot_missing_fields": ot_missing_map.get(
+                    row.numero_recepcion,
+                    [] if row.numero_recepcion in ot_emitida_set else (
+                        [] if row.numero_recepcion not in ot_exists_set else ["OT Concreto incompleta"]
+                    ),
+                ),
             }
             for row in page_records
         ]
