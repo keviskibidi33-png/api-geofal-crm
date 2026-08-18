@@ -197,7 +197,7 @@ class TestControlProbetasRouter(unittest.TestCase):
             db=self.db
         )
         self.assertEqual(updated.estado_probeta, "ensayado")
-        self.assertEqual(updated.status_ensayo, "ENSAYADO")
+        self.assertEqual(updated.status_ensayo, "ENTREGADO")
 
         kpis = get_control_probetas_kpis(db=self.db)
         self.assertEqual(kpis.vencido, 0)

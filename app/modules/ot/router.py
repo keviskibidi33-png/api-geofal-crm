@@ -219,6 +219,8 @@ def _enrich_ot_data(ot: OrdenTrabajo, db: Session):
     
     if modified:
         ot.items = items
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(ot, "items")
 
     # Sincronizar fechas programadas
     if fechas_rotura:
