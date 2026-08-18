@@ -15,16 +15,12 @@ import logging
 
 from .excel import ExcelLogic
 from .models import RecepcionMuestra
+from .email_profiles import get_email_profile
 from app.audit import emit_audit_log
+from email.mime.image import MIMEImage
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
-
-# Configuración SMTP por defecto para cPanel Geofal
-DEFAULT_SMTP_HOST = os.getenv("SMTP_HOST", "geofal.com.pe")
-DEFAULT_SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-DEFAULT_SMTP_USER = os.getenv("SMTP_USER", "oficinatecnica1@geofal.com.pe")
-DEFAULT_SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "Geo_Fal2025*-/")
-DEFAULT_SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "Oficina Técnica - GEOFAL")
 
 
 class RecepcionEmailService:
@@ -39,14 +35,25 @@ class RecepcionEmailService:
         cc_emails: Optional[List[str]] = None,
         subject: Optional[str] = None,
         body_text: Optional[str] = None,
+        profile_id: Optional[str] = None,
         actor_name: Optional[str] = None,
         actor_user_id: Optional[str] = None,
     ) -> dict:
         """
-        Envía un correo directamente desde el servidor SMTP de cPanel (oficinatecnica1@geofal.com.pe)
-        con el archivo Excel oficial adjunto en memoria y firma corporativa HTML.
+        Envía un correo directamente desde el servidor SMTP de cPanel usando el perfil de correo seleccionado
+        (Oficina Técnica, Coordinador de Lab, etc.) con el archivo Excel oficial adjunto y firma con imagen corporativa.
         """
-        # 1. Generar Excel oficial al vuelo
+        # 1. Obtener perfil de correo seleccionado
+        profile = get_email_profile(profile_id)
+        from_name = profile["from_name"]
+        from_email = profile["from_email"]
+        smtp_host = profile["smtp_host"]
+        smtp_port = profile["smtp_port"]
+        smtp_user = profile["smtp_user"]
+        smtp_password = profile["smtp_password"]
+        cargo_title = profile.get("cargo", "Oficina Técnica")
+
+        # 2. Generar Excel oficial al vuelo
         excel_content = self.excel_logic.generar_excel_recepcion(recepcion)
 
         # Sanitizar nombre del archivo
@@ -55,12 +62,12 @@ class RecepcionEmailService:
         cliente_safe = re.sub(r'[^\w\s\-]', '', cliente_safe).strip()
         excel_filename = f"REC N-{recepcion.numero_recepcion} {cliente_safe}.xlsx"
 
-        # 2. Normalizar destinatarios
+        # 3. Normalizar destinatarios
         to_tokens = [t.strip() for t in re.split(r'[\r\n;,]+', str(to_email or "")) if t.strip()]
         if not to_tokens:
             raise ValueError("No se proporcionó ninguna dirección de correo de destinatario válida.")
 
-        default_cc = ["oficinatecnica3@geofal.com.pe", "asesorcomercial1@geofal.com.pe"]
+        default_cc = profile.get("default_cc", ["oficinatecnica3@geofal.com.pe", "asesorcomercial1@geofal.com.pe"])
         raw_ccs = cc_emails if cc_emails is not None else default_cc
         cc_tokens = []
         for c in raw_ccs:
@@ -68,7 +75,7 @@ class RecepcionEmailService:
                 if sub_c.strip() and sub_c.strip() not in cc_tokens:
                     cc_tokens.append(sub_c.strip())
 
-        # 3. Asunto dinámico según tipo de muestra
+        # 4. Asunto dinámico según tipo de muestra
         tipo_map = {
             "CONCRETO": "Concreto",
             "SUELO_AGREGADO": "Suelo/Agregado",
@@ -81,7 +88,7 @@ class RecepcionEmailService:
         default_subject = f"Recepción (N° {num_recepcion} muestra {tipo_label})"
         mail_subject = (subject if subject and subject.strip() else default_subject).strip()
 
-        # 4. Cuerpo de texto y HTML con saludo dinámico según hora peruana (UTC-5)
+        # 5. Cuerpo de texto y HTML con saludo dinámico según hora peruana (UTC-5)
         from datetime import datetime, timezone, timedelta
         peru_tz = timezone(timedelta(hours=-5))
         peru_hour = datetime.now(peru_tz).hour
@@ -98,8 +105,43 @@ class RecepcionEmailService:
         )
         final_body_text = (body_text if body_text and body_text.strip() else default_body).strip()
 
+        # 6. Intentar cargar imagen de firma oficial
+        img_path = Path(__file__).resolve().parents[2] / "src" / "Firmas_Correo" / "ImagenAbrasionesMenores.png"
+        has_signature_img = img_path.exists()
+        sig_img_bytes = None
+        if has_signature_img:
+            try:
+                sig_img_bytes = img_path.read_bytes()
+            except Exception as e:
+                logger.warning(f"No se pudo leer la imagen de firma: {e}")
+                has_signature_img = False
+
         # Generar versión HTML estilizada con la firma corporativa
         paragraphs_html = "".join([f"<p style='margin: 6px 0;'>{p.strip()}</p>" for p in final_body_text.split("\n\n") if p.strip()])
+        
+        signature_visual_html = f"""
+<table style="border:none; border-collapse:collapse; font-family: Arial, Helvetica, sans-serif; margin-top: 15px;">
+  <tr>
+    <td style="vertical-align:middle; padding-right: 16px;">
+      {f'<img src="cid:geofal_signature_img" alt="Geofal" style="max-height: 70px; display:block;" />' if has_signature_img else '<div style="background-color: #ff5500; color: #ffffff; font-weight: bold; font-size: 20px; padding: 12px 16px; border-radius: 10px; text-align: center;">Geofal</div>'}
+    </td>
+    <td style="border-left: 2px solid #ea580c; padding-left: 16px; vertical-align:middle;">
+      <div style="font-size: 13px; font-weight: bold; color: #ea580c; text-transform: uppercase;">
+        {cargo_title.upper()}
+      </div>
+      <div style="font-size: 12px; color: #0284c7; font-weight: bold; margin-top: 2px;">
+        GEOFAL S.A.C. — Laboratorio de Ensayo de Materiales
+      </div>
+      <div style="font-size: 11px; color: #475569; margin-top: 4px;">
+        <strong>T:</strong> +51 1 9051911 &nbsp;|&nbsp; <strong>E:</strong> {from_email}
+      </div>
+      <div style="font-size: 11px; color: #64748b; margin-top: 2px;">
+        <strong>W:</strong> <a href="https://www.geofal.com.pe" style="color: #0284c7; text-decoration: none;">www.geofal.com.pe</a>
+      </div>
+    </td>
+  </tr>
+</table>"""
+
         html_content = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -111,47 +153,35 @@ body {{ font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #1e29
 <body>
 {paragraphs_html}
 <br/>
-<table style="border:none; border-collapse:collapse; font-family: Arial, Helvetica, sans-serif; margin-top: 15px;">
-  <tr>
-    <td style="vertical-align:middle; padding-right: 16px;">
-      <div style="background-color: #ff5500; color: #ffffff; font-weight: bold; font-size: 20px; padding: 12px 16px; border-radius: 10px; text-align: center;">
-        Geofal
-      </div>
-    </td>
-    <td style="border-left: 2px solid #ea580c; padding-left: 16px; vertical-align:middle;">
-      <div style="font-size: 14px; font-weight: bold; color: #ea580c; text-transform: uppercase;">
-        OFICINA TÉCNICA
-      </div>
-      <div style="font-size: 12px; color: #0284c7; font-weight: bold; margin-top: 2px;">
-        GEOFAL S.A.C. — Laboratorio de Ensayo de Materiales
-      </div>
-      <div style="font-size: 11px; color: #475569; margin-top: 4px;">
-        <strong>T:</strong> +51 1 9051911 &nbsp;|&nbsp; <strong>E:</strong> oficinatecnica1@geofal.com.pe
-      </div>
-      <div style="font-size: 11px; color: #64748b; margin-top: 2px;">
-        <strong>W:</strong> <a href="https://www.geofal.com.pe" style="color: #0284c7; text-decoration: none;">www.geofal.com.pe</a>
-      </div>
-    </td>
-  </tr>
-</table>
+{signature_visual_html}
 </body>
 </html>"""
 
-        # 5. Construcción del mensaje MIME multipart/mixed
+        # 7. Construcción del mensaje MIME multipart/related y multipart/mixed
         msg = MIMEMultipart("mixed")
-        msg["From"] = formataddr((DEFAULT_SMTP_FROM_NAME, DEFAULT_SMTP_USER))
+        msg["From"] = formataddr((from_name, from_email))
         msg["To"] = ", ".join(to_tokens)
         if cc_tokens:
             msg["Cc"] = ", ".join(cc_tokens)
         msg["Subject"] = Header(mail_subject, "utf-8")
 
-        # Subparte multipart/alternative para texto plano + HTML
+        # Subparte multipart/related para permitir imágenes inline (CID)
+        related_part = MIMEMultipart("related")
         alt_part = MIMEMultipart("alternative")
         alt_part.attach(MIMEText(final_body_text, "plain", "utf-8"))
         alt_part.attach(MIMEText(html_content, "html", "utf-8"))
-        msg.attach(alt_part)
+        related_part.attach(alt_part)
 
-        # 6. Adjuntar Excel oficial en memoria
+        # Si tenemos la imagen de firma, incrustarla como CID inline
+        if has_signature_img and sig_img_bytes:
+            img_mime = MIMEImage(sig_img_bytes)
+            img_mime.add_header("Content-ID", "<geofal_signature_img>")
+            img_mime.add_header("Content-Disposition", "inline", filename="firma_geofal.png")
+            related_part.attach(img_mime)
+
+        msg.attach(related_part)
+
+        # 8. Adjuntar Excel oficial en memoria
         part = MIMEBase("application", "vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         part.set_payload(excel_content)
         encoders.encode_base64(part)
@@ -161,27 +191,27 @@ body {{ font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #1e29
         )
         msg.attach(part)
 
-        # 7. Envío mediante servidor SMTP de cPanel con TLS
+        # 9. Envío mediante servidor SMTP de cPanel con TLS
         all_recipients = to_tokens + cc_tokens
-        host = DEFAULT_SMTP_HOST
-        port = DEFAULT_SMTP_PORT
-        user = DEFAULT_SMTP_USER
-        password = DEFAULT_SMTP_PASSWORD
+        host = smtp_host
+        port = smtp_port
+        user = smtp_user
+        password = smtp_password
 
         try:
             context = ssl.create_default_context()
-            with smtplib.SMTP(host, port, timeout=20) as server:
+            with smtplib.SMTP(host, port, timeout=25) as server:
                 server.ehlo()
                 server.starttls(context=context)
                 server.ehlo()
                 server.login(user, password)
                 server.sendmail(user, all_recipients, msg.as_bytes())
-                logger.info(f"Correo de recepción {recepcion.numero_recepcion} enviado exitosamente a {all_recipients}")
+                logger.info(f"Correo de recepción {recepcion.numero_recepcion} enviado exitosamente desde {from_email} a {all_recipients}")
         except Exception as e:
             logger.exception("Error al enviar correo por SMTP cPanel")
-            raise RuntimeError(f"Error al enviar correo mediante el servidor SMTP ({host}:{port}): {str(e)}")
+            raise RuntimeError(f"Error al enviar correo mediante el servidor SMTP ({host}:{port}) con la cuenta {from_email}: {str(e)}")
 
-        # 8. Registro de auditoría
+        # 10. Registro de auditoría
         try:
             emit_audit_log(
                 db=db,
@@ -192,6 +222,8 @@ body {{ font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #1e29
                 details={
                     "recepcion_id": recepcion.id,
                     "numero_recepcion": recepcion.numero_recepcion,
+                    "perfil_utilizado": profile["id"],
+                    "remitente": from_email,
                     "cliente": recepcion.cliente,
                     "destinatarios": to_tokens,
                     "cc": cc_tokens,
@@ -204,7 +236,9 @@ body {{ font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #1e29
 
         return {
             "success": True,
-            "message": f"Correo enviado exitosamente a {', '.join(to_tokens)}",
+            "message": f"Correo enviado exitosamente desde {from_name} a {', '.join(to_tokens)}",
+            "profile": profile["id"],
+            "from": from_email,
             "to": to_tokens,
             "cc": cc_tokens,
             "filename": excel_filename,

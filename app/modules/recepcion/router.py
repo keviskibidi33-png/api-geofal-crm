@@ -24,6 +24,7 @@ from .service import RecepcionService
 from .exceptions import DuplicateRecepcionError
 from .excel import ExcelLogic
 from .email_service import RecepcionEmailService
+from .email_profiles import list_email_profiles
 from app.modules.tracing.service import TracingService
 from app.utils.date_format import parse_flexible_date
 from app.modules.common.notifications import notify_laboratory_essay_event, resolve_actor_identity
@@ -477,6 +478,11 @@ body {{ font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #1e29
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error generando borrador de Outlook: {str(e)}")
 
+@router.get("/email-profiles")
+async def obtener_perfiles_correo():
+    """Retorna la lista de perfiles de remitente de correo disponibles (Oficina Técnica, Coordinador de Lab, etc.)"""
+    return list_email_profiles()
+
 @router.post("/{recepcion_id}/enviar-correo")
 async def enviar_correo_recepcion_directo(
     recepcion_id: int,
@@ -502,6 +508,7 @@ async def enviar_correo_recepcion_directo(
             cc_emails=payload.cc_emails if payload else None,
             subject=payload.subject if payload else None,
             body_text=payload.body_text if payload else None,
+            profile_id=payload.profile_id if payload else None,
             actor_name=actor.get("full_name"),
             actor_user_id=actor.get("user_id"),
         )
