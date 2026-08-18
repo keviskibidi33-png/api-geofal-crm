@@ -15,8 +15,8 @@ EMAIL_PROFILES: Dict[str, Dict[str, Any]] = {
         "smtp_user": os.getenv("SMTP_USER_OT", "oficinatecnica1@geofal.com.pe"),
         "smtp_password": os.getenv("SMTP_PASSWORD_OT", "Geo_Fal2025*-/"),
         "default_cc": ["oficinatecnica3@geofal.com.pe", "asesorcomercial1@geofal.com.pe"],
-        "signature_type": "IMAGE_AND_HTML",
-        "signature_image_filename": "FirmaCoordinadoraLabBetzabethSaravia.png",
+        "signature_type": "HTML",
+        "signature_image_filename": None,
         "telefono": "+51 1 9051911",
         "web": "www.geofal.com.pe",
         "is_default": True,
@@ -25,7 +25,7 @@ EMAIL_PROFILES: Dict[str, Dict[str, Any]] = {
         "id": "COORDINADOR_LAB",
         "codigo": "COORDINADOR_LAB",
         "nombre": "Coordinación de Laboratorio",
-        "cargo": "Coordinador de Laboratorio",
+        "cargo": "Coordinadora de Laboratorio",
         "from_name": os.getenv("SMTP_FROM_NAME_COORD", "Coordinación de Laboratorio - GEOFAL"),
         "from_email": os.getenv("SMTP_USER_COORD", "coordinadorlab@geofal.com.pe"),
         "smtp_host": os.getenv("SMTP_HOST", "geofal.com.pe"),
@@ -53,7 +53,7 @@ def list_email_profiles() -> List[Dict[str, Any]]:
     """Devuelve la lista pública de perfiles de correo disponibles para el frontend (sin passwords)"""
     profiles = []
     for key, p in EMAIL_PROFILES.items():
-        sig_file = p.get("signature_image_filename", "FirmaCoordinadoraLabBetzabethSaravia.png")
+        sig_file = p.get("signature_image_filename")
         profiles.append({
             "id": p["id"],
             "codigo": p["codigo"],
@@ -63,7 +63,7 @@ def list_email_profiles() -> List[Dict[str, Any]]:
             "from_email": p["from_email"],
             "default_cc": p["default_cc"],
             "signature_type": p["signature_type"],
-            "signature_image_url": f"/{sig_file}",
+            "signature_image_url": f"/{sig_file}" if sig_file else None,
             "telefono": p["telefono"],
             "web": p["web"],
             "is_default": p.get("is_default", False),

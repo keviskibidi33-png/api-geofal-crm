@@ -105,17 +105,19 @@ class RecepcionEmailService:
         )
         final_body_text = (body_text if body_text and body_text.strip() else default_body).strip()
 
-        # 6. Intentar cargar imagen de firma oficial del perfil
-        sig_filename = profile.get("signature_image_filename", "FirmaCoordinadoraLabBetzabethSaravia.png")
-        img_path = Path(__file__).resolve().parents[2] / "src" / "Firmas_Correo" / sig_filename
-        has_signature_img = img_path.exists()
+        # 6. Intentar cargar imagen de firma oficial del perfil (si tiene asignada)
+        sig_filename = profile.get("signature_image_filename")
+        has_signature_img = False
         sig_img_bytes = None
-        if has_signature_img:
-            try:
-                sig_img_bytes = img_path.read_bytes()
-            except Exception as e:
-                logger.warning(f"No se pudo leer la imagen de firma: {e}")
-                has_signature_img = False
+        if sig_filename:
+            img_path = Path(__file__).resolve().parents[2] / "src" / "Firmas_Correo" / sig_filename
+            if img_path.exists():
+                try:
+                    sig_img_bytes = img_path.read_bytes()
+                    has_signature_img = True
+                except Exception as e:
+                    logger.warning(f"No se pudo leer la imagen de firma: {e}")
+                    has_signature_img = False
 
         # Generar versión HTML estilizada con la firma corporativa
         paragraphs_html = "".join([f"<p style='margin: 6px 0;'>{p.strip()}</p>" for p in final_body_text.split("\n\n") if p.strip()])
