@@ -395,18 +395,41 @@ class RecepcionService:
             for ot in ots_existentes:
                 rec_k = ot.numero_recepcion
                 ot_exists_set.add(rec_k)
-                ot_estado_map[rec_k] = ot.estado or "PENDIENTE"
 
+                # ── Evaluar estado dinámicamente (igual que _evaluate_ot_estado) ──
+                # No usar ot.estado directamente porque puede estar desactualizado en BD.
+                if ot.estado in ("DESCARGADO", "COMPLETADO", "ANULADO"):
+                    estado_calculado = ot.estado
+                else:
+                    has_cliente   = bool(ot.cliente and str(ot.cliente).strip() not in ("", "-"))
+                    has_proyecto  = bool(ot.proyecto and str(ot.proyecto).strip() not in ("", "-"))
+                    has_fecha     = bool(ot.fecha_recepcion and str(ot.fecha_recepcion).strip() not in ("", "-"))
+                    has_apertura  = bool(ot.ot_aperturada_por and str(ot.ot_aperturada_por).strip() not in ("", "-", "None"))
+                    has_designada = bool(ot.ot_designada_a and str(ot.ot_designada_a).strip() not in ("", "-", "None"))
+                    items_v       = ot.items if isinstance(ot.items, list) else []
+                    has_items     = len(items_v) > 0
+                    all_elements  = has_items and all(
+                        bool(it.get("elemento") and str(it.get("elemento")).strip() not in ("", "-"))
+                        for it in items_v if isinstance(it, dict)
+                    )
+                    if has_cliente and has_proyecto and has_fecha and has_apertura and has_designada and all_elements:
+                        estado_calculado = "EMITIDO"
+                    else:
+                        estado_calculado = "PENDIENTE"
+
+                ot_estado_map[rec_k] = estado_calculado
+
+                # Construir lista de campos faltantes para el tooltip
                 missing = []
-                if not ot.cliente:
+                if not (ot.cliente and str(ot.cliente).strip() not in ("", "-")):
                     missing.append("Cliente en OT")
-                if not ot.proyecto:
+                if not (ot.proyecto and str(ot.proyecto).strip() not in ("", "-")):
                     missing.append("Proyecto en OT")
-                if not ot.fecha_recepcion:
+                if not (ot.fecha_recepcion and str(ot.fecha_recepcion).strip() not in ("", "-")):
                     missing.append("Fecha de recepción en OT")
-                if not ot.ot_aperturada_por or str(ot.ot_aperturada_por).strip() in ("", "-", "None"):
+                if not (ot.ot_aperturada_por and str(ot.ot_aperturada_por).strip() not in ("", "-", "None")):
                     missing.append("OT Aperturada Por (Responsable)")
-                if not ot.ot_designada_a or str(ot.ot_designada_a).strip() in ("", "-", "None"):
+                if not (ot.ot_designada_a and str(ot.ot_designada_a).strip() not in ("", "-", "None")):
                     missing.append("OT Designada A (Responsable)")
 
                 items_val = ot.items if isinstance(ot.items, list) else []
