@@ -178,9 +178,7 @@ async def prefill_recepcion_from_cotizacion(
     # 2. Si no se encuentra en cotizaciones, buscar en seguimiento_cliente_laboratorio
     if not row:
         sql_seg = text("""
-            SELECT id, razon_social as cliente_nombre, ruc as cliente_ruc,
-                   persona_contacto as cliente_contacto, numero_celular as cliente_telefono,
-                   email as cliente_email, proyecto
+            SELECT *
             FROM seguimiento_cliente_laboratorio
             WHERE no::text = :q OR :q ILIKE ('%' || no::text || '%')
             LIMIT 1
@@ -217,19 +215,29 @@ async def prefill_recepcion_from_cotizacion(
         except Exception as e:
             print(f"Error parsing items_json: {e}")
 
+    cliente_nom = row.get("cliente_nombre") or row.get("razon_social") or row.get("cliente") or ""
+    cliente_ruc = row.get("cliente_ruc") or row.get("ruc") or ""
+    cliente_cont = row.get("cliente_contacto") or row.get("persona_contacto") or row.get("contacto") or ""
+    cliente_tel = row.get("cliente_telefono") or row.get("numero_celular") or row.get("telefono") or ""
+    cliente_mail = row.get("cliente_email") or row.get("email") or row.get("correo") or ""
+    fecha_rec = row.get("fecha_recepcion") or row.get("fecha_contacto") or row.get("fecha")
+    fecha_fin = row.get("fecha_estimada_culminacion") or row.get("fecha_entrega") or row.get("fecha_fin")
+
     return {
         "success": True,
-        "cotizacion_numero": row.get("numero"),
-        "cliente": row.get("cliente_nombre") or "",
-        "ruc": row.get("cliente_ruc") or "",
-        "persona_contacto": row.get("cliente_contacto") or "",
-        "email": row.get("cliente_email") or "",
-        "telefono": row.get("cliente_telefono") or "",
+        "cotizacion_numero": row.get("numero") or (f"{row.get('no')}-COT" if row.get("no") else None),
+        "cliente": cliente_nom,
+        "ruc": cliente_ruc,
+        "persona_contacto": cliente_cont,
+        "email": cliente_mail,
+        "telefono": cliente_tel,
         "proyecto": row.get("proyecto") or "",
         "ubicacion": row.get("ubicacion") or "",
-        "domicilio_legal": row.get("ubicacion") or "",
-        "solicitante": row.get("cliente_nombre") or "",
-        "domicilio_solicitante": row.get("ubicacion") or "",
+        "domicilio_legal": row.get("ubicacion") or row.get("domicilio_legal") or "",
+        "solicitante": cliente_nom,
+        "domicilio_solicitante": row.get("ubicacion") or row.get("domicilio_solicitante") or "",
+        "fecha_recepcion": str(fecha_rec) if fecha_rec else None,
+        "fecha_estimada_culminacion": str(fecha_fin) if fecha_fin else None,
         "items": items,
     }
 

@@ -396,7 +396,8 @@ class ExcelLogic:
             ws[f'C{curr_r + 3}'] = 'CANTIDAD (KG):'
             ws[f'F{curr_r + 3}'] = getattr(m, 'cantidad', '') or '-'
 
-            # Ensayos y Normas
+            # Ensayos, Normas y Ajuste de Texto (Wrap Text en F:G, I:M, N)
+            from openpyxl.styles import Alignment
             for off in range(h):
                 r_line = curr_r + off
                 if off < len(assays):
@@ -404,6 +405,11 @@ class ExcelLogic:
                     ws[f'H{r_line}'] = e.get('codigo', '')
                     ws[f'I{r_line}'] = e.get('descripcion', '')
                     ws[f'N{r_line}'] = e.get('norma', '')
+
+                # Ajustar texto en F:G (Metadata), I:M (Descripción) y N (Norma)
+                ws[f'F{r_line}'].alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                ws[f'I{r_line}'].alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
+                ws[f'N{r_line}'].alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
 
             # Siguiente muestra empieza tras 1 fila de separación
             curr_r += h + 1
