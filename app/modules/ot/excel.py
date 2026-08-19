@@ -19,6 +19,8 @@ TEMPLATE_FILENAME = "OT-001-Geofal.xlsx"
 SHEET_NAME = "CENS"
 TEMPLATE_CONCRETO_FILENAME = "OT-0000-Geofal.xlsx"
 SHEET_CONCRETO_NAME = "MYP"
+TEMPLATE_SU_AG_FILENAME = "OT/OT-SU-Y-AG/OT-0000-Geofal.xlsx"
+SHEET_SU_AG_NAME = "HOJA 1 (2)"
 
 
 def generar_excel_ot(ot: OrdenTrabajo) -> io.BytesIO:
@@ -270,6 +272,163 @@ def generar_excel_ot_concreto(ot: OrdenTrabajo) -> io.BytesIO:
         return etree.tostring(root, xml_declaration=True, encoding="UTF-8")
 
     excel_bytes = transform_template_sheet(TEMPLATE_CONCRETO_FILENAME, SHEET_CONCRETO_NAME, _transform)
+    output = io.BytesIO(excel_bytes)
+    output.seek(0)
+    return output
+
+
+def generar_excel_ot_su_ag(ot: OrdenTrabajo) -> io.BytesIO:
+    """
+    Genera un archivo Excel especializado para Suelo y Agregado usando la plantilla oficial
+    OT-SU-Y-AG/OT-0000-Geofal.xlsx (hoja 'HOJA 1 (2)') con manipulación directa ZIP/XML.
+    Inyecta ITEM, CÓDIGO DE MUESTRA, CÓDIGO ENSAYO, DESCRIPCIÓN, NORMA, CANTIDAD,
+    Fechas (Recepción, Inicio programado, Fin programado), Observaciones y Responsables.
+    """
+
+    def _transform(sheet_xml: bytes) -> bytes:
+        root = etree.fromstring(sheet_xml)
+        merge_map = build_merge_anchor_map(root)
+        sheet_data = root.find(f"{{{NS_SHEET}}}sheetData")
+
+        if sheet_data is None:
+            return sheet_xml
+
+        raw_items = ot.items if isinstance(ot.items, list) else []
+        total_items = len(raw_items)
+        base_capacity = 22  # Filas 9 a 30
+        extra_count = max(0, total_items - base_capacity)
+
+        # Expansión dinámica si supera 22 ensayos
+        if extra_count > 0:
+            import copy
+            rows = list(sheet_data.findall(f"{{{NS_SHEET}}}row"))
+            rows.sort(key=lambda r: int(r.get("r")), reverse=True)
+            for row in rows:
+                r_num = int(row.get("r"))
+                if r_num >= 31:
+                    new_num = r_num + extra_count
+                    row.set("r", str(new_num))
+                    for cell in row.findall(f"{{{NS_SHEET}}}c"):
+                        ref = cell.get("r")
+                        col = "".join(c for c in ref if c.isalpha())
+                        cell.set("r", f"{col}{new_num}")
+
+            merge_cells = root.find(f".//{{{NS_SHEET}}}mergeCells")
+            if merge_cells is not None:
+                for mc in list(merge_cells.findall(f"{{{NS_SHEET}}}mergeCell")):
+                    ref = mc.get("ref")
+                    if ":" in ref:
+                        start, end = ref.split(":")
+                        s_col = "".join(c for c in start if c.isalpha())
+                        s_row = int("".join(c for c in start if c.isdigit()))
+                        e_col = "".join(c for c in end if c.isalpha())
+                        e_row = int("".join(c for c in end if c.isdigit()))
+                        if s_row >= 31:
+                            mc.set("ref", f"{s_col}{s_row + extra_count}:{e_col}{e_row + extra_count}")
+
+            template_row_30 = None
+            for row in sheet_data.findall(f"{{{NS_SHEET}}}row"):
+                if row.get("r") == "30":
+                    template_row_30 = row
+                    break
+
+            if template_row_30 is not None:
+                for idx in range(1, extra_count + 1):
+                    new_r_num = 30 + idx
+                    new_row = copy.deepcopy(template_row_30)
+                    new_row.set("r", str(new_r_num))
+                    for cell in new_row.findall(f"{{{NS_SHEET}}}c"):
+                        ref = cell.get("r")
+                        col = "".join(c for c in ref if c.isalpha())
+                        cell.set("r", f"{col}{new_r_num}")
+                        for child in list(cell):
+                            cell.remove(child)
+                        if "t" in cell.attrib:
+                            del cell.attrib["t"]
+
+                    insert_idx = None
+                    for i, r in enumerate(sheet_data.findall(f"{{{NS_SHEET}}}row")):
+                        if int(r.get("r")) > new_r_num:
+                            insert_idx = list(sheet_data).index(r)
+                            break
+                    if insert_idx is not None:
+                        sheet_data.insert(insert_idx, new_row)
+                    else:
+                        sheet_data.append(new_row)
+
+                    if merge_cells is not None:
+                        mc1 = etree.SubElement(merge_cells, f"{{{NS_SHEET}}}mergeCell")
+                        mc1.set("ref", f"B{new_r_num}:C{new_r_num}")
+                        mc2 = etree.SubElement(merge_cells, f"{{{NS_SHEET}}}mergeCell")
+                        mc2.set("ref", f"E{new_r_num}:G{new_r_num}")
+                        merge_cells.set("count", str(len(merge_cells)))
+
+        merge_map = build_merge_anchor_map(root)
+
+        # 1. Limpiar celdas de la tabla (filas 9 a 30 + extra)
+        total_rows_capacity = base_capacity + extra_count
+        for r in range(9, 9 + total_rows_capacity):
+            set_cell(sheet_data, f"A{r}", "", merge_anchor_map=merge_map, style_ref="A9")
+            set_cell(sheet_data, f"B{r}", "", merge_anchor_map=merge_map, style_ref="B9")
+            set_cell(sheet_data, f"D{r}", "", merge_anchor_map=merge_map, style_ref="D9")
+            set_cell(sheet_data, f"E{r}", "", merge_anchor_map=merge_map, style_ref="E9")
+            set_cell(sheet_data, f"H{r}", "", merge_anchor_map=merge_map, style_ref="H9")
+            set_cell(sheet_data, f"I{r}", "", merge_anchor_map=merge_map, style_ref="I9")
+
+        # 2. Encabezado
+        ot_display = (ot.numero_ot or "").strip()
+        if ot_display and not ot_display.upper().startswith("OT"):
+            ot_display = f"OT-{ot_display}"
+        rec_display = (ot.numero_recepcion or "").strip()
+
+        set_cell(sheet_data, "C6", ot_display, merge_anchor_map=merge_map, style_ref="C6")
+        set_cell(sheet_data, "G6", rec_display, merge_anchor_map=merge_map, style_ref="G6")
+
+        # 3. Filas de Ensayos / Muestras
+        for idx, item in enumerate(raw_items):
+            row_num = 9 + idx
+            item_val = item.get("item", idx + 1) if isinstance(item, dict) else idx + 1
+            codigo_m = item.get("codigo_muestra", item.get("codigo", "")) if isinstance(item, dict) else ""
+            codigo_e = item.get("codigo_ensayo", "") if isinstance(item, dict) else ""
+            desc = item.get("descripcion", item.get("ensayo", "")) if isinstance(item, dict) else ""
+            norma = item.get("norma", item.get("metodo", "")) if isinstance(item, dict) else ""
+            cant = item.get("cantidad", 1) if isinstance(item, dict) else 1
+
+            set_cell(sheet_data, f"A{row_num}", item_val, is_number=True, merge_anchor_map=merge_map, style_ref="A9")
+            set_cell(sheet_data, f"B{row_num}", str(codigo_m), merge_anchor_map=merge_map, style_ref="B9")
+            set_cell(sheet_data, f"D{row_num}", str(codigo_e), merge_anchor_map=merge_map, style_ref="D9")
+            set_cell(sheet_data, f"E{row_num}", str(desc), merge_anchor_map=merge_map, style_ref="E9")
+            set_cell(sheet_data, f"H{row_num}", str(norma), merge_anchor_map=merge_map, style_ref="H9")
+            try:
+                cant_num = int(cant)
+                set_cell(sheet_data, f"I{row_num}", cant_num, is_number=True, merge_anchor_map=merge_map, style_ref="I9")
+            except (ValueError, TypeError):
+                set_cell(sheet_data, f"I{row_num}", str(cant), merge_anchor_map=merge_map, style_ref="I9")
+
+        # 4. Pie de página
+        footer_fechas_row = 32 + extra_count
+        obs_row = 33 + extra_count
+        responsables_row = 36 + extra_count
+
+        fecha_recep_str = (ot.fecha_recepcion or "").replace("-", "/")
+        inicio_prog = (ot.inicio_programado or fecha_recep_str).replace("-", "/")
+        fin_prog = (ot.fin_programado or inicio_prog).replace("-", "/")
+
+        set_cell(sheet_data, f"E{footer_fechas_row}", fecha_recep_str, merge_anchor_map=merge_map)
+        set_cell(sheet_data, f"G{footer_fechas_row}", inicio_prog, merge_anchor_map=merge_map)
+        set_cell(sheet_data, f"I{footer_fechas_row}", fin_prog, merge_anchor_map=merge_map)
+
+        # Observaciones / Notas
+        if ot.observaciones:
+            set_cell(sheet_data, f"B{obs_row}", str(ot.observaciones), merge_anchor_map=merge_map)
+
+        # Responsables
+        set_cell(sheet_data, f"D{responsables_row}", ot.ot_aperturada_por or "BETZABETH SARAVIA", merge_anchor_map=merge_map)
+        set_cell(sheet_data, f"H{responsables_row}", ot.ot_designada_a or "", merge_anchor_map=merge_map)
+
+        return etree.tostring(root, xml_declaration=True, encoding="UTF-8")
+
+    excel_bytes = transform_template_sheet(TEMPLATE_SU_AG_FILENAME, SHEET_SU_AG_NAME, _transform)
     output = io.BytesIO(excel_bytes)
     output.seek(0)
     return output

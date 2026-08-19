@@ -12,7 +12,7 @@ from app.database import get_db_session
 from app.modules.common.notifications import log_audit_action, resolve_actor_identity
 from .models import OrdenTrabajo
 from .schemas import OTCreateSchema, OTUpdateSchema, OTOutSchema, OTListResponseSchema
-from .excel import generar_excel_ot, generar_excel_ot_concreto
+from .excel import generar_excel_ot, generar_excel_ot_concreto, generar_excel_ot_su_ag
 
 router = APIRouter(prefix="/api/ot", tags=["Ordenes de Trabajo (OT)"])
 logger = logging.getLogger(__name__)
@@ -403,27 +403,56 @@ def prefill_ot_from_recepcion(
         .all()
     )
 
-    # Construir items de OT desde probetas con datos reales
+    # Construir items de OT
     items_ot = []
     fechas_rotura = []
-    for i, m in enumerate(muestras, start=1):
-        f_rot = _to_iso_date(m.fecha_rotura)
-        if f_rot:
-            fechas_rotura.append(f_rot)
-        
-        dens_val = _resolve_densidad(m)
+    es_tipo_concreto = (recepcion.tipo_recepcion or "").upper() == "CONCRETO"
 
-        items_ot.append({
-            "item": i,
-            "codigo_muestra": m.codigo_muestra_lem or m.codigo_muestra or f"PROB-{i:02d}",
-            "descripcion": "COMPRESION PROBETAS ASTM C39/C39M",
-            "cantidad": 1,
-            "elemento": m.elemento if m.elemento and m.elemento != "-" else "-",
-            "fecha_rotura": f_rot,
-            "densidad": dens_val,
-            "edad": m.edad,
-            "fc_kg_cm2": int(m.fc_kg_cm2) if m.fc_kg_cm2 is not None else None,
-        })
+    if es_tipo_concreto:
+        for i, m in enumerate(muestras, start=1):
+            f_rot = _to_iso_date(m.fecha_rotura)
+            if f_rot:
+                fechas_rotura.append(f_rot)
+            
+            dens_val = _resolve_densidad(m)
+
+            items_ot.append({
+                "item": i,
+                "codigo_muestra": m.codigo_muestra_lem or m.codigo_muestra or f"PROB-{i:02d}",
+                "descripcion": "COMPRESION PROBETAS ASTM C39/C39M",
+                "cantidad": 1,
+                "elemento": m.elemento if m.elemento and m.elemento != "-" else "-",
+                "fecha_rotura": f_rot,
+                "densidad": dens_val,
+                "edad": m.edad,
+                "fc_kg_cm2": int(m.fc_kg_cm2) if m.fc_kg_cm2 is not None else None,
+            })
+    else:
+        item_counter = 1
+        for m in muestras:
+            ensayos = m.ensayos_lista
+            cod_m = m.codigo_muestra_lem or m.identificacion_muestra or m.codigo_muestra or ""
+            if ensayos and isinstance(ensayos, list):
+                for e in ensayos:
+                    items_ot.append({
+                        "item": item_counter,
+                        "codigo_muestra": cod_m,
+                        "codigo_ensayo": e.get("codigo") or m.codigo_ensayo or "",
+                        "descripcion": e.get("descripcion") or m.ensayos_requeridos or "",
+                        "norma": e.get("norma") or m.norma_requerida or "",
+                        "cantidad": e.get("cantidad") or m.cantidad or 1,
+                    })
+                    item_counter += 1
+            else:
+                items_ot.append({
+                    "item": item_counter,
+                    "codigo_muestra": cod_m,
+                    "codigo_ensayo": m.codigo_ensayo or "",
+                    "descripcion": m.ensayos_requeridos or m.descripcion_muestra or "",
+                    "norma": m.norma_requerida or "",
+                    "cantidad": m.cantidad or 1,
+                })
+                item_counter += 1
 
     # Normalizar fecha recepción a ISO
     fecha_rec = _to_iso_date(recepcion.fecha_recepcion)
@@ -771,7 +800,7 @@ def download_excel_ot(
         if is_concreto:
             excel_buffer = generar_excel_ot_concreto(ot)
         else:
-            excel_buffer = generar_excel_ot(ot)
+            excel_buffer = generar_excel_ot_su_ag(ot)
 
         safe_name = (ot.numero_ot or f"OT-{ot.id}").replace("/", "-").replace("\\", "-")
         filename = f"OT-{safe_name}.xlsx"
