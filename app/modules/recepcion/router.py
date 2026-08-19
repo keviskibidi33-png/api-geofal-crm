@@ -153,9 +153,11 @@ async def prefill_recepcion_from_cotizacion(
     from sqlalchemy import text
     import json
     
+    import re
     clean_num = numero.strip().upper()
-    digits_only = "".join([c for c in clean_num if c.isdigit()])
-    
+    match = re.search(r"(\d+)", clean_num)
+    digits_base = match.group(1) if match else clean_num
+
     row = None
     # 1. Buscar en cotizaciones
     sql_quote = text("""
@@ -164,12 +166,13 @@ async def prefill_recepcion_from_cotizacion(
         FROM cotizaciones
         WHERE UPPER(numero) = :q
            OR ('COT-' || year || '-' || numero) = :q
-           OR (:digits != '' AND numero ILIKE :pattern)
+           OR UPPER(numero) = :base
+           OR (:base != '' AND UPPER(numero) LIKE :pattern)
         ORDER BY created_at DESC
         LIMIT 1
     """)
     try:
-        res = db.execute(sql_quote, {"q": clean_num, "digits": digits_only, "pattern": f"%{digits_only}%"}).fetchone()
+        res = db.execute(sql_quote, {"q": clean_num, "base": digits_base, "pattern": f"%{digits_base}%"}).fetchone()
         if res:
             row = dict(res._mapping)
     except Exception as e:
@@ -180,15 +183,17 @@ async def prefill_recepcion_from_cotizacion(
         sql_seg = text("""
             SELECT *
             FROM seguimiento_cliente_laboratorio
-            WHERE no::text = :q OR :q ILIKE ('%' || no::text || '%')
+            WHERE CAST(no AS TEXT) = :q
+               OR CAST(no AS TEXT) = :base
+               OR :q LIKE ('%' || CAST(no AS TEXT) || '%')
             LIMIT 1
         """)
         try:
-            res_seg = db.execute(sql_seg, {"q": clean_num}).fetchone()
+            res_seg = db.execute(sql_seg, {"q": clean_num, "base": digits_base}).fetchone()
             if res_seg:
                 row = dict(res_seg._mapping)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Error querying seguimiento_cliente_laboratorio: {e}")
 
     if not row:
         raise HTTPException(
