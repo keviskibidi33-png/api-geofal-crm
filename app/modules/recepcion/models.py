@@ -182,6 +182,24 @@ class MuestraConcreto(Base):
         except Exception:
             pass
         return None
+
+    @property
+    def ensayos_lista(self):
+        if self.ensayos_json:
+            try:
+                import json
+                parsed = json.loads(self.ensayos_json)
+                if isinstance(parsed, list):
+                    return parsed
+            except Exception:
+                pass
+        if self.codigo_ensayo or self.ensayos_requeridos or self.norma_requerida:
+            return [{
+                "codigo": self.codigo_ensayo or "",
+                "descripcion": self.ensayos_requeridos or "",
+                "norma": self.norma_requerida or "",
+            }]
+        return []
     
 
 class RecepcionPlantilla(Base):

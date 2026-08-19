@@ -212,7 +212,7 @@ class RecepcionListPaginatedResponse(BaseModel):
     total_pages: int = Field(1, ge=1)
 
 class MuestraConcretoUpdate(BaseModel):
-    """Esquema para actualizar muestra de concreto"""
+    """Esquema para actualizar muestra de concreto y otras especialidades"""
     item_numero: Optional[int] = None
     codigo_muestra: Optional[str] = None
     codigo_muestra_lem: Optional[str] = None
@@ -224,6 +224,19 @@ class MuestraConcretoUpdate(BaseModel):
     edad: Optional[int] = None
     fecha_rotura: Optional[str] = None
     requiere_densidad: Optional[bool] = None
+    
+    # Nuevos campos dinámicos para Roca, Albañilería, Agua, Suelo/Agregado
+    tamano_peso: Optional[str] = None
+    procedencia: Optional[str] = None
+    cantera: Optional[str] = None
+    descripcion_muestra: Optional[str] = None
+    cantidad: Optional[str] = None
+    codigo_ensayo: Optional[str] = None
+    ensayos_requeridos: Optional[str] = None
+    norma_requerida: Optional[str] = None
+    ensayos_json: Optional[str] = None
+    ensayos_lista: Optional[List[dict]] = None
+
     elemento: Optional[str] = None
     densidad: Optional[str] = None
     status_ensayo: Optional[str] = None
