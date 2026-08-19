@@ -141,6 +141,99 @@ async def buscar_recepcion(
     }
 
 
+@router.get("/prefill-cotizacion/{numero}")
+async def prefill_recepcion_from_cotizacion(
+    numero: str,
+    db: Session = Depends(get_db_session)
+):
+    """
+    Retorna los datos de una cotización o control de laboratorio formateados
+    para pre-llenar la recepción de muestras (cliente, proyecto, ensayos, normas, etc.).
+    """
+    from sqlalchemy import text
+    import json
+    
+    clean_num = numero.strip().upper()
+    digits_only = "".join([c for c in clean_num if c.isdigit()])
+    
+    row = None
+    # 1. Buscar en cotizaciones
+    sql_quote = text("""
+        SELECT id, numero, year, cliente_nombre, cliente_ruc, cliente_contacto,
+               cliente_telefono, cliente_email, proyecto, ubicacion, items_json
+        FROM cotizaciones
+        WHERE UPPER(numero) = :q
+           OR ('COT-' || year || '-' || numero) = :q
+           OR (:digits != '' AND numero ILIKE :pattern)
+        ORDER BY created_at DESC
+        LIMIT 1
+    """)
+    try:
+        res = db.execute(sql_quote, {"q": clean_num, "digits": digits_only, "pattern": f"%{digits_only}%"}).fetchone()
+        if res:
+            row = dict(res._mapping)
+    except Exception as e:
+        print(f"Error querying cotizaciones: {e}")
+        
+    # 2. Si no se encuentra en cotizaciones, buscar en seguimiento_cliente_laboratorio
+    if not row:
+        sql_seg = text("""
+            SELECT id, razon_social as cliente_nombre, ruc as cliente_ruc,
+                   persona_contacto as cliente_contacto, numero_celular as cliente_telefono,
+                   email as cliente_email, proyecto
+            FROM seguimiento_cliente_laboratorio
+            WHERE no::text = :q OR :q ILIKE ('%' || no::text || '%')
+            LIMIT 1
+        """)
+        try:
+            res_seg = db.execute(sql_seg, {"q": clean_num}).fetchone()
+            if res_seg:
+                row = dict(res_seg._mapping)
+        except Exception:
+            pass
+
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No se encontró cotización o registro para '{numero}'"
+        )
+        
+    items = []
+    raw_items = row.get("items_json")
+    if raw_items:
+        try:
+            if isinstance(raw_items, str):
+                parsed = json.loads(raw_items)
+            else:
+                parsed = raw_items
+            if isinstance(parsed, list):
+                for it in parsed:
+                    items.append({
+                        "codigo": str(it.get("codigo") or "").strip(),
+                        "descripcion": str(it.get("descripcion") or "").strip(),
+                        "norma": str(it.get("norma") or "-").strip(),
+                        "cantidad": it.get("cantidad") or 1,
+                    })
+        except Exception as e:
+            print(f"Error parsing items_json: {e}")
+
+    return {
+        "success": True,
+        "cotizacion_numero": row.get("numero"),
+        "cliente": row.get("cliente_nombre") or "",
+        "ruc": row.get("cliente_ruc") or "",
+        "persona_contacto": row.get("cliente_contacto") or "",
+        "email": row.get("cliente_email") or "",
+        "telefono": row.get("cliente_telefono") or "",
+        "proyecto": row.get("proyecto") or "",
+        "ubicacion": row.get("ubicacion") or "",
+        "domicilio_legal": row.get("ubicacion") or "",
+        "solicitante": row.get("cliente_nombre") or "",
+        "domicilio_solicitante": row.get("ubicacion") or "",
+        "items": items,
+    }
+
+
 # ===== ENDPOINTS PARA PLANTILLAS DE RECEPCIÓN =====
 from .schemas import RecepcionPlantillaCreate, RecepcionPlantillaResponse
 
