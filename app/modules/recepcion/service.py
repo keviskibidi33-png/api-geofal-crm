@@ -92,10 +92,16 @@ class RecepcionService:
         cleaned["norma_requerida"] = str(cleaned.get("norma_requerida") or "").strip()
         
         # Ensayos lista / JSON
-        ensayos_lista = cleaned.get("ensayos_lista")
+        ensayos_lista = cleaned.pop("ensayos_lista", None)
         if ensayos_lista and isinstance(ensayos_lista, list):
             import json
             cleaned["ensayos_json"] = json.dumps(ensayos_lista, ensure_ascii=False)
+            if not cleaned.get("codigo_ensayo") and len(ensayos_lista) > 0:
+                cleaned["codigo_ensayo"] = str(ensayos_lista[0].get("codigo") or "").strip()
+            if not cleaned.get("ensayos_requeridos") and len(ensayos_lista) > 0:
+                cleaned["ensayos_requeridos"] = ", ".join([str(e.get("descripcion") or "").strip() for e in ensayos_lista if e.get("descripcion")])
+            if not cleaned.get("norma_requerida") and len(ensayos_lista) > 0:
+                cleaned["norma_requerida"] = str(ensayos_lista[0].get("norma") or "").strip()
         elif cleaned.get("ensayos_json"):
             cleaned["ensayos_json"] = str(cleaned.get("ensayos_json"))
 
@@ -267,7 +273,9 @@ class RecepcionService:
                 if lem:
                     muestra_dict['codigo_muestra_lem'] = _normalize_lem_code(lem)
 
-                muestra = MuestraConcreto(recepcion_id=recepcion.id, **muestra_dict)
+                valid_cols = set(MuestraConcreto.__table__.columns.keys()) - {'id', 'recepcion_id'}
+                filtered_dict = {k: v for k, v in muestra_dict.items() if k in valid_cols}
+                muestra = MuestraConcreto(recepcion_id=recepcion.id, **filtered_dict)
                 db.add(muestra)
             
             db.commit()
@@ -625,15 +633,18 @@ class RecepcionService:
                         if lem:
                             m_dict['codigo_muestra_lem'] = _normalize_lem_code(lem)
 
+                        valid_cols = set(MuestraConcreto.__table__.columns.keys()) - {'id', 'recepcion_id'}
+                        filtered_m = {k: v for k, v in m_dict.items() if k in valid_cols}
+
                         if item_num in existing_muestras_map:
                             # Actualizar muestra existente
                             db_muestra = existing_muestras_map[item_num]
-                            for campo, valor in m_dict.items():
+                            for campo, valor in filtered_m.items():
                                 if hasattr(db_muestra, campo):
                                     setattr(db_muestra, campo, valor)
                         else:
                             # Crear nueva muestra
-                            new_muestra = MuestraConcreto(recepcion_id=recepcion.id, **m_dict)
+                            new_muestra = MuestraConcreto(recepcion_id=recepcion.id, **filtered_m)
                             db.add(new_muestra)
                             
                     # 2. Eliminar muestras sobrantes
