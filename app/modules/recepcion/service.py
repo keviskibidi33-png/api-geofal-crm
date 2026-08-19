@@ -84,10 +84,20 @@ class RecepcionService:
         # Campos flexibles para Roca, Albañilería, Agua, Suelo/Agregado
         cleaned["tamano_peso"] = str(cleaned.get("tamano_peso") or "").strip()
         cleaned["procedencia"] = str(cleaned.get("procedencia") or "").strip()
+        cleaned["cantera"] = str(cleaned.get("cantera") or "").strip()
         cleaned["descripcion_muestra"] = descripcion
         cleaned["cantidad"] = str(cleaned.get("cantidad") or "").strip()
+        cleaned["codigo_ensayo"] = str(cleaned.get("codigo_ensayo") or "").strip()
         cleaned["ensayos_requeridos"] = str(cleaned.get("ensayos_requeridos") or "").strip()
         cleaned["norma_requerida"] = str(cleaned.get("norma_requerida") or "").strip()
+        
+        # Ensayos lista / JSON
+        ensayos_lista = cleaned.get("ensayos_lista")
+        if ensayos_lista and isinstance(ensayos_lista, list):
+            import json
+            cleaned["ensayos_json"] = json.dumps(ensayos_lista, ensure_ascii=False)
+        elif cleaned.get("ensayos_json"):
+            cleaned["ensayos_json"] = str(cleaned.get("ensayos_json"))
 
         cleaned["elemento"] = str(cleaned.get("elemento") or "").strip() or "-"
         cleaned["densidad"] = str(cleaned.get("densidad") or "").strip() or "-"

@@ -454,6 +454,20 @@ def run_startup_migrations(engine) -> None:
     except Exception as err:
         logger.warning("Migration 061 skipped: %s", _short_err(err))
 
+    # ── Migration 062: muestras_concreto cantera & ensayos_json ─────────────
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                ALTER TABLE public.muestras_concreto
+                ADD COLUMN IF NOT EXISTS cantera VARCHAR(255),
+                ADD COLUMN IF NOT EXISTS codigo_ensayo VARCHAR(50),
+                ADD COLUMN IF NOT EXISTS ensayos_json TEXT;
+            """))
+            conn.execute(text("NOTIFY pgrst, 'reload schema';"))
+            logger.info("Migration 062 applied (cantera, codigo_ensayo, ensayos_json on muestras_concreto).")
+    except Exception as err:
+        logger.warning("Migration 062 skipped: %s", _short_err(err))
+
     _MIGRATIONS_RUN = True
 
 

@@ -255,6 +255,170 @@ class ExcelLogic:
             from app.modules.common.excel_xml import find_template_path
             self.template_path = str(find_template_path("Temp_Recepcion.xlsx"))
 
+    def _generar_excel_suelo_agregado(self, recepcion: RecepcionMuestra, template_path: str) -> bytes:
+        """
+        Generador especializado de alta fidelidad para la plantilla F-LEM-P-01.13 V01 (Suelo y Agregado).
+        Maneja estructura por bloques de muestra (Muestra, Procedencia, Cantera, Cantidad) y lista de ensayos con normas.
+        """
+        import openpyxl
+        import json
+        import copy
+
+        wb = openpyxl.load_workbook(template_path)
+        sheet_name = 'RECEP. SU-AG' if 'RECEP. SU-AG' in wb.sheetnames else wb.sheetnames[0]
+        ws = wb[sheet_name]
+
+        def format_dt(dt):
+            if not dt:
+                return ""
+            normalized = normalize_date_ymd(dt)
+            return normalized or str(dt)
+
+        # 1. Cabecera y Configuración
+        ws['D6'] = recepcion.numero_recepcion or ""
+        ws['I6'] = format_dt(recepcion.fecha_recepcion)
+        ws['D7'] = recepcion.numero_cotizacion or ""
+        ws['I7'] = format_dt(recepcion.fecha_estimada_culminacion)
+
+        em_dig = bool(getattr(recepcion, 'emision_digital', False))
+        em_fis = bool(getattr(recepcion, 'emision_fisica', False))
+        ws['M6'] = 'X' if em_dig else ''
+        ws['M7'] = 'X' if em_fis else ''
+
+        # 2. Datos de Facturación y Solicitante
+        ws['D10'] = recepcion.cliente or ""
+        ws['D11'] = recepcion.domicilio_legal or ""
+        ws['D12'] = recepcion.ruc or ""
+        ws['D13'] = recepcion.persona_contacto or ""
+        ws['D14'] = recepcion.email or ""
+        ws['K14'] = recepcion.telefono or ""
+
+        ws['D16'] = recepcion.solicitante or ""
+        ws['D17'] = getattr(recepcion, 'domicilio_solicitante', '') or recepcion.domicilio_legal or ""
+        ws['D18'] = recepcion.proyecto or ""
+        ws['D19'] = recepcion.ubicacion or ""
+
+        # 3. Helper para extraer ensayos de cada muestra
+        def _extract_sample_assays(m):
+            assays = []
+            if getattr(m, 'ensayos_json', None):
+                try:
+                    data = json.loads(m.ensayos_json)
+                    if isinstance(data, list):
+                        for item in data:
+                            if isinstance(item, dict):
+                                cod = str(item.get('codigo') or '').strip()
+                                desc = str(item.get('descripcion') or '').strip()
+                                norm = str(item.get('norma') or '').strip()
+                                if cod or desc or norm:
+                                    assays.append({'codigo': cod, 'descripcion': desc, 'norma': norm})
+                except Exception:
+                    pass
+
+            if not assays:
+                cod = str(getattr(m, 'codigo_ensayo', '') or '').strip()
+                desc = str(getattr(m, 'ensayos_requeridos', '') or '').strip()
+                norm = str(getattr(m, 'norma_requerida', '') or '').strip()
+                if cod or desc or norm:
+                    if '\n' in desc:
+                        for line in desc.split('\n'):
+                            if line.strip():
+                                assays.append({'codigo': cod, 'descripcion': line.strip(), 'norma': norm})
+                    else:
+                        assays.append({'codigo': cod, 'descripcion': desc, 'norma': norm})
+            return assays
+
+        muestras = recepcion.muestras or []
+        n_muestras = len(muestras)
+
+        # 4. Inserción dinámica de bloques si hay más de 2 muestras
+        if n_muestras > 2:
+            extra_samples = n_muestras - 2
+            for s_idx in range(extra_samples):
+                insert_at = 42 + (s_idx * 10)
+                
+                # Desplazar celdas combinadas posteriores para evitar colisiones
+                all_ranges = list(ws.merged_cells.ranges)
+                for mr in all_ranges:
+                    if mr.min_row >= insert_at:
+                        ws.merged_cells.remove(mr)
+                        new_range = openpyxl.worksheet.cell_range.CellRange(
+                            min_col=mr.min_col,
+                            min_row=mr.min_row + 10,
+                            max_col=mr.max_col,
+                            max_row=mr.max_row + 10
+                        )
+                        ws.merged_cells.add(new_range)
+
+                ws.insert_rows(insert_at, amount=10)
+                for r in range(32, 42):
+                    target_r = insert_at + (r - 32)
+                    for c in range(1, 16):
+                        src_cell = ws.cell(r, c)
+                        tgt_cell = ws.cell(target_r, c)
+                        if src_cell.has_style:
+                            tgt_cell._style = copy.copy(src_cell._style)
+                        if c == 3 and r == 32: tgt_cell.value = 'MUESTRA:'
+                        elif c == 3 and r == 33: tgt_cell.value = 'PROCEDENCIA:'
+                        elif c == 3 and r == 34: tgt_cell.value = 'CANTERA:'
+                        elif c == 3 and r == 35: tgt_cell.value = 'CANTIDAD (KG):'
+                        elif c == 6 and r in (32, 33, 34, 35): tgt_cell.value = '-'
+
+                for off in range(10):
+                    cur_r = insert_at + off
+                    ws.merge_cells(start_row=cur_r, start_column=3, end_row=cur_r, end_column=5)
+                    ws.merge_cells(start_row=cur_r, start_column=6, end_row=cur_r, end_column=7)
+                    ws.merge_cells(start_row=cur_r, start_column=9, end_row=cur_r, end_column=13)
+
+        # 5. Llenado de cada bloque de muestra
+        for idx, m in enumerate(muestras):
+            start_r = 22 + (idx * 10)
+            ws[f'A{start_r}'] = idx + 1
+            ws[f'B{start_r}'] = getattr(m, 'codigo_muestra_lem', '') or getattr(m, 'codigo_muestra', '') or ''
+            ws[f'F{start_r}'] = getattr(m, 'identificacion_muestra', '') or '-'
+            ws[f'F{start_r + 1}'] = getattr(m, 'procedencia', '') or '-'
+            ws[f'F{start_r + 2}'] = getattr(m, 'cantera', '') or '-'
+            ws[f'F{start_r + 3}'] = getattr(m, 'cantidad', '') or '-'
+
+            sample_assays = _extract_sample_assays(m)
+            for off in range(10):
+                r_line = start_r + off
+                if off < len(sample_assays):
+                    e = sample_assays[off]
+                    ws[f'H{r_line}'] = e.get('codigo', '')
+                    ws[f'I{r_line}'] = e.get('descripcion', '')
+                    ws[f'N{r_line}'] = e.get('norma', '')
+                else:
+                    ws[f'H{r_line}'] = None
+                    ws[f'I{r_line}'] = None
+                    ws[f'N{r_line}'] = None
+
+        # Si sólo hay 1 muestra, limpiar los marcadores de la muestra 2
+        if n_muestras == 1:
+            ws['A32'] = None
+            ws['B32'] = None
+            ws['F32'] = '-'
+            ws['F33'] = '-'
+            ws['F34'] = '-'
+            ws['F35'] = '-'
+            for r_idx in range(32, 42):
+                ws[f'H{r_idx}'] = None
+                ws[f'I{r_idx}'] = None
+                ws[f'N{r_idx}'] = None
+
+        # 6. Pie de Página (desplazado si hubo muestras adicionales)
+        footer_offset = max(0, n_muestras - 2) * 10
+        obs_row = 42 + footer_offset
+        resp_row = 44 + footer_offset
+
+        ws[f'C{obs_row}'] = recepcion.observaciones or ""
+        ws[f'C{resp_row}'] = recepcion.entregado_por or recepcion.persona_contacto or ""
+        ws[f'K{resp_row}'] = (recepcion.recibido_por or "BETZABETH SARAVIA").upper()
+
+        out_mem = io.BytesIO()
+        wb.save(out_mem)
+        return out_mem.getvalue()
+
     def generar_excel_recepcion(self, recepcion: RecepcionMuestra) -> bytes:
         from app.modules.common.excel_xml import find_template_path
         from .schemas import TIPO_RECEPCION_CONFIG
@@ -267,6 +431,10 @@ class ExcelLogic:
 
         if not os.path.exists(active_template_path):
             raise FileNotFoundError(f"Template no encontrado en {active_template_path}")
+
+        # Formato Especializado para Suelos y Agregados (F-LEM-P-01.13)
+        if tipo_rec == "SUELO_AGREGADO" or "01.13" in str(active_template_path):
+            return self._generar_excel_suelo_agregado(recepcion, active_template_path)
 
         shared_strings = []
         ss_xml_original = None

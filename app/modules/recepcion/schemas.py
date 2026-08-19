@@ -56,10 +56,14 @@ class MuestraConcretoBase(BaseModel):
     # Nuevos campos dinámicos para Roca, Albañilería, Agua, Suelo/Agregado
     tamano_peso: Optional[str] = Field("", max_length=100, description="Tamaño (cm) o peso (kg)")
     procedencia: Optional[str] = Field("", max_length=255, description="Procedencia de la muestra")
+    cantera: Optional[str] = Field("", max_length=255, description="Cantera de la muestra")
     descripcion_muestra: Optional[str] = Field("", description="Descripción de la muestra (Marca - Tipo - Otros)")
     cantidad: Optional[str] = Field("", max_length=100, description="Cantidad de muestra")
+    codigo_ensayo: Optional[str] = Field("", max_length=50, description="Código de ensayo (ej. SU24)")
     ensayos_requeridos: Optional[str] = Field("", description="Ensayos requeridos")
     norma_requerida: Optional[str] = Field("", max_length=255, description="Norma requerida")
+    ensayos_json: Optional[str] = Field(None, description="Estructura JSON de múltiples ensayos")
+    ensayos_lista: Optional[List[dict]] = Field(None, description="Lista de sub-ensayos {codigo, descripcion, norma}")
 
     elemento: Optional[str] = Field("-", description="Elemento o tipo de probeta")
     densidad: Optional[str] = Field("-", description="Densidad en gramos")

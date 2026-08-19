@@ -109,10 +109,13 @@ class MuestraConcreto(Base):
     # Nuevos campos dinámicos para Roca, Albañilería, Agua, Suelo y Agregados
     tamano_peso = Column(String(100), nullable=True, comment="Tamaño (cm) o peso (kg)")
     procedencia = Column(String(255), nullable=True, comment="Procedencia de la muestra")
+    cantera = Column(String(255), nullable=True, comment="Cantera de la muestra")
     descripcion_muestra = Column(Text, nullable=True, comment="Descripción de la muestra")
     cantidad = Column(String(100), nullable=True, comment="Cantidad de muestra")
+    codigo_ensayo = Column(String(50), nullable=True, comment="Código de ensayo (ej. SU24)")
     ensayos_requeridos = Column(Text, nullable=True, comment="Ensayos requeridos")
     norma_requerida = Column(String(255), nullable=True, comment="Norma requerida")
+    ensayos_json = Column(Text, nullable=True, comment="Estructura JSON de múltiples ensayos por muestra")
 
     # Campos para Control de Probetas
     elemento = Column(String(50), nullable=True, default="-", comment="Elemento/Tamaño de probeta")
