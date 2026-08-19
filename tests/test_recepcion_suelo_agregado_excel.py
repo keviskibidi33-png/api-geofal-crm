@@ -149,7 +149,70 @@ def test_generar_excel_suelo_agregado_fidelity():
     assert ws_3['F32'].value == "M-03 C-03 (2.00 - 3.00 M)"
     assert ws_3['C42'].value == "Muestras selladas en sacos."
     assert ws_3['C44'].value == "ING. MARIO LOPEZ"
-    print("Test generar_excel_suelo_agregado (3 samples correlative) passed successfully!")
+    # Test 20 samples (maximum capacity verification)
+    muestras_20 = []
+    for i in range(1, 21):
+        m_i = MuestraConcreto(
+            item_numero=i,
+            codigo_muestra_lem=f"15{i:02d}-SU-26",
+            identificacion_muestra=f"CALICATA C-{i:02d} (MUESTRA {i:02d})",
+            procedencia=f"TRAMO KM {i*2}+000",
+            cantera=f"CANTERA SAN JORGE #{i}",
+            cantidad=f"{50 + i} KG",
+            ensayos_json=json.dumps([
+                {"codigo": f"SU{20 + (i % 5)}", "descripcion": f"ENSAYO ESPECIAL {i}", "norma": f"NTP 339.{100 + i}"},
+                {"codigo": "SU20", "descripcion": "CONTENIDO DE HUMEDAD", "norma": "ASTM D2216-19"}
+            ])
+        )
+        muestras_20.append(m_i)
+
+    recepcion.muestras = muestras_20
+    excel_bytes_20 = excel_logic.generar_excel_recepcion(recepcion)
+    assert excel_bytes_20 is not None
+    assert len(excel_bytes_20) > 10000
+
+    wb_20 = openpyxl.load_workbook(io.BytesIO(excel_bytes_20), data_only=True)
+    ws_20 = wb_20['RECEP. SU-AG']
+
+    # Each sample has 2 assays, so height = max(4, 2) = 4, + 1 separator = 5 rows per sample
+    # Total sample rows = 20 * 5 = 100 rows (from row 22 to 121)
+    # extra_rows = 100 - 20 = 80
+    expected_obs_row = 42 + 80   # 122
+    expected_resp_row = 44 + 80  # 124
+
+    # Validate each of the 20 samples
+    for i in range(20):
+        sample_start_r = 22 + (i * 5)
+        sample_num = i + 1
+        assert ws_20[f'A{sample_start_r}'].value == sample_num
+        assert ws_20[f'B{sample_start_r}'].value == f"15{sample_num:02d}-SU-26"
+        assert ws_20[f'C{sample_start_r}'].value == "MUESTRA:"
+        assert ws_20[f'F{sample_start_r}'].value == f"CALICATA C-{sample_num:02d} (MUESTRA {sample_num:02d})"
+        assert ws_20[f'C{sample_start_r+1}'].value == "PROCEDENCIA:"
+        assert ws_20[f'F{sample_start_r+1}'].value == f"TRAMO KM {sample_num*2}+000"
+        assert ws_20[f'C{sample_start_r+2}'].value == "CANTERA:"
+        assert ws_20[f'F{sample_start_r+2}'].value == f"CANTERA SAN JORGE #{sample_num}"
+        assert ws_20[f'C{sample_start_r+3}'].value == "CANTIDAD (KG):"
+        assert ws_20[f'F{sample_start_r+3}'].value == f"{50 + sample_num} KG"
+        
+        # Check assays
+        assert ws_20[f'H{sample_start_r}'].value == f"SU{20 + (sample_num % 5)}"
+        assert ws_20[f'I{sample_start_r}'].value == f"ENSAYO ESPECIAL {sample_num}"
+        assert ws_20[f'N{sample_start_r}'].value == f"NTP 339.{100 + sample_num}"
+        assert ws_20[f'H{sample_start_r+1}'].value == "SU20"
+
+        # Check separator row
+        sep_row = sample_start_r + 4
+        assert ws_20[f'A{sep_row}'].value is None
+        assert ws_20[f'H{sep_row}'].value is None
+
+    # Validate Footer at shifted position
+    assert ws_20[f'A{expected_obs_row}'].value == "Observaciones:"
+    assert ws_20[f'C{expected_obs_row}'].value == "Muestras selladas en sacos."
+    assert ws_20[f'C{expected_resp_row}'].value == "ING. MARIO LOPEZ"
+    assert ws_20[f'K{expected_resp_row}'].value == "BETZABETH SARAVIA"
+
+    print("Test generar_excel_suelo_agregado (20 samples capacity) passed successfully!")
 
 if __name__ == "__main__":
     test_generar_excel_suelo_agregado_fidelity()
