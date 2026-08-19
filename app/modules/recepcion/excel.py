@@ -329,114 +329,88 @@ class ExcelLogic:
             return assays
 
         muestras = recepcion.muestras or []
-        n_muestras = len(muestras)
 
-        # 4. Cachear estilos del bloque de muestra original (filas 22-31, 10 columnas)
-        #    Antes de cualquier modificación del template. Se usa el bloque 22-31 como referencia.
-        row_styles: dict[int, dict[int, object]] = {}  # {row_offset_0_to_9: {col: style}}
-        for offset in range(10):
-            src_r = 22 + offset
-            row_styles[offset] = {}
-            for c in range(1, 15):
-                src_cell = ws.cell(src_r, c)
-                if src_cell.has_style:
-                    row_styles[offset][c] = copy.copy(src_cell._style)
-
-        # 5. Calcular layout correlativo por muestra: height = max(4, len(ensayos))
+        # 4. Layout correlativo por muestra (height = max(4, len(ensayos)))
         samples_layout = []
         for m in muestras:
             assays = _extract_sample_assays(m)
             h = max(4, len(assays))
             samples_layout.append({'m': m, 'assays': assays, 'height': h})
 
-        total_sample_rows = sum(s['height'] + 1 for s in samples_layout) if samples_layout else 5
+        total_sample_rows = sum(s['height'] + 1 for s in samples_layout)
 
-        # 6. Descombar el bloque completo de muestras del template (22..41)
-        all_merged = [mr for mr in ws.merged_cells.ranges if mr.min_row >= 22 and mr.max_row <= 41]
-        for mr in all_merged:
-            try:
-                ws.unmerge_cells(str(mr))
-            except Exception:
-                pass
+        # Si se requieren más de las 20 filas predefinidas (22..41), insertar filas adicionales antes del footer
+        extra_rows = max(0, total_sample_rows - 20)
+        if extra_rows > 0:
+            all_ranges = list(ws.merged_cells.ranges)
+            for mr in all_ranges:
+                if mr.min_row >= 42:
+                    ws.merged_cells.remove(mr)
+                    new_range = openpyxl.worksheet.cell_range.CellRange(
+                        min_col=mr.min_col,
+                        min_row=mr.min_row + extra_rows,
+                        max_col=mr.max_col,
+                        max_row=mr.max_row + extra_rows
+                    )
+                    ws.merged_cells.add(new_range)
 
-        # Ajustar número de filas: borrar sobrantes o insertar si se necesitan más
-        if total_sample_rows < 20:
-            ws.delete_rows(22 + total_sample_rows, amount=20 - total_sample_rows)
-        elif total_sample_rows > 20:
-            ws.insert_rows(42, amount=total_sample_rows - 20)
+            ws.insert_rows(42, amount=extra_rows)
+            for r_add in range(42, 42 + extra_rows):
+                ws.row_dimensions[r_add].height = 20.4
+                for c in range(1, 15):
+                    src_cell = ws.cell(41, c)
+                    tgt_cell = ws.cell(r_add, c)
+                    if src_cell.has_style:
+                        tgt_cell._style = copy.copy(src_cell._style)
+                ws.merge_cells(start_row=r_add, start_column=3, end_row=r_add, end_column=5)
+                ws.merge_cells(start_row=r_add, start_column=6, end_row=r_add, end_column=7)
+                ws.merge_cells(start_row=r_add, start_column=9, end_row=r_add, end_column=13)
 
-        # Limpiar los valores de todas las celdas del bloque
-        for r in range(22, 22 + total_sample_rows):
-            for c in range(1, 15):
-                ws.cell(r, c).value = None
+        # 5. Limpiar valores predefinidos en la zona de muestras (22 .. 41 + extra_rows)
+        max_sample_row = 41 + extra_rows
+        for r in range(22, max_sample_row + 1):
+            ws[f'A{r}'] = None
+            ws[f'B{r}'] = None
+            ws[f'C{r}'] = None
+            ws[f'F{r}'] = None
+            ws[f'H{r}'] = None
+            ws[f'I{r}'] = None
+            ws[f'N{r}'] = None
 
-        # 7. Inyección Correlativa: aplicar estilos cacheados + datos
+        # 6. Inyección correlativa con exactamente 1 fila en blanco de separación por muestra
         curr_r = 22
         for s_idx, s in enumerate(samples_layout):
             m = s['m']
             assays = s['assays']
             h = s['height']
 
+            # Metadata
+            ws[f'A{curr_r}'] = s_idx + 1
+            ws[f'B{curr_r}'] = getattr(m, 'codigo_muestra_lem', '') or getattr(m, 'codigo_muestra', '') or ''
+            ws[f'C{curr_r}'] = 'MUESTRA:'
+            ws[f'F{curr_r}'] = getattr(m, 'identificacion_muestra', '') or '-'
+            ws[f'C{curr_r + 1}'] = 'PROCEDENCIA:'
+            ws[f'F{curr_r + 1}'] = getattr(m, 'procedencia', '') or '-'
+            ws[f'C{curr_r + 2}'] = 'CANTERA:'
+            ws[f'F{curr_r + 2}'] = getattr(m, 'cantera', '') or '-'
+            ws[f'C{curr_r + 3}'] = 'CANTIDAD (KG):'
+            ws[f'F{curr_r + 3}'] = getattr(m, 'cantidad', '') or '-'
+
+            # Ensayos y Normas
             for off in range(h):
                 r_line = curr_r + off
-                ws.row_dimensions[r_line].height = 20.4
-
-                # Aplicar estilos del template (usando offset cíclico dentro del bloque de 10)
-                tmpl_offset = off % 10
-                for c in range(1, 15):
-                    tgt = ws.cell(r_line, c)
-                    if tmpl_offset in row_styles and c in row_styles[tmpl_offset]:
-                        tgt._style = copy.copy(row_styles[tmpl_offset][c])
-
-                # Datos de metadata (sólo en los primeros 4 offsets)
-                if off == 0:
-                    ws.cell(r_line, 1).value = s_idx + 1
-                    ws.cell(r_line, 2).value = (
-                        getattr(m, 'codigo_muestra_lem', '') or getattr(m, 'codigo_muestra', '') or ''
-                    )
-                    ws.cell(r_line, 3).value = 'MUESTRA:'
-                    ws.cell(r_line, 6).value = getattr(m, 'identificacion_muestra', '') or '-'
-                elif off == 1:
-                    ws.cell(r_line, 3).value = 'PROCEDENCIA:'
-                    ws.cell(r_line, 6).value = getattr(m, 'procedencia', '') or '-'
-                elif off == 2:
-                    ws.cell(r_line, 3).value = 'CANTERA:'
-                    ws.cell(r_line, 6).value = getattr(m, 'cantera', '') or '-'
-                elif off == 3:
-                    ws.cell(r_line, 3).value = 'CANTIDAD (KG):'
-                    ws.cell(r_line, 6).value = getattr(m, 'cantidad', '') or '-'
-
-                # Ensayo en la fila correspondiente
                 if off < len(assays):
                     e = assays[off]
-                    ws.cell(r_line, 8).value = e.get('codigo', '')
-                    ws.cell(r_line, 9).value = e.get('descripcion', '')
-                    ws.cell(r_line, 14).value = e.get('norma', '')
+                    ws[f'H{r_line}'] = e.get('codigo', '')
+                    ws[f'I{r_line}'] = e.get('descripcion', '')
+                    ws[f'N{r_line}'] = e.get('norma', '')
 
-                # Recombinar celdas según el template
-                ws.merge_cells(start_row=r_line, start_column=3, end_row=r_line, end_column=5)
-                ws.merge_cells(start_row=r_line, start_column=6, end_row=r_line, end_column=7)
-                ws.merge_cells(start_row=r_line, start_column=9, end_row=r_line, end_column=13)
-
-            # Fila separadora vacía (1 sola fila por muestra)
-            sep_r = curr_r + h
-            ws.row_dimensions[sep_r].height = 20.4
-            for c in range(1, 15):
-                tgt = ws.cell(sep_r, c)
-                # Tomar estilo de la última fila del bloque como separador
-                tmpl_sep_offset = h % 10
-                if tmpl_sep_offset in row_styles and c in row_styles[tmpl_sep_offset]:
-                    tgt._style = copy.copy(row_styles[tmpl_sep_offset][c])
-                tgt.value = None
-            ws.merge_cells(start_row=sep_r, start_column=3, end_row=sep_r, end_column=5)
-            ws.merge_cells(start_row=sep_r, start_column=6, end_row=sep_r, end_column=7)
-            ws.merge_cells(start_row=sep_r, start_column=9, end_row=sep_r, end_column=13)
-
+            # Siguiente muestra empieza tras 1 fila de separación
             curr_r += h + 1
 
-        # 8. Pie de Página — se posiciona inmediatamente después del bloque de muestras
-        obs_row = 22 + total_sample_rows
-        resp_row = obs_row + 2
+        # 7. Pie de Página intacto (o desplazado solo si se requirieron extra_rows)
+        obs_row = 42 + extra_rows
+        resp_row = 44 + extra_rows
 
         ws[f'C{obs_row}'] = recepcion.observaciones or ""
         ws[f'C{resp_row}'] = recepcion.entregado_por or recepcion.persona_contacto or ""
