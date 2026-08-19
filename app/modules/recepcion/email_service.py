@@ -1,6 +1,8 @@
 import os
 import smtplib
+import imaplib
 import ssl
+import time
 import re
 import unicodedata
 from email.mime.multipart import MIMEMultipart
@@ -231,6 +233,9 @@ body {{ font-family: Arial, Helvetica, sans-serif; font-size: 13px; line-height:
             logger.exception("Error al enviar correo por SMTP cPanel")
             raise RuntimeError(f"Error al enviar correo mediante el servidor SMTP ({host}:{port}) con la cuenta {from_email}: {str(e)}")
 
+        # 9.1. Guardar copia en la carpeta 'Enviados' (Sent) del buzón del remitente vía IMAP
+        self._guardar_copia_en_enviados(profile, msg.as_bytes())
+
         # 10. Registro de auditoría
         try:
             emit_audit_log(
@@ -263,3 +268,46 @@ body {{ font-family: Arial, Helvetica, sans-serif; font-size: 13px; line-height:
             "cc": cc_tokens,
             "filename": excel_filename,
         }
+
+    def _guardar_copia_en_enviados(self, profile: dict, msg_bytes: bytes) -> bool:
+        """
+        Guarda una copia exacta del mensaje enviado en la carpeta de 'Enviados' (INBOX.Sent)
+        del buzón del remitente a través del protocolo IMAP (puerto 993 SSL).
+        Esto permite que el correo figure en Roundcube / Webmail / Outlook del remitente.
+        """
+        try:
+            imap_host = profile.get("imap_host") or profile.get("smtp_host", "geofal.com.pe")
+            imap_port = int(profile.get("imap_port", 993))
+            user = profile.get("smtp_user")
+            password = profile.get("smtp_password")
+
+            if not user or not password:
+                return False
+
+            with imaplib.IMAP4_SSL(imap_host, imap_port, timeout=15) as imap_client:
+                imap_client.login(user, password)
+
+                # Identificar carpeta de Enviados
+                sent_folder = "INBOX.Sent"
+                try:
+                    status, folder_list = imap_client.list()
+                    if status == "OK":
+                        for f in folder_list:
+                            decoded = f.decode(errors="ignore")
+                            if r"\Sent" in decoded or "INBOX.Sent" in decoded:
+                                parts = decoded.split(' "." ')
+                                if len(parts) >= 2:
+                                    sent_folder = parts[-1].strip(' "')
+                                    break
+                except Exception as fe:
+                    logger.warning(f"No se pudieron listar carpetas IMAP, usando '{sent_folder}': {fe}")
+
+                # Guardar mensaje con flag \Seen (marcado como leído) y fecha actual
+                internal_date = imaplib.Time2Internaldate(time.time())
+                imap_client.append(sent_folder, r"\Seen", internal_date, msg_bytes)
+                logger.info(f"Copia del correo enviada guardada exitosamente en IMAP '{sent_folder}' para {user}")
+                imap_client.logout()
+                return True
+        except Exception as imap_err:
+            logger.warning(f"No se pudo guardar la copia en la carpeta Enviados (IMAP): {imap_err}")
+            return False
