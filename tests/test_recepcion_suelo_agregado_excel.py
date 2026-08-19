@@ -91,22 +91,22 @@ def test_generar_excel_suelo_agregado_fidelity():
     assert ws['H23'].value == "SU23"
     assert ws['H24'].value == "SU20"
 
-    # Assert Sample 2 (Correlative: 22..25 is Sample 1, 26 is separator, 27..30 is Sample 2)
-    assert ws['A27'].value == 2
-    assert ws['B27'].value == "1501-SU-26"
-    assert ws['F27'].value == "M-02 C-02 (0.00 - 2.00 M)"
-    assert ws['F28'].value == "CALICATA 02"
-    assert ws['F29'].value == "CANTERA NORTE"
-    assert ws['F30'].value == "60 KG"
-    assert ws['H27'].value == "SU24"
-    assert ws['H28'].value == "SU22"
+    # Assert Sample 2
+    assert ws['A32'].value == 2
+    assert ws['B32'].value == "1501-SU-26"
+    assert ws['F32'].value == "M-02 C-02 (0.00 - 2.00 M)"
+    assert ws['F33'].value == "CALICATA 02"
+    assert ws['F34'].value == "CANTERA NORTE"
+    assert ws['F35'].value == "60 KG"
+    assert ws['H32'].value == "SU24"
+    assert ws['H33'].value == "SU22"
 
-    # Assert Footer (at 22 + 10 = 32)
-    assert ws['C32'].value == "Muestras selladas en sacos."
-    assert ws['C34'].value == "ING. MARIO LOPEZ"
-    assert ws['K34'].value == "BETZABETH SARAVIA"
+    # Assert Footer
+    assert ws['C42'].value == "Muestras selladas en sacos."
+    assert ws['C44'].value == "ING. MARIO LOPEZ"
+    assert ws['K44'].value == "BETZABETH SARAVIA"
 
-    print("Test generar_excel_suelo_agregado (2 samples correlative) passed successfully!")
+    print("Test generar_excel_suelo_agregado (2 samples) passed successfully!")
 
     # Test 1 sample
     recepcion.muestras = [m1]
@@ -115,9 +115,10 @@ def test_generar_excel_suelo_agregado_fidelity():
     ws_1 = wb_1['RECEP. SU-AG']
     assert ws_1['A22'].value == 1
     assert ws_1['B22'].value == "1500-SU-26"
+    assert ws_1['A32'].value is None
     print("Test generar_excel_suelo_agregado (1 sample) passed successfully!")
 
-    # Test 3 samples (dynamic correlative expansion)
+    # Test 3 samples (dynamic expansion)
     m3 = MuestraConcreto(
         item_numero=3,
         codigo_muestra_lem="1502-SU-26",
@@ -134,12 +135,11 @@ def test_generar_excel_suelo_agregado_fidelity():
     wb_3 = openpyxl.load_workbook(io.BytesIO(excel_bytes_3), data_only=True)
     ws_3 = wb_3['RECEP. SU-AG']
     assert ws_3['A22'].value == 1
-    assert ws_3['A27'].value == 2
-    assert ws_3['A32'].value == 3
-    assert ws_3['B32'].value == "1502-SU-26"
-    assert ws_3['F32'].value == "M-03 C-03 (2.00 - 3.00 M)"
-    # Observaciones at row 22 + 15 = 37
-    assert ws_3['C37'].value == "Muestras selladas en sacos."
+    assert ws_3['A32'].value == 2
+    assert ws_3['A42'].value == 3
+    assert ws_3['B42'].value == "1502-SU-26"
+    assert ws_3['F42'].value == "M-03 C-03 (2.00 - 3.00 M)"
+    assert ws_3['C52'].value == "Muestras selladas en sacos."
     print("Test generar_excel_suelo_agregado (3 samples dynamic expansion) passed successfully!")
 
 if __name__ == "__main__":

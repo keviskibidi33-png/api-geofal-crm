@@ -329,108 +329,88 @@ class ExcelLogic:
             return assays
 
         muestras = recepcion.muestras or []
-        n_muestras = len(muestras)        # 4. Cálculo correlativo de layout por muestra
-        samples_layout = []
-        for m in muestras:
-            assays = _extract_sample_assays(m)
-            h = max(4, len(assays))
-            samples_layout.append({'m': m, 'assays': assays, 'height': h})
+        n_muestras = len(muestras)
 
-        total_sample_rows = sum(s['height'] + 1 for s in samples_layout)
-        if total_sample_rows == 0:
-            total_sample_rows = 5
+        # 4. Inserción dinámica de bloques SOLO si hay más de 2 muestras (>2)
+        if n_muestras > 2:
+            extra_samples = n_muestras - 2
+            for s_idx in range(extra_samples):
+                insert_at = 42 + (s_idx * 10)
+                
+                # Desplazar celdas combinadas posteriores para evitar colisiones
+                all_ranges = list(ws.merged_cells.ranges)
+                for mr in all_ranges:
+                    if mr.min_row >= insert_at:
+                        ws.merged_cells.remove(mr)
+                        new_range = openpyxl.worksheet.cell_range.CellRange(
+                            min_col=mr.min_col,
+                            min_row=mr.min_row + 10,
+                            max_col=mr.max_col,
+                            max_row=mr.max_row + 10
+                        )
+                        ws.merged_cells.add(new_range)
 
-        # Descombinar celdas en el rango de muestras original 22..41
-        all_ranges = [mr for mr in ws.merged_cells.ranges if mr.min_row >= 22 and mr.max_row <= 41]
-        for mr in all_ranges:
-            try:
-                ws.unmerge_cells(str(mr))
-            except Exception:
-                pass
+                ws.insert_rows(insert_at, amount=10)
+                for r in range(32, 42):
+                    target_r = insert_at + (r - 32)
+                    ws.row_dimensions[target_r].height = 20.4
+                    for c in range(1, 16):
+                        src_cell = ws.cell(r, c)
+                        tgt_cell = ws.cell(target_r, c)
+                        if src_cell.has_style:
+                            tgt_cell._style = copy.copy(src_cell._style)
+                        if c == 3 and r == 32: tgt_cell.value = 'MUESTRA:'
+                        elif c == 3 and r == 33: tgt_cell.value = 'PROCEDENCIA:'
+                        elif c == 3 and r == 34: tgt_cell.value = 'CANTERA:'
+                        elif c == 3 and r == 35: tgt_cell.value = 'CANTIDAD (KG):'
+                        elif c == 6 and r in (32, 33, 34, 35): tgt_cell.value = '-'
 
-        if total_sample_rows < 20:
-            diff = 20 - total_sample_rows
-            ws.delete_rows(22 + total_sample_rows, amount=diff)
-        elif total_sample_rows > 20:
-            diff = total_sample_rows - 20
-            ws.insert_rows(42, amount=diff)
+                for off in range(10):
+                    cur_r = insert_at + off
+                    ws.merge_cells(start_row=cur_r, start_column=3, end_row=cur_r, end_column=5)
+                    ws.merge_cells(start_row=cur_r, start_column=6, end_row=cur_r, end_column=7)
+                    ws.merge_cells(start_row=cur_r, start_column=9, end_row=cur_r, end_column=13)
 
-        # Limpiar celdas en el bloque de muestras antes de inyectar
-        for r in range(22, 22 + total_sample_rows):
-            for c in range(1, 15):
-                ws.cell(r, c).value = None
+        # 5. Llenado directo en las posiciones del template original (bloques de 10 filas)
+        for idx, m in enumerate(muestras):
+            start_r = 22 + (idx * 10)
+            ws[f'A{start_r}'] = idx + 1
+            ws[f'B{start_r}'] = getattr(m, 'codigo_muestra_lem', '') or getattr(m, 'codigo_muestra', '') or ''
+            ws[f'F{start_r}'] = getattr(m, 'identificacion_muestra', '') or '-'
+            ws[f'F{start_r + 1}'] = getattr(m, 'procedencia', '') or '-'
+            ws[f'F{start_r + 2}'] = getattr(m, 'cantera', '') or '-'
+            ws[f'F{start_r + 3}'] = getattr(m, 'cantidad', '') or '-'
 
-        # 5. Inyección Correlativa de cada Bloque de Muestra
-        from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
-        thin_side = Side(style='thin', color='000000')
-        thin_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
-        gray_fill = PatternFill(start_color='D9D9D9', end_color='D9D9D9', fill_type='solid')
-
-        curr_r = 22
-        for s_idx, s in enumerate(samples_layout):
-            m = s['m']
-            assays = s['assays']
-            h = s['height']
-
-            # N° e ID LEM
-            ws[f'A{curr_r}'] = s_idx + 1
-            ws[f'B{curr_r}'] = getattr(m, 'codigo_muestra_lem', '') or getattr(m, 'codigo_muestra', '') or ''
-
-            # Etiquetas y Valores de Metadata
-            ws[f'C{curr_r}'] = 'MUESTRA:'
-            ws[f'F{curr_r}'] = getattr(m, 'identificacion_muestra', '') or '-'
-            ws[f'C{curr_r + 1}'] = 'PROCEDENCIA:'
-            ws[f'F{curr_r + 1}'] = getattr(m, 'procedencia', '') or '-'
-            ws[f'C{curr_r + 2}'] = 'CANTERA:'
-            ws[f'F{curr_r + 2}'] = getattr(m, 'cantera', '') or '-'
-            ws[f'C{curr_r + 3}'] = 'CANTIDAD (KG):'
-            ws[f'F{curr_r + 3}'] = getattr(m, 'cantidad', '') or '-'
-
-            # Inyección de Ensayos y Normas
-            for off in range(h):
-                r_line = curr_r + off
-                if off < len(assays):
-                    e = assays[off]
+            sample_assays = _extract_sample_assays(m)
+            for off in range(9):
+                r_line = start_r + off
+                if off < len(sample_assays):
+                    e = sample_assays[off]
                     ws[f'H{r_line}'] = e.get('codigo', '')
                     ws[f'I{r_line}'] = e.get('descripcion', '')
                     ws[f'N{r_line}'] = e.get('norma', '')
+                else:
+                    ws[f'H{r_line}'] = None
+                    ws[f'I{r_line}'] = None
+                    ws[f'N{r_line}'] = None
 
-                # Combinaciones por fila de muestra
-                ws.merge_cells(start_row=r_line, start_column=3, end_row=r_line, end_column=5)  # C:E
-                ws.merge_cells(start_row=r_line, start_column=6, end_row=r_line, end_column=7)  # F:G
-                ws.merge_cells(start_row=r_line, start_column=9, end_row=r_line, end_column=13) # I:M
+        # Si sólo hay 1 muestra, limpiar los marcadores predefinidos de la muestra 2
+        if n_muestras == 1:
+            ws['A32'] = None
+            ws['B32'] = None
+            ws['F32'] = '-'
+            ws['F33'] = '-'
+            ws['F34'] = '-'
+            ws['F35'] = '-'
+            for r_idx in range(32, 42):
+                ws[f'H{r_idx}'] = None
+                ws[f'I{r_idx}'] = None
+                ws[f'N{r_idx}'] = None
 
-                # Bordes y alineación
-                for col_idx in range(1, 15):
-                    c_cell = ws.cell(r_line, col_idx)
-                    c_cell.border = thin_border
-                    if col_idx in (1, 2, 8, 14):
-                        c_cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-                    elif col_idx in (3, 4, 5):
-                        c_cell.alignment = Alignment(horizontal='left', vertical='center')
-                    elif col_idx in (6, 7):
-                        c_cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-                    elif col_idx in range(9, 14):
-                        c_cell.alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
-                    if col_idx == 2:
-                        c_cell.fill = gray_fill
-
-            # Fila separadora vacía
-            sep_r = curr_r + h
-            ws.merge_cells(start_row=sep_r, start_column=3, end_row=sep_r, end_column=5)
-            ws.merge_cells(start_row=sep_r, start_column=6, end_row=sep_r, end_column=7)
-            ws.merge_cells(start_row=sep_r, start_column=9, end_row=sep_r, end_column=13)
-            for col_idx in range(1, 15):
-                c_cell = ws.cell(sep_r, col_idx)
-                c_cell.border = thin_border
-                if col_idx == 2:
-                    c_cell.fill = gray_fill
-
-            curr_r += h + 1
-
-        # 6. Pie de Página Correlativo
-        obs_row = 22 + total_sample_rows
-        resp_row = obs_row + 2
+        # 6. Pie de Página en la posición original (o desplazado si hubo >2 muestras)
+        footer_offset = max(0, n_muestras - 2) * 10
+        obs_row = 42 + footer_offset
+        resp_row = 44 + footer_offset
 
         ws[f'C{obs_row}'] = recepcion.observaciones or ""
         ws[f'C{resp_row}'] = recepcion.entregado_por or recepcion.persona_contacto or ""
