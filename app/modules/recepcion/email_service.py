@@ -132,11 +132,28 @@ class RecepcionEmailService:
 
         paragraphs_html = "".join(formatted_paragraphs)
         
+        # Calcular dimensiones proporcionales basadas en la altura estándar de firma (124px / 1.29in)
+        sig_width = 545
+        sig_height = 124
+        if has_signature_img and sig_img_bytes:
+            try:
+                from PIL import Image
+                import io
+                with Image.open(io.BytesIO(sig_img_bytes)) as im:
+                    orig_w, orig_h = im.size
+                    if orig_h > 0:
+                        sig_height = 124
+                        sig_width = int(round(orig_w * (sig_height / orig_h)))
+            except Exception as e:
+                logger.warning(f"No se pudieron calcular las dimensiones de la firma: {e}")
+                sig_width = 545
+                sig_height = 124
+
         if has_signature_img:
-            # Firma gráfica oficial (banner corporativo completo con datos y firma)
+            # Firma gráfica oficial (banner corporativo con dimensiones estándar compatibles con Outlook y Webmail)
             signature_visual_html = f"""
 <div style="margin-top: 20px;">
-  <img src="cid:geofal_signature_img" alt="{cargo_title} - GEOFAL S.A.C." style="width: 100%; max-width: 550px; height: auto; display: block; border: none;" />
+  <img src="cid:geofal_signature_img" width="{sig_width}" height="{sig_height}" alt="{cargo_title} - GEOFAL S.A.C." style="width: {sig_width}px; max-width: 100%; height: {sig_height}px; display: block; border: none;" />
 </div>"""
         else:
             # Sin imagen de firma: no se crea ninguna firma ficticia
