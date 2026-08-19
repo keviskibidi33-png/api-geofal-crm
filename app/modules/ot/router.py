@@ -432,11 +432,20 @@ def prefill_ot_from_recepcion(
         for m in muestras:
             ensayos = m.ensayos_lista
             cod_m = m.codigo_muestra_lem or m.identificacion_muestra or m.codigo_muestra or ""
+            ident = m.identificacion_muestra or ""
+            proc = m.procedencia or ""
+            cant = m.cantera or ""
+            cant_kg = str(m.cantidad or "") if m.cantidad is not None else ""
+
             if ensayos and isinstance(ensayos, list):
                 for e in ensayos:
                     items_ot.append({
                         "item": item_counter,
                         "codigo_muestra": cod_m,
+                        "identificacion": ident,
+                        "procedencia": proc,
+                        "cantera": cant,
+                        "cantidad_kg": cant_kg,
                         "codigo_ensayo": e.get("codigo") or m.codigo_ensayo or "",
                         "descripcion": e.get("descripcion") or m.ensayos_requeridos or "",
                         "norma": e.get("norma") or m.norma_requerida or "",
@@ -447,6 +456,10 @@ def prefill_ot_from_recepcion(
                 items_ot.append({
                     "item": item_counter,
                     "codigo_muestra": cod_m,
+                    "identificacion": ident,
+                    "procedencia": proc,
+                    "cantera": cant,
+                    "cantidad_kg": cant_kg,
                     "codigo_ensayo": m.codigo_ensayo or "",
                     "descripcion": m.ensayos_requeridos or m.descripcion_muestra or "",
                     "norma": m.norma_requerida or "",
