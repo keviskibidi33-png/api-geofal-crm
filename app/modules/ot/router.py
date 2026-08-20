@@ -68,20 +68,51 @@ def list_ordenes_trabajo(
 
     all_candidates = query.order_by(desc(OrdenTrabajo.created_at), desc(OrdenTrabajo.id)).all()
 
-    # Filtrar en memoria por tipo si se especifica
+    # Filtrar por tipo si se especifica (CONCRETO vs MUESTRAS)
     if tipo and tipo.strip() and tipo.upper() != "ALL":
         target_tipo = tipo.strip().upper()
+        from app.modules.recepcion.models import RecepcionMuestra
+
+        # Pre-cargar tipos de recepción en memoria para no hacer queries N+1
+        rec_nums = [ot.numero_recepcion.strip() for ot in all_candidates if ot.numero_recepcion and ot.numero_recepcion.strip()]
+        rec_type_map = {}
+        if rec_nums:
+            recs = db.query(RecepcionMuestra.numero_recepcion, RecepcionMuestra.tipo_recepcion).filter(
+                RecepcionMuestra.numero_recepcion.in_(rec_nums)
+            ).all()
+            for r_num, r_tipo in recs:
+                if r_num and r_tipo:
+                    rec_type_map[r_num.strip()] = r_tipo.strip().upper()
+
         filtered = []
         for ot in all_candidates:
             is_conc = False
-            if ot.items and isinstance(ot.items, list):
-                for it in ot.items:
-                    if isinstance(it, dict):
-                        cod = str(it.get("codigo_muestra", "")).upper()
-                        desc_text = str(it.get("descripcion", "")).upper()
-                        if "CO" in cod or "PROBETA" in desc_text or "COMPRESION" in desc_text or it.get("fc_kg_cm2"):
+            rec_num_clean = ot.numero_recepcion.strip() if ot.numero_recepcion else None
+            r_tipo = rec_type_map.get(rec_num_clean) if rec_num_clean else None
+
+            if r_tipo:
+                is_conc = (r_tipo == "CONCRETO")
+            else:
+                # Análisis de items si no se determinó por recepción
+                if ot.items and isinstance(ot.items, list) and len(ot.items) > 0:
+                    has_ensayo_code = any(
+                        isinstance(it, dict) and it.get("codigo_ensayo") and str(it.get("codigo_ensayo")).strip() not in ("", "-")
+                        for it in ot.items
+                    )
+                    if has_ensayo_code:
+                        is_conc = False
+                    else:
+                        has_probeta_fields = any(
+                            isinstance(it, dict) and (it.get("fc_kg_cm2") or it.get("edad") or (it.get("elemento") and str(it.get("elemento")).strip() not in ("", "-")))
+                            for it in ot.items
+                        )
+                        has_compresion_desc = any(
+                            isinstance(it, dict) and "COMPRESION" in str(it.get("descripcion", "")).upper()
+                            for it in ot.items
+                        )
+                        if has_probeta_fields or has_compresion_desc:
                             is_conc = True
-                            break
+
             if target_tipo == "CONCRETO" and is_conc:
                 filtered.append(ot)
             elif target_tipo == "MUESTRAS" and not is_conc:
