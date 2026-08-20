@@ -65,6 +65,13 @@ def test_generar_excel_suelo_agregado_fidelity():
     assert excel_bytes is not None
     assert len(excel_bytes) > 5000
 
+    # Verificar preservación 100% intacta de imágenes y dibujos
+    import zipfile
+    with zipfile.ZipFile(io.BytesIO(excel_bytes), 'r') as z_out:
+        namelist = z_out.namelist()
+        assert any('media' in name for name in namelist), "Falta el directorio media (logotipos/imagenes)"
+        assert any('drawing' in name for name in namelist), "Falta el directorio drawings"
+
     wb = openpyxl.load_workbook(io.BytesIO(excel_bytes), data_only=True)
     ws = wb['RECEP. SU-AG']
 

@@ -259,46 +259,27 @@ class ExcelLogic:
         """
         Generador especializado de alta fidelidad para la plantilla F-LEM-P-01.13 V01 (Suelo y Agregado).
         Maneja estructura por bloques de muestra (Muestra, Procedencia, Cantera, Cantidad) y lista de ensayos con normas.
+        Preserva 100% de imágenes, logotipos y dibujos del template ZIP original mediante transform_template_sheet.
         """
-        import openpyxl
+        from app.modules.common.excel_xml import (
+            transform_template_sheet,
+            NS_SHEET,
+            build_merge_anchor_map,
+            set_cell,
+            parse_cell_ref,
+        )
         import json
         import copy
 
-        wb = openpyxl.load_workbook(template_path)
-        sheet_name = 'RECEP. SU-AG' if 'RECEP. SU-AG' in wb.sheetnames else wb.sheetnames[0]
-        ws = wb[sheet_name]
+        sheet_name = 'RECEP. SU-AG'
+        template_filename = "Recepciones/F-LEM-P-01.13 V01 RECEP. SU Y AG.XLSX"
 
         def format_dt(dt):
             if not dt:
                 return ""
             normalized = normalize_date_ymd(dt)
-            return normalized or str(dt)
+            return (normalized or str(dt)).replace("-", "/")
 
-        # 1. Cabecera y Configuración
-        ws['D6'] = recepcion.numero_recepcion or ""
-        ws['I6'] = format_dt(recepcion.fecha_recepcion)
-        ws['D7'] = recepcion.numero_cotizacion or ""
-        ws['I7'] = format_dt(recepcion.fecha_estimada_culminacion)
-
-        em_dig = bool(getattr(recepcion, 'emision_digital', False))
-        em_fis = bool(getattr(recepcion, 'emision_fisica', False))
-        ws['M6'] = 'X' if em_dig else ''
-        ws['M7'] = 'X' if em_fis else ''
-
-        # 2. Datos de Facturación y Solicitante
-        ws['D10'] = recepcion.cliente or ""
-        ws['D11'] = recepcion.domicilio_legal or ""
-        ws['D12'] = recepcion.ruc or ""
-        ws['D13'] = recepcion.persona_contacto or ""
-        ws['D14'] = recepcion.email or ""
-        ws['K14'] = recepcion.telefono or ""
-
-        ws['D16'] = recepcion.solicitante or ""
-        ws['D17'] = getattr(recepcion, 'domicilio_solicitante', '') or recepcion.domicilio_legal or ""
-        ws['D18'] = recepcion.proyecto or ""
-        ws['D19'] = recepcion.ubicacion or ""
-
-        # 3. Helper para extraer ensayos de cada muestra
         def _extract_sample_assays(m):
             assays = []
             if getattr(m, 'ensayos_json', None):
@@ -329,8 +310,6 @@ class ExcelLogic:
             return assays
 
         muestras = recepcion.muestras or []
-
-        # 4. Layout correlativo por muestra (height = max(4, len(ensayos)))
         samples_layout = []
         for m in muestras:
             assays = _extract_sample_assays(m)
@@ -338,93 +317,150 @@ class ExcelLogic:
             samples_layout.append({'m': m, 'assays': assays, 'height': h})
 
         total_sample_rows = sum(s['height'] + 1 for s in samples_layout)
-
-        # Si se requieren más de las 20 filas predefinidas (22..41), insertar filas adicionales antes del footer
         extra_rows = max(0, total_sample_rows - 20)
-        if extra_rows > 0:
-            all_ranges = list(ws.merged_cells.ranges)
-            for mr in all_ranges:
-                if mr.min_row >= 42:
-                    ws.merged_cells.remove(mr)
-                    new_range = openpyxl.worksheet.cell_range.CellRange(
-                        min_col=mr.min_col,
-                        min_row=mr.min_row + extra_rows,
-                        max_col=mr.max_col,
-                        max_row=mr.max_row + extra_rows
-                    )
-                    ws.merged_cells.add(new_range)
 
-            ws.insert_rows(42, amount=extra_rows)
-            for r_add in range(42, 42 + extra_rows):
-                ws.row_dimensions[r_add].height = 20.4
-                for c in range(1, 15):
-                    src_cell = ws.cell(41, c)
-                    tgt_cell = ws.cell(r_add, c)
-                    if src_cell.has_style:
-                        tgt_cell._style = copy.copy(src_cell._style)
-                ws.merge_cells(start_row=r_add, start_column=3, end_row=r_add, end_column=5)
-                ws.merge_cells(start_row=r_add, start_column=6, end_row=r_add, end_column=7)
-                ws.merge_cells(start_row=r_add, start_column=9, end_row=r_add, end_column=13)
+        def _transform(sheet_xml: bytes) -> bytes:
+            root = etree.fromstring(sheet_xml)
+            sheet_data = root.find(f".//{{{NS_SHEET}}}sheetData")
+            merge_cells = root.find(f".//{{{NS_SHEET}}}mergeCells")
 
-        # 5. Limpiar valores predefinidos en la zona de muestras (22 .. 41 + extra_rows)
-        max_sample_row = 41 + extra_rows
-        for r in range(22, max_sample_row + 1):
-            ws[f'A{r}'] = None
-            ws[f'B{r}'] = None
-            ws[f'C{r}'] = None
-            ws[f'F{r}'] = None
-            ws[f'H{r}'] = None
-            ws[f'I{r}'] = None
-            ws[f'N{r}'] = None
+            # Si se requieren filas adicionales, expandir filas y ajustar mergeCells
+            if extra_rows > 0:
+                # 1. Desplazar rows existentes desde row 42 hacia abajo
+                for row in sheet_data.findall(f"{{{NS_SHEET}}}row"):
+                    r_num = int(row.get("r", "0"))
+                    if r_num >= 42:
+                        new_r = r_num + extra_rows
+                        row.set("r", str(new_r))
+                        for cell in row.findall(f"{{{NS_SHEET}}}c"):
+                            ref = cell.get("r", "")
+                            col = "".join(c for c in ref if c.isalpha())
+                            cell.set("r", f"{col}{new_r}")
 
-        # 6. Inyección correlativa con exactamente 1 fila en blanco de separación por muestra
-        curr_r = 22
-        for s_idx, s in enumerate(samples_layout):
-            m = s['m']
-            assays = s['assays']
-            h = s['height']
+                # 2. Clonar row 41 como base para las filas insertadas 42..(42+extra_rows-1)
+                template_row_41 = None
+                for row in sheet_data.findall(f"{{{NS_SHEET}}}row"):
+                    if row.get("r") == "41":
+                        template_row_41 = row
+                        break
 
-            # Metadata
-            ws[f'A{curr_r}'] = s_idx + 1
-            ws[f'B{curr_r}'] = getattr(m, 'codigo_muestra_lem', '') or getattr(m, 'codigo_muestra', '') or ''
-            ws[f'C{curr_r}'] = 'MUESTRA:'
-            ws[f'F{curr_r}'] = getattr(m, 'identificacion_muestra', '') or '-'
-            ws[f'C{curr_r + 1}'] = 'PROCEDENCIA:'
-            ws[f'F{curr_r + 1}'] = getattr(m, 'procedencia', '') or '-'
-            ws[f'C{curr_r + 2}'] = 'CANTERA:'
-            ws[f'F{curr_r + 2}'] = getattr(m, 'cantera', '') or '-'
-            ws[f'C{curr_r + 3}'] = 'CANTIDAD (KG):'
-            ws[f'F{curr_r + 3}'] = getattr(m, 'cantidad', '') or '-'
+                if template_row_41 is not None:
+                    for idx in range(extra_rows):
+                        new_r_num = 42 + idx
+                        new_row = copy.deepcopy(template_row_41)
+                        new_row.set("r", str(new_r_num))
+                        for cell in new_row.findall(f"{{{NS_SHEET}}}c"):
+                            ref = cell.get("r", "")
+                            col = "".join(c for c in ref if c.isalpha())
+                            cell.set("r", f"{col}{new_r_num}")
+                            for child in list(cell):
+                                cell.remove(child)
+                            if "t" in cell.attrib:
+                                del cell.attrib["t"]
 
-            # Ensayos, Normas y Ajuste de Texto (Wrap Text en F:G, I:M, N)
-            from openpyxl.styles import Alignment
-            for off in range(h):
-                r_line = curr_r + off
-                if off < len(assays):
-                    e = assays[off]
-                    ws[f'H{r_line}'] = e.get('codigo', '')
-                    ws[f'I{r_line}'] = e.get('descripcion', '')
-                    ws[f'N{r_line}'] = e.get('norma', '')
+                        # Insertar ordenado
+                        insert_idx = None
+                        for i, r in enumerate(sheet_data.findall(f"{{{NS_SHEET}}}row")):
+                            if int(r.get("r", "0")) > new_r_num:
+                                insert_idx = list(sheet_data).index(r)
+                                break
+                        if insert_idx is not None:
+                            sheet_data.insert(insert_idx, new_row)
+                        else:
+                            sheet_data.append(new_row)
 
-                # Ajustar texto en F:G (Metadata), I:M (Descripción) y N (Norma)
-                ws[f'F{r_line}'].alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-                ws[f'I{r_line}'].alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
-                ws[f'N{r_line}'].alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                # 3. Desplazar y añadir mergeCells
+                if merge_cells is not None:
+                    for mc in merge_cells.findall(f"{{{NS_SHEET}}}mergeCell"):
+                        ref = mc.get("ref", "")
+                        if ":" in ref:
+                            p1, p2 = ref.split(":", 1)
+                            c1, r1 = parse_cell_ref(p1)
+                            c2, r2 = parse_cell_ref(p2)
+                            if r1 >= 42:
+                                mc.set("ref", f"{c1}{r1 + extra_rows}:{c2}{r2 + extra_rows}")
 
-            # Siguiente muestra empieza tras 1 fila de separación
-            curr_r += h + 1
+                    # Añadir merges estándar para las filas añadidas (C:E, F:G, I:M)
+                    for idx in range(extra_rows):
+                        r_add = 42 + idx
+                        for m_col in [f"C{r_add}:E{r_add}", f"F{r_add}:G{r_add}", f"I{r_add}:M{r_add}"]:
+                            new_mc = etree.SubElement(merge_cells, f"{{{NS_SHEET}}}mergeCell")
+                            new_mc.set("ref", m_col)
+                    merge_cells.set("count", str(len(merge_cells)))
 
-        # 7. Pie de Página intacto (o desplazado solo si se requirieron extra_rows)
-        obs_row = 42 + extra_rows
-        resp_row = 44 + extra_rows
+            merge_map = build_merge_anchor_map(root)
 
-        ws[f'C{obs_row}'] = recepcion.observaciones or ""
-        ws[f'C{resp_row}'] = recepcion.entregado_por or recepcion.persona_contacto or ""
-        ws[f'K{resp_row}'] = (recepcion.recibido_por or "BETZABETH SARAVIA").upper()
+            # 1. Cabecera y Configuración
+            set_cell(sheet_data, "D6", recepcion.numero_recepcion or "", merge_anchor_map=merge_map)
+            set_cell(sheet_data, "I6", format_dt(recepcion.fecha_recepcion), merge_anchor_map=merge_map)
+            set_cell(sheet_data, "D7", recepcion.numero_cotizacion or "", merge_anchor_map=merge_map)
+            set_cell(sheet_data, "I7", format_dt(recepcion.fecha_estimada_culminacion), merge_anchor_map=merge_map)
 
-        out_mem = io.BytesIO()
-        wb.save(out_mem)
-        return out_mem.getvalue()
+            em_dig = bool(getattr(recepcion, 'emision_digital', False))
+            em_fis = bool(getattr(recepcion, 'emision_fisica', False))
+            set_cell(sheet_data, "M6", "X" if em_dig else "", merge_anchor_map=merge_map)
+            set_cell(sheet_data, "M7", "X" if em_fis else "", merge_anchor_map=merge_map)
+
+            # 2. Datos de Facturación y Solicitante
+            set_cell(sheet_data, "D10", recepcion.cliente or "", merge_anchor_map=merge_map)
+            set_cell(sheet_data, "D11", recepcion.domicilio_legal or "", merge_anchor_map=merge_map)
+            set_cell(sheet_data, "D12", recepcion.ruc or "", merge_anchor_map=merge_map)
+            set_cell(sheet_data, "D13", recepcion.persona_contacto or "", merge_anchor_map=merge_map)
+            set_cell(sheet_data, "D14", recepcion.email or "", merge_anchor_map=merge_map)
+            set_cell(sheet_data, "K14", recepcion.telefono or "", merge_anchor_map=merge_map)
+
+            set_cell(sheet_data, "D16", recepcion.solicitante or "", merge_anchor_map=merge_map)
+            set_cell(sheet_data, "D17", getattr(recepcion, 'domicilio_solicitante', '') or recepcion.domicilio_legal or "", merge_anchor_map=merge_map)
+            set_cell(sheet_data, "D18", recepcion.proyecto or "", merge_anchor_map=merge_map)
+            set_cell(sheet_data, "D19", recepcion.ubicacion or "", merge_anchor_map=merge_map)
+
+            # Limpiar zona de muestras
+            max_sample_row = 41 + extra_rows
+            for r in range(22, max_sample_row + 1):
+                for col in ["A", "B", "C", "F", "H", "I", "N"]:
+                    set_cell(sheet_data, f"{col}{r}", "", merge_anchor_map=merge_map)
+
+            # Inyección de muestras
+            curr_r = 22
+            for s_idx, s in enumerate(samples_layout):
+                m = s['m']
+                assays = s['assays']
+                h = s['height']
+
+                # Metadata
+                set_cell(sheet_data, f"A{curr_r}", s_idx + 1, is_number=True, merge_anchor_map=merge_map)
+                set_cell(sheet_data, f"B{curr_r}", getattr(m, 'codigo_muestra_lem', '') or getattr(m, 'codigo_muestra', '') or '', merge_anchor_map=merge_map)
+                set_cell(sheet_data, f"C{curr_r}", "MUESTRA:", merge_anchor_map=merge_map)
+                set_cell(sheet_data, f"F{curr_r}", getattr(m, 'identificacion_muestra', '') or '-', merge_anchor_map=merge_map)
+                set_cell(sheet_data, f"C{curr_r + 1}", "PROCEDENCIA:", merge_anchor_map=merge_map)
+                set_cell(sheet_data, f"F{curr_r + 1}", getattr(m, 'procedencia', '') or '-', merge_anchor_map=merge_map)
+                set_cell(sheet_data, f"C{curr_r + 2}", "CANTERA:", merge_anchor_map=merge_map)
+                set_cell(sheet_data, f"F{curr_r + 2}", getattr(m, 'cantera', '') or '-', merge_anchor_map=merge_map)
+                set_cell(sheet_data, f"C{curr_r + 3}", "CANTIDAD (KG):", merge_anchor_map=merge_map)
+                set_cell(sheet_data, f"F{curr_r + 3}", getattr(m, 'cantidad', '') or '-', merge_anchor_map=merge_map)
+
+                for off in range(h):
+                    r_line = curr_r + off
+                    if off < len(assays):
+                        e = assays[off]
+                        set_cell(sheet_data, f"H{r_line}", e.get('codigo', ''), merge_anchor_map=merge_map)
+                        set_cell(sheet_data, f"I{r_line}", e.get('descripcion', ''), merge_anchor_map=merge_map)
+                        set_cell(sheet_data, f"N{r_line}", e.get('norma', ''), merge_anchor_map=merge_map)
+
+                curr_r += h + 1
+
+            # Pie de página
+            obs_row = 42 + extra_rows
+            resp_row = 44 + extra_rows
+
+            set_cell(sheet_data, f"C{obs_row}", recepcion.observaciones or "", merge_anchor_map=merge_map)
+            set_cell(sheet_data, f"C{resp_row}", recepcion.entregado_por or recepcion.persona_contacto or "", merge_anchor_map=merge_map)
+            set_cell(sheet_data, f"K{resp_row}", (recepcion.recibido_por or "BETZABETH SARAVIA").upper(), merge_anchor_map=merge_map)
+
+            return etree.tostring(root, xml_declaration=True, encoding="UTF-8")
+
+        excel_bytes = transform_template_sheet(template_filename, sheet_name, _transform)
+        return excel_bytes
 
     def generar_excel_recepcion(self, recepcion: RecepcionMuestra) -> bytes:
         from app.modules.common.excel_xml import find_template_path
