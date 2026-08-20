@@ -461,6 +461,13 @@ def prefill_ot_from_recepcion(
             detail=f"No se encontró la recepción '{numero_recepcion}'. Verifica el número e intenta de nuevo."
         )
 
+    # Sincronizar fechas y cotización desde Control Laboratorio
+    try:
+        from app.modules.recepcion.service import RecepcionService
+        RecepcionService()._sync_from_control_laboratorio(recepcion, db)
+    except Exception:
+        pass
+
     # Cargar probetas/muestras asociadas
     muestras = (
         db.query(MuestraConcreto)

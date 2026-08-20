@@ -547,8 +547,8 @@ class RecepcionService:
             ot_emitida = ot_match["is_emitida"] if ot_match else False
             ot_missing = ot_match["missing"] if ot_match else ["OT Concreto no ha sido creada para esta recepción"]
 
-            # Auto-sync silencioso de cotización si la recepción no la tiene registrada
-            self._sync_missing_cotizacion(row, db)
+            # Auto-sync en tiempo real de cotización y fechas desde Control Laboratorio
+            self._sync_from_control_laboratorio(row, db)
 
             items.append({
                 "id": row.id,
@@ -585,33 +585,44 @@ class RecepcionService:
             "total_pages": total_pages,
         }
 
-    def _sync_missing_cotizacion(self, recepcion: RecepcionMuestra, db: Session) -> bool:
+    def _sync_from_control_laboratorio(self, recepcion: RecepcionMuestra, db: Session) -> bool:
         """
-        Si la recepción no tiene número de cotización registrado (o es None/vacío/-),
-        busca en Control Laboratorio (programacion_lab) por el numero_recepcion.
-        Si existe cotizacion_lab, la extrae, formatea y actualiza automáticamente.
+        Sincroniza en tiempo real los datos actualizados desde Control Laboratorio (programacion_lab):
+        - Cotización (cotizacion_lab -> numero_cotizacion)
+        - Fecha de Recepción/Inicio (fecha_inicio / fecha_recepcion -> recepcion.fecha_recepcion)
+        - Fecha de Culminación (fecha_entrega_estimada -> recepcion.fecha_estimada_culminacion)
+        - Propaga también a la OrdenTrabajo asociada si existe.
         """
-        if recepcion.numero_cotizacion and str(recepcion.numero_cotizacion).strip() not in ("", "-", "None"):
-            return False
-        if not recepcion.numero_recepcion:
+        if not recepcion or not recepcion.numero_recepcion:
             return False
 
         import re
         from sqlalchemy import text
+        from app.modules.ot.router import _to_iso_date
+        from app.modules.ot.models import OrdenTrabajo
 
         clean_num = str(recepcion.numero_recepcion).strip().upper()
         match = re.search(r"(\d+)", clean_num)
         digits_base = match.group(1) if match else clean_num
         with_year = f"{digits_base}-26" if digits_base else clean_num
 
+        clean_ot = str(recepcion.numero_ot or "").strip().upper()
+        ot_match = re.search(r"(\d+)", clean_ot)
+        ot_digits = ot_match.group(1) if ot_match else clean_ot
+
+        modified = False
+
         try:
             sql = text("""
-                SELECT cotizacion_lab
+                SELECT cotizacion_lab, fecha_recepcion, fecha_inicio, fecha_entrega_estimada
                 FROM programacion_lab
                 WHERE UPPER(TRIM(COALESCE(recep_numero, ''))) = :q
                    OR UPPER(TRIM(COALESCE(recep_numero, ''))) = :base
                    OR UPPER(TRIM(COALESCE(recep_numero, ''))) = :with_year
                    OR UPPER(TRIM(COALESCE(recep_numero, ''))) LIKE :pattern
+                   OR UPPER(TRIM(COALESCE(ot, ''))) = :q
+                   OR UPPER(TRIM(COALESCE(ot, ''))) = :base
+                   OR (:ot_digits != '' AND UPPER(TRIM(COALESCE(ot, ''))) = :ot_digits)
                 ORDER BY id DESC
                 LIMIT 1
             """)
@@ -619,37 +630,73 @@ class RecepcionService:
                 "q": clean_num,
                 "base": digits_base,
                 "with_year": with_year,
-                "pattern": f"%{digits_base}%" if digits_base else clean_num
+                "pattern": f"%{digits_base}%" if digits_base else clean_num,
+                "ot_digits": ot_digits,
             }).fetchone()
-            if res and res[0]:
-                coti_raw = str(res[0]).strip()
-                if coti_raw and coti_raw != "-":
-                    coti_match = re.search(r"(\d+)(?:-(\d{2}))?", coti_raw)
-                    if coti_match:
-                        coti_num = coti_match.group(1)
-                        coti_yr = coti_match.group(2) or "26"
-                        cot_formatted = f"{coti_num}-{coti_yr}"
+
+            if res:
+                coti_raw = str(res[0]).strip() if res[0] else ""
+                f_rec_raw = res[1] or res[2]
+                f_fin_raw = res[3]
+
+                # 1. Sincronizar Cotización si faltaba o cambió
+                if coti_raw and coti_raw != "-" and (not recepcion.numero_cotizacion or recepcion.numero_cotizacion.strip() in ("", "-")):
+                    c_match = re.search(r"(\d+)(?:-(\d{2}))?", coti_raw)
+                    if c_match:
+                        c_num = c_match.group(1)
+                        c_yr = c_match.group(2) or "26"
+                        recepcion.numero_cotizacion = f"{c_num}-{c_yr}"
                     else:
-                        cot_formatted = coti_raw
-                    recepcion.numero_cotizacion = cot_formatted
+                        recepcion.numero_cotizacion = coti_raw
+                    modified = True
+
+                # 2. Sincronizar Fecha de Recepción / Inicio
+                if f_rec_raw:
+                    f_rec_iso = _to_iso_date(f_rec_raw)
+                    if f_rec_iso and recepcion.fecha_recepcion != f_rec_iso:
+                        recepcion.fecha_recepcion = f_rec_iso
+                        modified = True
+
+                # 3. Sincronizar Fecha Estimada de Culminación
+                if f_fin_raw:
+                    f_fin_iso = _to_iso_date(f_fin_raw)
+                    if f_fin_iso and recepcion.fecha_estimada_culminacion != f_fin_iso:
+                        recepcion.fecha_estimada_culminacion = f_fin_iso
+                        modified = True
+
+                # 4. Sincronizar a OrdenTrabajo vinculada
+                if modified:
+                    ots = db.query(OrdenTrabajo).filter(
+                        (OrdenTrabajo.numero_recepcion == recepcion.numero_recepcion) |
+                        (OrdenTrabajo.numero_ot == recepcion.numero_ot)
+                    ).all()
+                    for ot in ots:
+                        if recepcion.fecha_recepcion and ot.fecha_recepcion != recepcion.fecha_recepcion:
+                            ot.fecha_recepcion = recepcion.fecha_recepcion
+                        if recepcion.fecha_recepcion and ot.inicio_programado != recepcion.fecha_recepcion:
+                            ot.inicio_programado = recepcion.fecha_recepcion
+                        if recepcion.fecha_estimada_culminacion and ot.fin_programado != recepcion.fecha_estimada_culminacion:
+                            ot.fin_programado = recepcion.fecha_estimada_culminacion
+
+                if modified:
                     db.commit()
                     return True
         except Exception as e:
-            logger.warning(f"Error auto-syncing cotizacion for recepcion {recepcion.id}: {e}")
+            logger.warning(f"Error auto-syncing from control laboratorio for recepcion {recepcion.id}: {e}")
         return False
 
     def obtener_recepcion(self, db: Session, recepcion_id: int) -> Optional[RecepcionMuestra]:
-        """Obtener recepción por ID con auto-sincronización de cotización si faltaba"""
+        """Obtener recepción por ID con auto-sincronización desde Control Laboratorio"""
         recepcion = db.query(RecepcionMuestra).filter(RecepcionMuestra.id == recepcion_id).first()
         if recepcion:
-            self._sync_missing_cotizacion(recepcion, db)
+            self._sync_from_control_laboratorio(recepcion, db)
         return recepcion
     
     def obtener_por_numero(self, db: Session, numero: str) -> Optional[RecepcionMuestra]:
-        """Obtener recepción por número de recepción con auto-sincronización de cotización si faltaba"""
+        """Obtener recepción por número de recepción con auto-sincronización desde Control Laboratorio"""
         recepcion = db.query(RecepcionMuestra).filter(RecepcionMuestra.numero_recepcion == numero).first()
         if recepcion:
-            self._sync_missing_cotizacion(recepcion, db)
+            self._sync_from_control_laboratorio(recepcion, db)
         return recepcion
     
     def actualizar_recepcion(self, db: Session, recepcion_id: int, recepcion_data: dict) -> Optional[RecepcionMuestra]:
