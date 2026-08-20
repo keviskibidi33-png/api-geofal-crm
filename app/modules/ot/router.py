@@ -291,11 +291,18 @@ def _enrich_ot_data(ot: OrdenTrabajo, db: Session):
                     it["densidad"] = dens_val
                     modified = True
                     
-                if it.get("edad") != m.edad:
-                    it["edad"] = m.edad
+                try:
+                    edad_val = int(float(str(m.edad).strip())) if m.edad is not None and str(m.edad).strip() not in ("", "-", "None") else None
+                except Exception:
+                    edad_val = None
+                if it.get("edad") != edad_val:
+                    it["edad"] = edad_val
                     modified = True
                     
-                fc_val = int(m.fc_kg_cm2) if m.fc_kg_cm2 is not None else None
+                try:
+                    fc_val = int(float(str(m.fc_kg_cm2).strip())) if m.fc_kg_cm2 is not None and str(m.fc_kg_cm2).strip() not in ("", "-", "None") else None
+                except Exception:
+                    fc_val = None
                 if it.get("fc_kg_cm2") != fc_val:
                     it["fc_kg_cm2"] = fc_val
                     modified = True

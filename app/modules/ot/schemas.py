@@ -15,6 +15,16 @@ class OTItemSchema(BaseModel):
     densidad: Optional[str] = "-"
     edad: Optional[Any] = None
     fc_kg_cm2: Optional[Any] = None
+    # Metadatos para Muestras / Suelos / Agregados
+    identificacion: Optional[str] = None
+    procedencia: Optional[str] = None
+    cantera: Optional[str] = None
+    cantidad_kg: Optional[Any] = None
+    codigo_ensayo: Optional[str] = None
+    norma: Optional[str] = None
+    ensayos: Optional[List[Any]] = None
+
+    model_config = ConfigDict(extra="allow")
 
 
 class OTCreateSchema(BaseModel):
@@ -24,19 +34,21 @@ class OTCreateSchema(BaseModel):
     cliente: Optional[str] = None
     proyecto: Optional[str] = None
     fecha_recepcion: Optional[str] = None
-    plazo_entrega_dias: Optional[str] = None
+    plazo_entrega_dias: Optional[Any] = None
     inicio_programado: Optional[str] = None
     fin_programado: Optional[str] = None
     inicio_real: Optional[str] = None
     fin_real: Optional[str] = None
     variacion_inicio: Optional[str] = None
     variacion_fin: Optional[str] = None
-    duracion_real_ejecucion_dias: Optional[str] = None
+    duracion_real_ejecucion_dias: Optional[Any] = None
     observaciones: Optional[str] = None
     ot_aperturada_por: Optional[str] = None
     ot_designada_a: Optional[str] = None
     items: List[OTItemSchema] = []
     estado: Optional[str] = "PENDIENTE"
+
+    model_config = ConfigDict(extra="allow")
 
 
 class OTUpdateSchema(BaseModel):
@@ -46,19 +58,21 @@ class OTUpdateSchema(BaseModel):
     cliente: Optional[str] = None
     proyecto: Optional[str] = None
     fecha_recepcion: Optional[str] = None
-    plazo_entrega_dias: Optional[str] = None
+    plazo_entrega_dias: Optional[Any] = None
     inicio_programado: Optional[str] = None
     fin_programado: Optional[str] = None
     inicio_real: Optional[str] = None
     fin_real: Optional[str] = None
     variacion_inicio: Optional[str] = None
     variacion_fin: Optional[str] = None
-    duracion_real_ejecucion_dias: Optional[str] = None
+    duracion_real_ejecucion_dias: Optional[Any] = None
     observaciones: Optional[str] = None
     ot_aperturada_por: Optional[str] = None
     ot_designada_a: Optional[str] = None
     items: Optional[List[OTItemSchema]] = None
     estado: Optional[str] = None
+
+    model_config = ConfigDict(extra="allow")
 
 
 class OTOutSchema(BaseModel):
@@ -69,14 +83,14 @@ class OTOutSchema(BaseModel):
     cliente: Optional[str] = None
     proyecto: Optional[str] = None
     fecha_recepcion: Optional[str] = None
-    plazo_entrega_dias: Optional[str] = None
+    plazo_entrega_dias: Optional[Any] = None
     inicio_programado: Optional[str] = None
     fin_programado: Optional[str] = None
     inicio_real: Optional[str] = None
     fin_real: Optional[str] = None
     variacion_inicio: Optional[str] = None
     variacion_fin: Optional[str] = None
-    duracion_real_ejecucion_dias: Optional[str] = None
+    duracion_real_ejecucion_dias: Optional[Any] = None
     observaciones: Optional[str] = None
     ot_aperturada_por: Optional[str] = None
     ot_designada_a: Optional[str] = None
@@ -87,7 +101,7 @@ class OTOutSchema(BaseModel):
     creado_por: Optional[str] = None
     actualizado_por: Optional[str] = None
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(extra="allow", from_attributes=True)
 
 
 class OTListResponseSchema(BaseModel):
