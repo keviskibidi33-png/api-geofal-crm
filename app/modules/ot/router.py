@@ -518,7 +518,29 @@ def prefill_ot_from_recepcion(
     tecnico_verif = (verif.verificado_por if verif and verif.verificado_por else None) or recepcion.designada_a or ""
     aperturada = recepcion.aperturada_por or "BETZABETH SARAVIA"
 
+    # Resolver N° OT vinculado
+    ot_val = (recepcion.numero_ot or "").strip()
+    if ot_val and not ot_val.upper().startswith("OT") and "-" not in ot_val and ot_val.isdigit():
+        ot_val = f"{ot_val}-26"
+
+    if not ot_val:
+        from sqlalchemy import text
+        try:
+            row_lab = db.execute(
+                text("SELECT ot FROM programacion_lab WHERE UPPER(TRIM(recep_numero)) LIKE :q ORDER BY id DESC LIMIT 1"),
+                {"q": f"%{clean_num}%"}
+            ).fetchone()
+            if row_lab and row_lab[0]:
+                raw_ot = str(row_lab[0]).strip()
+                if raw_ot and not "-" in raw_ot and raw_ot.isdigit():
+                    ot_val = f"{raw_ot}-26"
+                else:
+                    ot_val = raw_ot
+        except Exception:
+            pass
+
     return {
+        "numero_ot": ot_val or "",
         "numero_recepcion": recepcion.numero_recepcion,
         "cliente": recepcion.cliente or "",
         "proyecto": recepcion.proyecto or "",
