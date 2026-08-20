@@ -243,14 +243,14 @@ class TestControlProbetasRouter(unittest.TestCase):
             cliente="CLIENTE DE PRUEBA",
             proyecto="PROYECTO DE PRUEBA",
             fecha_recepcion="2026/08/15",
-            ot_aperturada_por="BETZABETH ZARABIA",
+            ot_aperturada_por="BETZABETH SARAVIA",
             ot_designada_a="DEYVI INFANZÓN",
             items=[{"item": 1, "codigo_muestra": "M-1", "elemento": "4 in x 8 in", "fecha_rotura": "2026/08/15"}]
         )
         buf = generar_excel_ot_concreto(ot)
         wb = openpyxl.load_workbook(buf)
         ws = wb["MYP"]
-        self.assertEqual(ws["C33"].value, "BETZABETH ZARABIA")
+        self.assertEqual(ws["C33"].value, "BETZABETH SARAVIA")
         self.assertTrue("OT DESIGNADA A:" in (ws["F33"].value or ""))
         self.assertEqual(ws["I33"].value, "DEYVI INFANZÓN")
 
@@ -277,7 +277,7 @@ class TestControlProbetasRouter(unittest.TestCase):
             cliente="CLIENTE DE PRUEBA 15",
             proyecto="PROYECTO DE PRUEBA 15",
             fecha_recepcion="2026/08/15",
-            ot_aperturada_por="BETZABETH ZARABIA",
+            ot_aperturada_por="BETZABETH SARAVIA",
             ot_designada_a="DEYVI INFANZÓN",
             items=items_15,
         )
@@ -301,7 +301,7 @@ class TestControlProbetasRouter(unittest.TestCase):
         self.assertEqual(ws["C27"].value, "2026/08/15")
         self.assertEqual(ws["F27"].value, "2026/08/20")
         self.assertEqual(ws["J27"].value, "2026/08/20")
-        self.assertEqual(ws["C36"].value, "BETZABETH ZARABIA")
+        self.assertEqual(ws["C36"].value, "BETZABETH SARAVIA")
         self.assertTrue("OT DESIGNADA A:" in (ws["F36"].value or ""))
         self.assertEqual(ws["I36"].value, "DEYVI INFANZÓN")
 
@@ -315,7 +315,7 @@ class TestControlProbetasRouter(unittest.TestCase):
             cliente="De Vicente Constructora",
             proyecto="LIMA SUR UCS",
             fecha_recepcion="2026-08-17",
-            ot_aperturada_por="BETZABETH ZARABIA",
+            ot_aperturada_por="BETZABETH SARAVIA",
             ot_designada_a="DEYVI INFANZON",
             items=[{"item": 1, "elemento": "VIGA", "codigo_muestra": "14678-CO-26"}],
             estado="PENDIENTE",
@@ -328,7 +328,7 @@ class TestControlProbetasRouter(unittest.TestCase):
             cliente="De Vicente Constructora",
             proyecto="LIMA SUR UCS",
             fecha_recepcion="2026-08-17",
-            ot_aperturada_por="BETZABETH ZARABIA",
+            ot_aperturada_por="BETZABETH SARAVIA",
             ot_designada_a="DEYVI INFANZON",
             items=[{"item": 1, "elemento": "-", "codigo_muestra": "14678-CO-26"}],
             estado="PENDIENTE",

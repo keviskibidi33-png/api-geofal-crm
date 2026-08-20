@@ -509,7 +509,7 @@ def prefill_ot_from_recepcion(
         .first()
     )
     tecnico_verif = (verif.verificado_por if verif and verif.verificado_por else None) or recepcion.designada_a or ""
-    aperturada = recepcion.aperturada_por or "BETZABETH ZARABIA"
+    aperturada = recepcion.aperturada_por or "BETZABETH SARAVIA"
 
     return {
         "numero_recepcion": recepcion.numero_recepcion,
@@ -681,7 +681,7 @@ def create_orden_trabajo(
 
     # Auto-detección de apertura y responsable desde Verificación si no vienen especificados
     if not new_ot.ot_aperturada_por or new_ot.ot_aperturada_por == "-":
-        new_ot.ot_aperturada_por = "BETZABETH ZARABIA"
+        new_ot.ot_aperturada_por = "BETZABETH SARAVIA"
 
     if (not new_ot.ot_designada_a or new_ot.ot_designada_a == "-") and new_ot.numero_recepcion:
         from app.modules.verificacion.models import VerificacionMuestras
@@ -753,7 +753,7 @@ def update_orden_trabajo(
 
     # Auto-detección de apertura y responsable desde Verificación si no vienen especificados
     if not ot.ot_aperturada_por or ot.ot_aperturada_por == "-":
-        ot.ot_aperturada_por = "BETZABETH ZARABIA"
+        ot.ot_aperturada_por = "BETZABETH SARAVIA"
 
     if (not ot.ot_designada_a or ot.ot_designada_a == "-") and ot.numero_recepcion:
         from app.modules.verificacion.models import VerificacionMuestras
