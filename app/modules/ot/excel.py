@@ -15,9 +15,9 @@ from .models import OrdenTrabajo
 
 logger = logging.getLogger(__name__)
 
-TEMPLATE_FILENAME = "OT-001-Geofal.xlsx"
+TEMPLATE_FILENAME = "OT/OT-001-Geofal.xlsx"
 SHEET_NAME = "CENS"
-TEMPLATE_CONCRETO_FILENAME = "OT-0000-Geofal.xlsx"
+TEMPLATE_CONCRETO_FILENAME = "OT/OT-CONCRETO/OT-0000-Geofal.xlsx"
 SHEET_CONCRETO_NAME = "MYP"
 TEMPLATE_SU_AG_FILENAME = "OT/OT-SU-Y-AG/OT-0000-Geofal.xlsx"
 SHEET_SU_AG_NAME = "HOJA 1 (2)"
