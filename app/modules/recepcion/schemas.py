@@ -187,6 +187,7 @@ class RecepcionListItem(BaseModel):
     id: int
     numero_ot: str
     numero_recepcion: str
+    numero_cotizacion: Optional[str] = None
     tipo_recepcion: Optional[str] = "CONCRETO"
     cliente: Optional[str] = ""
     proyecto: Optional[str] = ""

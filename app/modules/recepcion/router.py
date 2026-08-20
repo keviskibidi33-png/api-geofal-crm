@@ -159,26 +159,59 @@ async def prefill_recepcion_from_cotizacion(
     digits_base = match.group(1) if match else clean_num
 
     row = None
-    # 1. Buscar en cotizaciones
-    sql_quote = text("""
-        SELECT id, numero, year, cliente_nombre, cliente_ruc, cliente_contacto,
-               cliente_telefono, cliente_email, proyecto, ubicacion, items_json
-        FROM cotizaciones
-        WHERE UPPER(numero) = :q
-           OR ('COT-' || year || '-' || numero) = :q
-           OR UPPER(numero) = :base
-           OR (:base != '' AND UPPER(numero) LIKE :pattern)
-        ORDER BY created_at DESC
+    source = "cotizaciones"
+
+    # 1. Buscar primero en Control Laboratorio (programacion_lab) por N° Recepción o N° OT
+    sql_lab = text("""
+        SELECT id, recep_numero, ot, codigo_muestra, fecha_recepcion, fecha_inicio,
+               fecha_entrega_estimada, cliente_nombre, descripcion_servicio,
+               proyecto, cotizacion_lab, autorizacion_lab, created_at
+        FROM programacion_lab
+        WHERE UPPER(TRIM(COALESCE(recep_numero, ''))) = :q
+           OR UPPER(TRIM(COALESCE(recep_numero, ''))) = :base
+           OR UPPER(TRIM(COALESCE(recep_numero, ''))) = :with_year
+           OR UPPER(TRIM(COALESCE(recep_numero, ''))) LIKE :pattern
+           OR UPPER(TRIM(COALESCE(ot, ''))) = :q
+           OR UPPER(TRIM(COALESCE(ot, ''))) = :base
+           OR UPPER(TRIM(COALESCE(ot, ''))) = :with_year
+        ORDER BY id DESC
         LIMIT 1
     """)
     try:
-        res = db.execute(sql_quote, {"q": clean_num, "base": digits_base, "pattern": f"%{digits_base}%"}).fetchone()
-        if res:
-            row = dict(res._mapping)
+        res_lab = db.execute(sql_lab, {
+            "q": clean_num,
+            "base": digits_base,
+            "with_year": f"{digits_base}-26" if digits_base else clean_num,
+            "pattern": f"%{digits_base}%" if digits_base else clean_num
+        }).fetchone()
+        if res_lab:
+            row = dict(res_lab._mapping)
+            source = "control_laboratorio"
     except Exception as e:
-        print(f"Error querying cotizaciones: {e}")
+        print(f"Error querying programacion_lab: {e}")
+
+    # 2. Si no se encuentra en Control Laboratorio, buscar en cotizaciones
+    if not row:
+        sql_quote = text("""
+            SELECT id, numero, year, cliente_nombre, cliente_ruc, cliente_contacto,
+                   cliente_telefono, cliente_email, proyecto, ubicacion, items_json
+            FROM cotizaciones
+            WHERE UPPER(numero) = :q
+               OR ('COT-' || year || '-' || numero) = :q
+               OR UPPER(numero) = :base
+               OR (:base != '' AND UPPER(numero) LIKE :pattern)
+            ORDER BY created_at DESC
+            LIMIT 1
+        """)
+        try:
+            res = db.execute(sql_quote, {"q": clean_num, "base": digits_base, "pattern": f"%{digits_base}%"}).fetchone()
+            if res:
+                row = dict(res._mapping)
+                source = "cotizaciones"
+        except Exception as e:
+            print(f"Error querying cotizaciones: {e}")
         
-    # 2. Si no se encuentra en cotizaciones, buscar en seguimiento_cliente_laboratorio
+    # 3. Si no se encuentra en cotizaciones, buscar en seguimiento_cliente_laboratorio (fallback)
     if not row:
         sql_seg = text("""
             SELECT *
@@ -192,6 +225,7 @@ async def prefill_recepcion_from_cotizacion(
             res_seg = db.execute(sql_seg, {"q": clean_num, "base": digits_base}).fetchone()
             if res_seg:
                 row = dict(res_seg._mapping)
+                source = "seguimiento"
         except Exception as e:
             print(f"Error querying seguimiento_cliente_laboratorio: {e}")
 
@@ -200,6 +234,49 @@ async def prefill_recepcion_from_cotizacion(
             status_code=404,
             detail=f"No se encontró cotización o registro para '{numero}'"
         )
+
+    # Si proviene de Control Laboratorio
+    if source == "control_laboratorio":
+        ot_raw = str(row.get("ot") or "").strip()
+        ot_formatted = ot_raw
+        if ot_raw and not "-" in ot_raw and re.match(r"^\d+$", ot_raw):
+            ot_formatted = f"{ot_raw}-26"
+
+        coti_raw = str(row.get("cotizacion_lab") or "").strip()
+        coti_formatted = None
+        if coti_raw and coti_raw != "-":
+            coti_match = re.search(r"(\d+)(?:-(\d{2}))?", coti_raw)
+            if coti_match:
+                coti_num = coti_match.group(1)
+                coti_yr = coti_match.group(2) or "26"
+                coti_formatted = f"{coti_num}-{coti_yr}"
+            else:
+                coti_formatted = coti_raw
+
+        fecha_rec = row.get("fecha_recepcion") or row.get("fecha_inicio")
+        fecha_fin = row.get("fecha_entrega_estimada")
+
+        return {
+            "success": True,
+            "source": "control_laboratorio",
+            "numero_recepcion": row.get("recep_numero") or clean_num,
+            "numero_ot": ot_formatted,
+            "cotizacion_numero": coti_formatted,
+            "numero_cotizacion": coti_formatted,
+            "cliente": "",
+            "ruc": "",
+            "persona_contacto": "",
+            "email": "",
+            "telefono": "",
+            "proyecto": "",
+            "ubicacion": "",
+            "domicilio_legal": "",
+            "solicitante": "",
+            "domicilio_solicitante": "",
+            "fecha_recepcion": str(fecha_rec) if fecha_rec else None,
+            "fecha_estimada_culminacion": str(fecha_fin) if fecha_fin else None,
+            "items": [],
+        }
         
     items = []
     raw_items = row.get("items_json")
@@ -230,6 +307,7 @@ async def prefill_recepcion_from_cotizacion(
 
     return {
         "success": True,
+        "source": source,
         "cotizacion_numero": row.get("numero") or (f"{row.get('no')}-COT" if row.get("no") else None),
         "cliente": cliente_nom,
         "ruc": cliente_ruc,

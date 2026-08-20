@@ -97,12 +97,47 @@ def test_sync_control_laboratorio_to_recepcion_e2e():
     """))
     db.commit()
 
-    # Step 4: Verify immediate synchronization in Recepcion
-    result_2 = asyncio.run(prefill_recepcion_from_cotizacion(numero="23232-26", db=db))
-    assert result_2["success"] is True
-    assert result_2["fecha_recepcion"] == "2026/03/10"
-    assert result_2["fecha_estimada_culminacion"] == "2026/03/25"
-    assert result_2["proyecto"] == "MEJORAMIENTO VIA HUAROCHIRI - FASE 2"
+    # Create programacion_lab dummy table
+    db.execute(text("""
+        CREATE TABLE IF NOT EXISTS programacion_lab (
+            id INTEGER PRIMARY KEY,
+            recep_numero VARCHAR,
+            ot VARCHAR,
+            codigo_muestra VARCHAR,
+            fecha_recepcion VARCHAR,
+            fecha_inicio VARCHAR,
+            fecha_entrega_estimada VARCHAR,
+            cliente_nombre VARCHAR,
+            descripcion_servicio VARCHAR,
+            proyecto VARCHAR,
+            cotizacion_lab VARCHAR,
+            autorizacion_lab VARCHAR,
+            created_at TIMESTAMP
+        )
+    """))
+    db.commit()
+
+    # Step 5: Test Control Laboratorio (programacion_lab) real-time prefill
+    db.execute(text("""
+        INSERT INTO programacion_lab (
+            recep_numero, ot, codigo_muestra, fecha_recepcion, fecha_inicio,
+            fecha_entrega_estimada, cliente_nombre, descripcion_servicio, cotizacion_lab, autorizacion_lab
+        ) VALUES (
+            '1754-26', '1758-26', 'EMS 3320-SU-26', '04/08/2026', '04/08/2026',
+            '07/08/2026', 'GEOFAL INC/CENS', '1 SUELO', 'COTIZ.N-1799-26', 'ENTREGAR'
+        )
+    """))
+    db.commit()
+
+    result_3 = asyncio.run(prefill_recepcion_from_cotizacion(numero="1754-26", db=db))
+    assert result_3["success"] is True
+    assert result_3["source"] == "control_laboratorio"
+    assert result_3["numero_ot"] == "1758-26"
+    assert result_3["numero_cotizacion"] == "1799-26"
+    assert result_3["fecha_recepcion"] == "04/08/2026"
+    assert result_3["fecha_estimada_culminacion"] == "07/08/2026"
+    assert result_3["cliente"] == ""
+    assert len(result_3["items"]) == 0
 
     print("Test sync control laboratorio -> recepcion e2e passed successfully!")
 

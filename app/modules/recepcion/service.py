@@ -533,10 +533,14 @@ class RecepcionService:
             ot_emitida = ot_match["is_emitida"] if ot_match else False
             ot_missing = ot_match["missing"] if ot_match else ["OT Concreto no ha sido creada para esta recepción"]
 
+            # Auto-sync silencioso de cotización si la recepción no la tiene registrada
+            self._sync_missing_cotizacion(row, db)
+
             items.append({
                 "id": row.id,
                 "numero_ot": row.numero_ot,
                 "numero_recepcion": row.numero_recepcion,
+                "numero_cotizacion": row.numero_cotizacion,
                 "tipo_recepcion": row.tipo_recepcion or "CONCRETO",
                 "cliente": row.cliente,
                 "ruc": row.ruc,
@@ -565,14 +569,73 @@ class RecepcionService:
             "page_size": safe_page_size,
             "total_pages": total_pages,
         }
-    
+
+    def _sync_missing_cotizacion(self, recepcion: RecepcionMuestra, db: Session) -> bool:
+        """
+        Si la recepción no tiene número de cotización registrado (o es None/vacío/-),
+        busca en Control Laboratorio (programacion_lab) por el numero_recepcion.
+        Si existe cotizacion_lab, la extrae, formatea y actualiza automáticamente.
+        """
+        if recepcion.numero_cotizacion and str(recepcion.numero_cotizacion).strip() not in ("", "-", "None"):
+            return False
+        if not recepcion.numero_recepcion:
+            return False
+
+        import re
+        from sqlalchemy import text
+
+        clean_num = str(recepcion.numero_recepcion).strip().upper()
+        match = re.search(r"(\d+)", clean_num)
+        digits_base = match.group(1) if match else clean_num
+        with_year = f"{digits_base}-26" if digits_base else clean_num
+
+        try:
+            sql = text("""
+                SELECT cotizacion_lab
+                FROM programacion_lab
+                WHERE UPPER(TRIM(COALESCE(recep_numero, ''))) = :q
+                   OR UPPER(TRIM(COALESCE(recep_numero, ''))) = :base
+                   OR UPPER(TRIM(COALESCE(recep_numero, ''))) = :with_year
+                   OR UPPER(TRIM(COALESCE(recep_numero, ''))) LIKE :pattern
+                ORDER BY id DESC
+                LIMIT 1
+            """)
+            res = db.execute(sql, {
+                "q": clean_num,
+                "base": digits_base,
+                "with_year": with_year,
+                "pattern": f"%{digits_base}%" if digits_base else clean_num
+            }).fetchone()
+            if res and res[0]:
+                coti_raw = str(res[0]).strip()
+                if coti_raw and coti_raw != "-":
+                    coti_match = re.search(r"(\d+)(?:-(\d{2}))?", coti_raw)
+                    if coti_match:
+                        coti_num = coti_match.group(1)
+                        coti_yr = coti_match.group(2) or "26"
+                        cot_formatted = f"{coti_num}-{coti_yr}"
+                    else:
+                        cot_formatted = coti_raw
+                    recepcion.numero_cotizacion = cot_formatted
+                    db.commit()
+                    return True
+        except Exception as e:
+            logger.warning(f"Error auto-syncing cotizacion for recepcion {recepcion.id}: {e}")
+        return False
+
     def obtener_recepcion(self, db: Session, recepcion_id: int) -> Optional[RecepcionMuestra]:
-        """Obtener recepción por ID"""
-        return db.query(RecepcionMuestra).filter(RecepcionMuestra.id == recepcion_id).first()
+        """Obtener recepción por ID con auto-sincronización de cotización si faltaba"""
+        recepcion = db.query(RecepcionMuestra).filter(RecepcionMuestra.id == recepcion_id).first()
+        if recepcion:
+            self._sync_missing_cotizacion(recepcion, db)
+        return recepcion
     
     def obtener_por_numero(self, db: Session, numero: str) -> Optional[RecepcionMuestra]:
-        """Obtener recepción por número de recepción"""
-        return db.query(RecepcionMuestra).filter(RecepcionMuestra.numero_recepcion == numero).first()
+        """Obtener recepción por número de recepción con auto-sincronización de cotización si faltaba"""
+        recepcion = db.query(RecepcionMuestra).filter(RecepcionMuestra.numero_recepcion == numero).first()
+        if recepcion:
+            self._sync_missing_cotizacion(recepcion, db)
+        return recepcion
     
     def actualizar_recepcion(self, db: Session, recepcion_id: int, recepcion_data: dict) -> Optional[RecepcionMuestra]:
         """Actualizar recepción existente"""
