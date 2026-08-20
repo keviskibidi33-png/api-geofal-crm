@@ -59,7 +59,7 @@ def test_generar_excel_ot_su_ag_standard():
     ws = wb["HOJA 1 (2)"]
 
     # Verify Header
-    assert ws["C6"].value == "OT-193-26"
+    assert ws["C6"].value == "193-26"
     assert ws["G6"].value == "193-26"
 
     # Verify Items

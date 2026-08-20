@@ -23,6 +23,21 @@ TEMPLATE_SU_AG_FILENAME = "OT/OT-SU-Y-AG/OT-0000-Geofal.xlsx"
 SHEET_SU_AG_NAME = "HOJA 1 (2)"
 
 
+def _clean_ot_for_excel(val: Optional[str]) -> str:
+    """
+    Retorna solo el dígito con el sufijo de año (ej. '1759-26'),
+    eliminando cualquier prefijo 'OT-' o 'OT ' para no duplicarlo en la plantilla Excel.
+    """
+    if not val:
+        return ""
+    import re
+    s = str(val).strip()
+    s = re.sub(r"^OT[\s\-]*", "", s, flags=re.IGNORECASE).strip()
+    if s.isdigit():
+        s = f"{s}-26"
+    return s
+
+
 def generar_excel_ot(ot: OrdenTrabajo) -> io.BytesIO:
     """
     Genera un archivo Excel inyectando los datos de la Orden de Trabajo
@@ -46,7 +61,7 @@ def generar_excel_ot(ot: OrdenTrabajo) -> io.BytesIO:
             set_cell(sheet_data, f"J{r}", "", merge_anchor_map=merge_map)
 
         # 2. Encabezado de la Orden de Trabajo
-        set_cell(sheet_data, "B6", ot.numero_ot or "", merge_anchor_map=merge_map)
+        set_cell(sheet_data, "B6", _clean_ot_for_excel(ot.numero_ot), merge_anchor_map=merge_map)
         set_cell(sheet_data, "G6", ot.numero_recepcion or "", merge_anchor_map=merge_map)
         set_cell(sheet_data, "J6", ot.referencia or "-", merge_anchor_map=merge_map)
 
@@ -197,7 +212,7 @@ def generar_excel_ot_concreto(ot: OrdenTrabajo) -> io.BytesIO:
             set_cell(sheet_data, f"J{r}", "", merge_anchor_map=merge_map, style_ref="J9")
 
         # 2. Encabezado
-        set_cell(sheet_data, "C6", ot.numero_ot or "", merge_anchor_map=merge_map, style_ref="C6")
+        set_cell(sheet_data, "C6", _clean_ot_for_excel(ot.numero_ot), merge_anchor_map=merge_map, style_ref="C6")
         set_cell(sheet_data, "G6", ot.numero_recepcion or "", merge_anchor_map=merge_map, style_ref="G6")
 
         # 3. Filas de probetas (todas las probetas, sin límite fijo de 12)
@@ -376,9 +391,7 @@ def generar_excel_ot_su_ag(ot: OrdenTrabajo) -> io.BytesIO:
             set_cell(sheet_data, f"I{r}", "", merge_anchor_map=merge_map, style_ref="I9")
 
         # 2. Encabezado
-        ot_display = (ot.numero_ot or "").strip()
-        if ot_display and not ot_display.upper().startswith("OT"):
-            ot_display = f"OT-{ot_display}"
+        ot_display = _clean_ot_for_excel(ot.numero_ot)
         rec_display = (ot.numero_recepcion or "").strip()
 
         set_cell(sheet_data, "C6", ot_display, merge_anchor_map=merge_map, style_ref="C6")
