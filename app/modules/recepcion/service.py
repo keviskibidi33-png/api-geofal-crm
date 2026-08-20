@@ -574,6 +574,7 @@ class RecepcionService:
                 "ot_exists": ot_exists,
                 "ot_estado": ot_estado,
                 "ot_missing_fields": ot_missing,
+                "ot_id": ot_match["id"] if ot_match else None,
             })
 
         return {
