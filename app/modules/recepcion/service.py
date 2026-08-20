@@ -454,46 +454,60 @@ class RecepcionService:
 
             for ot in ots_existentes:
                 # ── Estado directo desde OT (Single Source of Truth) ──
-                # Si la OT ya tiene estado EMITIDO, COMPLETADO, DESCARGADO o ANULADO, se respeta tal cual.
+                items_v = ot.items if isinstance(ot.items, list) else []
+                has_items = len(items_v) > 0
+                has_apertura = bool(ot.ot_aperturada_por and str(ot.ot_aperturada_por).strip() not in ("", "-", "None"))
+                has_designada = bool(ot.ot_designada_a and str(ot.ot_designada_a).strip() not in ("", "-", "None"))
+                has_fecha = bool(ot.fecha_recepcion and str(ot.fecha_recepcion).strip() not in ("", "-"))
+
+                # Determinar si la OT es de Concreto o de Suelos / Ensayos
+                is_conc_ot = False
+                if has_items:
+                    has_ensayo_code = any(
+                        isinstance(it, dict) and it.get("codigo_ensayo") and str(it.get("codigo_ensayo")).strip() not in ("", "-")
+                        for it in items_v
+                    )
+                    if not has_ensayo_code:
+                        has_probeta_fields = any(
+                            isinstance(it, dict) and (it.get("fc_kg_cm2") or it.get("edad") or (it.get("elemento") and str(it.get("elemento")).strip() not in ("", "-")))
+                            for it in items_v
+                        )
+                        has_compresion_desc = any(
+                            isinstance(it, dict) and "COMPRESION" in str(it.get("descripcion", "")).upper()
+                            for it in items_v
+                        )
+                        if has_probeta_fields or has_compresion_desc:
+                            is_conc_ot = True
+
                 if ot.estado and ot.estado.upper() in ("EMITIDO", "DESCARGADO", "COMPLETADO", "ANULADO"):
                     estado_calc = ot.estado.upper()
                 else:
-                    # Si la OT está en PENDIENTE o sin estado, evaluar si ya cumple los campos para ser EMITIDO
-                    has_cliente   = bool(ot.cliente and str(ot.cliente).strip() not in ("", "-"))
-                    has_proyecto  = bool(ot.proyecto and str(ot.proyecto).strip() not in ("", "-"))
-                    has_fecha     = bool(ot.fecha_recepcion and str(ot.fecha_recepcion).strip() not in ("", "-"))
-                    has_apertura  = bool(ot.ot_aperturada_por and str(ot.ot_aperturada_por).strip() not in ("", "-", "None"))
-                    has_designada = bool(ot.ot_designada_a and str(ot.ot_designada_a).strip() not in ("", "-", "None"))
-                    items_v       = ot.items if isinstance(ot.items, list) else []
-                    has_items     = len(items_v) > 0
-                    all_elements  = has_items and all(
-                        bool(it.get("elemento") and str(it.get("elemento")).strip() not in ("", "-"))
-                        for it in items_v if isinstance(it, dict)
-                    )
-                    if has_cliente and has_proyecto and has_fecha and has_apertura and has_designada and all_elements:
-                        estado_calc = "EMITIDO"
+                    if is_conc_ot:
+                        all_elements = has_items and all(
+                            bool(it.get("elemento") and str(it.get("elemento")).strip() not in ("", "-"))
+                            for it in items_v if isinstance(it, dict)
+                        )
+                        if has_apertura and has_designada and all_elements and has_items:
+                            estado_calc = "EMITIDO"
+                        else:
+                            estado_calc = "PENDIENTE"
                     else:
-                        estado_calc = "PENDIENTE"
+                        if has_apertura and has_designada and has_items:
+                            estado_calc = "EMITIDO"
+                        else:
+                            estado_calc = "PENDIENTE"
 
                 # Construir lista de campos faltantes para el tooltip
                 missing = []
-                if not (ot.cliente and str(ot.cliente).strip() not in ("", "-")):
-                    missing.append("Cliente en OT")
-                if not (ot.proyecto and str(ot.proyecto).strip() not in ("", "-")):
-                    missing.append("Proyecto en OT")
-                if not (ot.fecha_recepcion and str(ot.fecha_recepcion).strip() not in ("", "-")):
-                    missing.append("Fecha de recepción en OT")
-                if not (ot.ot_aperturada_por and str(ot.ot_aperturada_por).strip() not in ("", "-", "None")):
+                if not has_apertura:
                     missing.append("OT Aperturada Por (Responsable)")
-                if not (ot.ot_designada_a and str(ot.ot_designada_a).strip() not in ("", "-", "None")):
+                if not has_designada:
                     missing.append("OT Designada A (Responsable)")
-
-                items_val = ot.items if isinstance(ot.items, list) else []
-                if len(items_val) < 1:
-                    missing.append("Al menos 1 probeta en OT")
-                else:
+                if not has_items:
+                    missing.append("Al menos 1 ensayo o muestra en OT")
+                elif is_conc_ot:
                     elementos_vacios = [
-                        it for it in items_val
+                        it for it in items_v
                         if isinstance(it, dict) and (not it.get("elemento") or str(it.get("elemento")).strip() in ("", "-", "None"))
                     ]
                     if elementos_vacios:
@@ -505,7 +519,7 @@ class RecepcionService:
                     "numero_recepcion": ot.numero_recepcion,
                     "estado": estado_calc,
                     "missing": missing,
-                    "is_emitida": estado_calc in ("EMITIDO", "DESCARGADO", "COMPLETADO"),
+                    "is_emitida": estado_calc in ("EMITIDO", "DESCARGADO", "COMPLETADO") or (has_apertura and has_designada and has_items),
                 }
 
                 # Mapear a todas las claves posibles
