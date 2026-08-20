@@ -139,21 +139,40 @@ def _evaluate_ot_estado(ot: OrdenTrabajo) -> str:
     if ot.estado in ("DESCARGADO", "COMPLETADO", "ANULADO"):
         return ot.estado
 
-    has_cliente = bool(ot.cliente and ot.cliente.strip() and ot.cliente.strip() != "-")
-    has_proyecto = bool(ot.proyecto and ot.proyecto.strip() and ot.proyecto.strip() != "-")
     has_fecha = bool(ot.fecha_recepcion and str(ot.fecha_recepcion).strip() not in ("-", ""))
     has_aperturada = bool(ot.ot_aperturada_por and str(ot.ot_aperturada_por).strip() not in ("-", ""))
     has_designada = bool(ot.ot_designada_a and str(ot.ot_designada_a).strip() not in ("-", ""))
 
     items = ot.items if isinstance(ot.items, list) else []
     has_items = len(items) > 0
-    all_elements_set = has_items and all(
-        bool(item.get("elemento") and str(item.get("elemento")).strip() not in ("-", ""))
-        for item in items if isinstance(item, dict)
-    )
 
-    if has_cliente and has_proyecto and has_fecha and has_aperturada and has_designada and all_elements_set:
-        return "EMITIDO"
+    # Determinar si es OT de Concreto o de Muestras/Suelos
+    is_concreto = False
+    for it in items:
+        if isinstance(it, dict):
+            cod = str(it.get("codigo_muestra", "")).upper()
+            desc_text = str(it.get("descripcion", "")).upper()
+            if "CO" in cod or "PROBETA" in desc_text or "COMPRESION" in desc_text or it.get("fc_kg_cm2"):
+                is_concreto = True
+                break
+
+    if is_concreto:
+        has_cliente = bool(ot.cliente and ot.cliente.strip() and ot.cliente.strip() != "-")
+        has_proyecto = bool(ot.proyecto and ot.proyecto.strip() and ot.proyecto.strip() != "-")
+        all_elements_set = has_items and all(
+            bool(item.get("elemento") and str(item.get("elemento")).strip() not in ("-", ""))
+            for item in items if isinstance(item, dict)
+        )
+        if has_cliente and has_proyecto and has_fecha and has_aperturada and has_designada and all_elements_set:
+            return "EMITIDO"
+    else:
+        all_items_valid = has_items and all(
+            bool(item.get("codigo_muestra") and item.get("descripcion"))
+            for item in items if isinstance(item, dict)
+        )
+        if has_fecha and has_aperturada and has_designada and all_items_valid:
+            return "EMITIDO"
+
     return ot.estado or "PENDIENTE"
 
 
@@ -206,7 +225,7 @@ def _enrich_ot_data(ot: OrdenTrabajo, db: Session):
 
     # Sincronizar responsables (aperturada por Betzabeth / asignada a verificador)
     if not ot.ot_aperturada_por or ot.ot_aperturada_por == "-":
-        ot.ot_aperturada_por = recepcion.aperturada_por or "BETZABETH ZARABIA"
+        ot.ot_aperturada_por = recepcion.aperturada_por or "BETZABETH SARAVIA"
         modified = True
 
     if not ot.ot_designada_a or ot.ot_designada_a == "-":
@@ -219,87 +238,96 @@ def _enrich_ot_data(ot: OrdenTrabajo, db: Session):
             ot.ot_designada_a = tecnico_verif
             modified = True
 
-    # Sincronizar probetas
-    muestras = (
-        db.query(MuestraConcreto)
-        .filter(MuestraConcreto.recepcion_id == recepcion.id)
-        .order_by(MuestraConcreto.item_numero)
-        .all()
-    )
-    if not muestras:
-        new_est = _evaluate_ot_estado(ot)
-        if ot.estado != new_est:
-            ot.estado = new_est
-            modified = True
+    es_tipo_concreto = (recepcion.tipo_recepcion or "").upper() == "CONCRETO"
+
+    # Si es tipo concreto, sincronizar probetas
+    if es_tipo_concreto:
+        muestras = (
+            db.query(MuestraConcreto)
+            .filter(MuestraConcreto.recepcion_id == recepcion.id)
+            .order_by(MuestraConcreto.item_numero)
+            .all()
+        )
+        if not muestras:
+            new_est = _evaluate_ot_estado(ot)
+            if ot.estado != new_est:
+                ot.estado = new_est
+                modified = True
+            if modified:
+                db.commit()
+            return
+
+        muestras_by_cod = {}
+        fechas_rotura = []
+        for m in muestras:
+            if m.codigo_muestra_lem:
+                muestras_by_cod[m.codigo_muestra_lem.strip().upper()] = m
+            if m.codigo_muestra:
+                muestras_by_cod[m.codigo_muestra.strip().upper()] = m
+            if m.fecha_rotura:
+                f_iso = _to_iso_date(m.fecha_rotura)
+                if f_iso:
+                    fechas_rotura.append(f_iso)
+
+        items = list(ot.items) if isinstance(ot.items, list) else []
+        for idx, it in enumerate(items):
+            if not isinstance(it, dict):
+                continue
+            cod = str(it.get("codigo_muestra", "")).strip().upper()
+            m = muestras_by_cod.get(cod) or (muestras[idx] if idx < len(muestras) else None)
+            if m:
+                elemento_val = m.elemento or "-"
+                if it.get("elemento") != elemento_val:
+                    it["elemento"] = elemento_val
+                    modified = True
+                    
+                f_rot_iso = _to_iso_date(m.fecha_rotura)
+                if it.get("fecha_rotura") != f_rot_iso:
+                    it["fecha_rotura"] = f_rot_iso
+                    modified = True
+                    
+                dens_val = _resolve_densidad(m)
+                if it.get("densidad") != dens_val:
+                    it["densidad"] = dens_val
+                    modified = True
+                    
+                if it.get("edad") != m.edad:
+                    it["edad"] = m.edad
+                    modified = True
+                    
+                fc_val = int(m.fc_kg_cm2) if m.fc_kg_cm2 is not None else None
+                if it.get("fc_kg_cm2") != fc_val:
+                    it["fc_kg_cm2"] = fc_val
+                    modified = True
+        
         if modified:
-            db.commit()
-        return
+            ot.items = items
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(ot, "items")
 
-    muestras_by_cod = {}
-    fechas_rotura = []
-    for m in muestras:
-        if m.codigo_muestra_lem:
-            muestras_by_cod[m.codigo_muestra_lem.strip().upper()] = m
-        if m.codigo_muestra:
-            muestras_by_cod[m.codigo_muestra.strip().upper()] = m
-        if m.fecha_rotura:
-            f_iso = _to_iso_date(m.fecha_rotura)
-            if f_iso:
-                fechas_rotura.append(f_iso)
+        # Sincronizar fechas programadas
+        if recepcion.fecha_estimada_culminacion:
+            est_iso = _to_iso_date(recepcion.fecha_estimada_culminacion)
+            if est_iso and ot.fin_programado != est_iso:
+                ot.fin_programado = est_iso
+                modified = True
+        elif fechas_rotura:
+            max_rot = max(fechas_rotura)
+            if ot.fin_programado != max_rot:
+                ot.fin_programado = max_rot
+                modified = True
 
-    items = list(ot.items) if isinstance(ot.items, list) else []
-    for idx, it in enumerate(items):
-        if not isinstance(it, dict):
-            continue
-        cod = str(it.get("codigo_muestra", "")).strip().upper()
-        m = muestras_by_cod.get(cod) or (muestras[idx] if idx < len(muestras) else None)
-        if m:
-            elemento_val = m.elemento or "-"
-            if it.get("elemento") != elemento_val:
-                it["elemento"] = elemento_val
+        if fechas_rotura:
+            min_rot = min(fechas_rotura)
+            if ot.inicio_programado != min_rot:
+                ot.inicio_programado = min_rot
                 modified = True
-                
-            f_rot_iso = _to_iso_date(m.fecha_rotura)
-            if it.get("fecha_rotura") != f_rot_iso:
-                it["fecha_rotura"] = f_rot_iso
+    else:
+        if recepcion.fecha_estimada_culminacion:
+            est_iso = _to_iso_date(recepcion.fecha_estimada_culminacion)
+            if est_iso and ot.fin_programado != est_iso:
+                ot.fin_programado = est_iso
                 modified = True
-                
-            dens_val = _resolve_densidad(m)
-            if it.get("densidad") != dens_val:
-                it["densidad"] = dens_val
-                modified = True
-                
-            if it.get("edad") != m.edad:
-                it["edad"] = m.edad
-                modified = True
-                
-            fc_val = int(m.fc_kg_cm2) if m.fc_kg_cm2 is not None else None
-            if it.get("fc_kg_cm2") != fc_val:
-                it["fc_kg_cm2"] = fc_val
-                modified = True
-    
-    if modified:
-        ot.items = items
-        from sqlalchemy.orm.attributes import flag_modified
-        flag_modified(ot, "items")
-
-    # Sincronizar fechas programadas
-    if recepcion.fecha_estimada_culminacion:
-        est_iso = _to_iso_date(recepcion.fecha_estimada_culminacion)
-        if est_iso and ot.fin_programado != est_iso:
-            ot.fin_programado = est_iso
-            modified = True
-    elif fechas_rotura:
-        max_rot = max(fechas_rotura)
-        if ot.fin_programado != max_rot:
-            ot.fin_programado = max_rot
-            modified = True
-
-    if fechas_rotura:
-        min_rot = min(fechas_rotura)
-        if ot.inicio_programado != min_rot:
-            ot.inicio_programado = min_rot
-            modified = True
             
     if ot.fecha_recepcion:
         formatted_rec = _to_iso_date(ot.fecha_recepcion)
@@ -371,7 +399,7 @@ def prefill_ot_from_recepcion(
 ):
     """
     Retorna los datos de una recepción formateados para pre-llenar
-    el formulario de OT Concreto automáticamente con trazabilidad total.
+    el formulario de OT (Concreto o Suelos y Agregados) automáticamente con trazabilidad total.
     """
     from app.modules.recepcion.models import RecepcionMuestra, MuestraConcreto
 
@@ -395,7 +423,7 @@ def prefill_ot_from_recepcion(
             detail=f"No se encontró la recepción '{numero_recepcion}'. Verifica el número e intenta de nuevo."
         )
 
-    # Cargar probetas asociadas
+    # Cargar probetas/muestras asociadas
     muestras = (
         db.query(MuestraConcreto)
         .filter(MuestraConcreto.recepcion_id == recepcion.id)
@@ -431,13 +459,13 @@ def prefill_ot_from_recepcion(
         item_counter = 1
         for m in muestras:
             ensayos = m.ensayos_lista
-            cod_m = m.codigo_muestra_lem or m.identificacion_muestra or m.codigo_muestra or ""
+            cod_m = m.codigo_muestra_lem or m.codigo_muestra or ""
             ident = m.identificacion_muestra or ""
             proc = m.procedencia or ""
             cant = m.cantera or ""
-            cant_kg = str(m.cantidad or "") if m.cantidad is not None else ""
+            cant_kg = str(m.cantidad or m.tamano_peso or "") if (m.cantidad is not None or m.tamano_peso is not None) else ""
 
-            if ensayos and isinstance(ensayos, list):
+            if ensayos and isinstance(ensayos, list) and len(ensayos) > 0:
                 for e in ensayos:
                     items_ot.append({
                         "item": item_counter,
@@ -563,6 +591,10 @@ def _sync_ot_to_recepcion(ot: OrdenTrabajo, db: Session):
             recepcion.fecha_recepcion = parsed_fecha
         if ot.numero_ot:
             recepcion.numero_ot = ot.numero_ot
+
+    is_concreto = (recepcion.tipo_recepcion or "").upper() == "CONCRETO"
+    if not is_concreto:
+        return
 
     items = ot.items if isinstance(ot.items, list) else []
     if items:
