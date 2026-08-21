@@ -536,6 +536,7 @@ class RecepcionService:
                     "numero_ot": ot.numero_ot,
                     "numero_recepcion": ot.numero_recepcion,
                     "estado": estado_calc,
+                    "tecnico": (ot.ot_designada_a or ot.ot_aperturada_por or "").strip(),
                     "missing": missing,
                     "is_emitida": estado_calc in ("EMITIDO", "DESCARGADO", "COMPLETADO") or (has_apertura and has_designada and has_items),
                 }
@@ -564,6 +565,7 @@ class RecepcionService:
             ot_estado = ot_match["estado"] if ot_match else "PENDIENTE"
             ot_emitida = ot_match["is_emitida"] if ot_match else False
             ot_missing = ot_match["missing"] if ot_match else ["OT Concreto no ha sido creada para esta recepción"]
+            tecnico_calc = (ot_match.get("tecnico") if ot_match and ot_match.get("tecnico") else (row.recibido_por or "-"))
 
             # Auto-sync en tiempo real de cotización y fechas desde Control Laboratorio
             self._sync_from_control_laboratorio(row, db)
@@ -582,6 +584,7 @@ class RecepcionService:
                 "proyecto": row.proyecto,
                 "fecha_recepcion": row.fecha_recepcion,
                 "estado": row.estado,
+                "tecnico": tecnico_calc,
                 "muestras_count": (
                     muestras_dict.get(row.id)
                     or verif_dict.get(row.numero_recepcion)
