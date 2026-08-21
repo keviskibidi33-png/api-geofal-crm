@@ -541,37 +541,30 @@ class RecepcionService:
                 if tecnico_candidate.upper() in ("", "-", "NONE", "NULL"):
                     tecnico_candidate = "-"
 
+                ot_category = "CONCRETO" if is_conc_ot else "MUESTRAS"
+
                 ot_info = {
                     "id": ot.id,
                     "numero_ot": ot.numero_ot,
                     "numero_recepcion": ot.numero_recepcion,
                     "estado": estado_calc,
+                    "tipo": ot_category,
                     "tecnico": tecnico_candidate,
                     "missing": missing,
                     "is_emitida": estado_calc in ("EMITIDO", "DESCARGADO", "COMPLETADO") or (has_apertura and has_designada and has_items),
                 }
 
-                # Mapear a todas las claves posibles
+                # Mapear exclusivamente por número de recepción y categoría
                 for k in _get_norm_keys(ot.numero_recepcion):
-                    ot_lookup_map[k] = ot_info
-                for k in _get_norm_keys(ot.numero_ot):
-                    ot_lookup_map[k] = ot_info
+                    ot_lookup_map[(k, ot_category)] = ot_info
 
         def _resolve_ot_for_row(row_rec) -> Optional[dict]:
-            # 1. Prioridad: Buscar por número de recepción
+            # Buscar por número de recepción y categoría exacta (CONCRETO vs MUESTRAS)
+            row_tipo_clean = str(row_rec.tipo_recepcion or "CONCRETO").strip().upper()
+            row_category = "CONCRETO" if row_tipo_clean == "CONCRETO" else "MUESTRAS"
             for k in _get_norm_keys(row_rec.numero_recepcion):
-                if k in ot_lookup_map:
-                    return ot_lookup_map[k]
-            # 2. Buscar por número de OT SOLO si esa OT no pertenece a otra recepción diferente
-            clean_row_rec = str(row_rec.numero_recepcion or "").strip().upper()
-            digits_row_rec = "".join(filter(str.isdigit, clean_row_rec))
-            for k in _get_norm_keys(row_rec.numero_ot):
-                if k in ot_lookup_map:
-                    candidate = ot_lookup_map[k]
-                    cand_rec = str(candidate.get("numero_recepcion") or "").strip().upper()
-                    cand_digits = "".join(filter(str.isdigit, cand_rec))
-                    if not cand_rec or cand_rec == "-" or cand_rec == clean_row_rec or (digits_row_rec and digits_row_rec == cand_digits):
-                        return candidate
+                if (k, row_category) in ot_lookup_map:
+                    return ot_lookup_map[(k, row_category)]
             return None
 
         items = []
