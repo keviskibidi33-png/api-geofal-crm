@@ -1098,9 +1098,9 @@ def download_ot_excel_by_recepcion(
         db.refresh(ot)
 
     try:
-        excel_buffer = generar_excel_ot_concreto(ot)
-        safe_name = (ot.numero_ot or f"OT-{ot.id}").replace("/", "-").replace("\\", "-")
-        filename = f"OT-{safe_name}.xlsx"
+        safe_name = (ot.numero_ot or f"{ot.id}").replace("/", "-").replace("\\", "-").strip()
+        clean_ot = re.sub(r"^OT-?", "", safe_name, flags=re.IGNORECASE).strip()
+        filename = f"OT-{clean_ot}-Geofal - LEM.xlsx"
 
         return StreamingResponse(
             excel_buffer,

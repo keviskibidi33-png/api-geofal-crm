@@ -962,8 +962,9 @@ def download_excel_ot(
         else:
             excel_buffer = generar_excel_ot_su_ag(ot)
 
-        safe_name = (ot.numero_ot or f"OT-{ot.id}").replace("/", "-").replace("\\", "-")
-        filename = f"OT-{safe_name}.xlsx"
+        safe_name = (ot.numero_ot or f"{ot.id}").replace("/", "-").replace("\\", "-").strip()
+        clean_ot = re.sub(r"^OT-?", "", safe_name, flags=re.IGNORECASE).strip()
+        filename = f"OT-{clean_ot}-Geofal - LEM.xlsx"
 
         return StreamingResponse(
             excel_buffer,
