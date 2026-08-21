@@ -356,7 +356,7 @@ def validar_estado(numero_recepcion: str, db: Session = Depends(get_db_session))
 
 
 @router.get("/listar", response_model=List[TracingSummary])
-def listar_seguimiento(db: Session = Depends(get_db_session), skip: int = 0, limit: int = 1000):
+def listar_seguimiento(db: Session = Depends(get_db_session), skip: int = 0, limit: int = 50000):
     """
     Lista las recepciones usando la tabla maestra (Bibliotecas de estados).
     """
@@ -385,13 +385,12 @@ def listar_seguimiento(db: Session = Depends(get_db_session), skip: int = 0, lim
         Integer
     )
 
-    trazas = (
-        db.query(Trazabilidad)
-        .order_by(desc(numeric_prefix), desc(Trazabilidad.numero_recepcion))
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
+    q = db.query(Trazabilidad).order_by(desc(numeric_prefix), desc(Trazabilidad.numero_recepcion))
+    if skip:
+        q = q.offset(skip)
+    if limit:
+        q = q.limit(limit)
+    trazas = q.all()
 
     seen_ids = set()
     seen_canonical_numbers = set()
