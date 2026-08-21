@@ -196,12 +196,22 @@ class RecepcionService:
     def crear_recepcion(self, db: Session, recepcion_data: RecepcionMuestraCreate) -> RecepcionMuestra:
         """Crear nueva recepción de muestra"""
         try:
-            # Verificar si ya existe una recepción con el mismo número OT
+            # Verificar si ya existe una recepción con el mismo número de recepción o número OT
+            rec_num = (recepcion_data.numero_recepcion or "").strip()
+            ot_num = (recepcion_data.numero_ot or "").strip()
+            
             recepcion_existente = db.query(RecepcionMuestra).filter(
-                RecepcionMuestra.numero_ot == recepcion_data.numero_ot
+                (RecepcionMuestra.numero_ot == ot_num) |
+                (RecepcionMuestra.numero_recepcion == rec_num)
             ).first()
             
             if recepcion_existente:
+                # Si ya existe (ej. creada automáticamente por auto-sync desde OT o Control Lab),
+                # actualizamos in-place con los datos completos del formulario para evitar error 409
+                update_dict = recepcion_data.dict()
+                updated = self.actualizar_recepcion(db, recepcion_existente.id, update_dict)
+                if updated:
+                    return updated
                 raise DuplicateRecepcionError(f"Ya existe una recepción con el número OT: {recepcion_data.numero_ot}")
             
             # Validar que haya al menos una muestra

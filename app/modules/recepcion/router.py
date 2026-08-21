@@ -111,14 +111,30 @@ async def buscar_recepcion(
 ):
     """
     Buscar si una recepción existe y su estado en todos los módulos.
+    Distingue recepciones completas vs stubs creados por auto-sync desde OT / Control Lab.
     """
     from app.modules.recepcion.models import RecepcionMuestra
     from app.modules.verificacion.models import VerificacionMuestras
     from app.modules.compresion.models import EnsayoCompresion
     
-    recepcion = db.query(RecepcionMuestra).filter(RecepcionMuestra.numero_recepcion == numero).first()
-    verificacion = db.query(VerificacionMuestras).filter(VerificacionMuestras.numero_verificacion == numero).first()
-    compresion = db.query(EnsayoCompresion).filter(EnsayoCompresion.numero_recepcion == numero).first()
+    clean_num = numero.strip().upper()
+    base_num = clean_num.split("-")[0] if "-" in clean_num else clean_num
+    
+    recepcion = db.query(RecepcionMuestra).filter(
+        (RecepcionMuestra.numero_recepcion == clean_num) |
+        (RecepcionMuestra.numero_recepcion == base_num) |
+        (RecepcionMuestra.numero_ot == clean_num)
+    ).first()
+    
+    verificacion = db.query(VerificacionMuestras).filter(
+        (VerificacionMuestras.numero_verificacion == clean_num) |
+        (VerificacionMuestras.numero_verificacion == base_num)
+    ).first()
+    
+    compresion = db.query(EnsayoCompresion).filter(
+        (EnsayoCompresion.numero_recepcion == clean_num) |
+        (EnsayoCompresion.numero_recepcion == base_num)
+    ).first()
     
     formatos = {
         "recepcion": recepcion is not None,
@@ -126,17 +142,28 @@ async def buscar_recepcion(
         "compresion": compresion is not None
     }
     
-    estado = "ocupado" if recepcion else "disponible"
+    # Detectar si es un stub creado automáticamente desde sincronización de OT
+    is_stub = False
+    if recepcion:
+        is_stub = (
+            recepcion.cliente in ("Sin especificar", "", None) or
+            len(recepcion.muestras or []) == 0 or
+            recepcion.ruc in ("Sin especificar", "", None)
+        )
+    
+    estado = "ocupado" if (recepcion and not is_stub) else ("vinculada" if is_stub else "disponible")
     
     return {
         "encontrado": recepcion is not None,
+        "is_stub": is_stub,
         "estado": estado,
         "formatos": formatos,
-        "mensaje": "Ya existe esta recepción" if recepcion else "Disponible",
+        "mensaje": f"Recepción vinculada con OT: {recepcion.numero_ot or '-'}" if is_stub else ("Ya existe esta recepción" if recepcion else "Disponible"),
         "datos": {
             "id": recepcion.id,
             "numero_recepcion": recepcion.numero_recepcion,
-            "numero_ot": recepcion.numero_ot
+            "numero_ot": recepcion.numero_ot,
+            "tipo_recepcion": recepcion.tipo_recepcion
         } if recepcion else None
     }
 
