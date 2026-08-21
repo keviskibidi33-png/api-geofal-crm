@@ -838,9 +838,53 @@ class RecepcionService:
             else:
                 logger.warning("actualizar_recepcion: Se recibió lista de muestras vacía para la OT %s. Se ignora para prevenir borrado accidental.", recepcion.numero_ot)
 
+        # Propagación en cascada a módulos dependientes (Verificación y Compresión)
+        self._propagate_muestras_to_modules(db, recepcion)
+
         db.commit()
         db.refresh(recepcion)
         return recepcion
+
+    def _propagate_muestras_to_modules(self, db: Session, recepcion: RecepcionMuestra):
+        """Propaga códigos LEM, identificación y cliente de la recepción hacia Verificación y Compresión"""
+        try:
+            from app.modules.tracing.service import TracingService
+            from app.modules.verificacion.models import VerificacionMuestras
+            from app.modules.compresion.models import EnsayoCompresion
+            
+            search_nums = TracingService._build_numero_variantes(recepcion.numero_recepcion)
+            
+            # 1. Propagar a Verificación
+            verif = db.query(VerificacionMuestras).filter(
+                VerificacionMuestras.numero_verificacion.in_(search_nums)
+            ).first()
+            if verif and verif.muestras_verificadas:
+                rec_muestras_map = {m.item_numero: m for m in (recepcion.muestras or []) if m.item_numero is not None}
+                for mv in verif.muestras_verificadas:
+                    if mv.item_numero in rec_muestras_map:
+                        m_parent = rec_muestras_map[mv.item_numero]
+                        if m_parent.codigo_muestra_lem:
+                            mv.codigo_lem = m_parent.codigo_muestra_lem.strip()
+                        if m_parent.identificacion_muestra:
+                            mv.codigo_cliente = m_parent.identificacion_muestra.strip()
+                if recepcion.cliente and recepcion.cliente not in ("-", "Sin especificar"):
+                    verif.cliente = recepcion.cliente
+
+            # 2. Propagar a Compresión
+            comp = db.query(EnsayoCompresion).filter(
+                (EnsayoCompresion.recepcion_id == recepcion.id) |
+                (EnsayoCompresion.numero_recepcion.in_(search_nums))
+            ).first()
+            if comp and comp.items:
+                rec_muestras_map = {m.item_numero: m for m in (recepcion.muestras or []) if m.item_numero is not None}
+                for it in comp.items:
+                    if it.item in rec_muestras_map:
+                        m_parent = rec_muestras_map[it.item]
+                        if m_parent.codigo_muestra_lem:
+                            it.codigo_lem = m_parent.codigo_muestra_lem.strip()
+
+        except Exception as e:
+            logger.warning(f"Error propagando muestras a módulos dependientes: {e}")
     
     def eliminar_recepcion(self, db: Session, recepcion_id: int) -> bool:
         """Eliminar recepción. Emite log de auditoría completo antes del borrado físico."""

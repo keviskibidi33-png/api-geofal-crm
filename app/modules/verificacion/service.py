@@ -345,8 +345,36 @@ class VerificacionService:
             logger.error(f"Error creando verificación: {str(e)}")
             raise ValueError(f"Error creando verificación: {str(e)}")
     
+    def _sync_with_parent_recepcion(self, verif: VerificacionMuestras):
+        """Sincroniza códigos LEM y cliente con la recepción padre si hubo correcciones posteriores"""
+        if not verif or not verif.numero_verificacion:
+            return
+        try:
+            from app.modules.tracing.service import TracingService
+            recepcion, _ = TracingService._buscar_recepcion_flexible(self.db, verif.numero_verificacion)
+            if recepcion and recepcion.muestras:
+                rec_map = {m.item_numero: m for m in recepcion.muestras if m.item_numero is not None}
+                changed = False
+                for mv in (verif.muestras_verificadas or []):
+                    if mv.item_numero in rec_map:
+                        m_parent = rec_map[mv.item_numero]
+                        if m_parent.codigo_muestra_lem and (mv.codigo_lem or "").strip() != m_parent.codigo_muestra_lem.strip():
+                            mv.codigo_lem = m_parent.codigo_muestra_lem.strip()
+                            changed = True
+                        if m_parent.identificacion_muestra and (mv.codigo_cliente or "").strip() != m_parent.identificacion_muestra.strip():
+                            mv.codigo_cliente = m_parent.identificacion_muestra.strip()
+                            changed = True
+                if changed:
+                    self.db.commit()
+                    self.db.refresh(verif)
+        except Exception as e:
+            logger.warning(f"Error sincronizando verificación con recepción padre: {e}")
+
     def obtener_verificacion(self, verificacion_id: int) -> Optional[VerificacionMuestras]:
-        return self.db.query(VerificacionMuestras).filter(VerificacionMuestras.id == verificacion_id).first()
+        verif = self.db.query(VerificacionMuestras).filter(VerificacionMuestras.id == verificacion_id).first()
+        if verif:
+            self._sync_with_parent_recepcion(verif)
+        return verif
     
     def listar_verificaciones(self, skip: int = 0, limit: int = 100) -> List[VerificacionMuestras]:
         """Lista verificaciones ordenadas por número de verificación descendente.
@@ -374,7 +402,10 @@ class VerificacionService:
 
     def obtener_por_numero(self, numero: str) -> Optional[VerificacionMuestras]:
         """Obtener verificación por su número (EJ: V-2024-001)"""
-        return self.db.query(VerificacionMuestras).filter(VerificacionMuestras.numero_verificacion == numero).first()
+        verif = self.db.query(VerificacionMuestras).filter(VerificacionMuestras.numero_verificacion == numero).first()
+        if verif:
+            self._sync_with_parent_recepcion(verif)
+        return verif
 
     def eliminar_verificacion(self, verificacion_id: int) -> bool:
         """Elimina una verificación y sus muestras asociadas (cascade delete)"""
