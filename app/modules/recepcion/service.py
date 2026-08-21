@@ -556,14 +556,20 @@ class RecepcionService:
                     ot_lookup_map[k] = ot_info
 
         def _resolve_ot_for_row(row_rec) -> Optional[dict]:
-            # Probar claves derivadas del número de recepción
+            # 1. Prioridad: Buscar por número de recepción
             for k in _get_norm_keys(row_rec.numero_recepcion):
                 if k in ot_lookup_map:
                     return ot_lookup_map[k]
-            # Probar claves derivadas del número de OT
+            # 2. Buscar por número de OT SOLO si esa OT no pertenece a otra recepción diferente
+            clean_row_rec = str(row_rec.numero_recepcion or "").strip().upper()
+            digits_row_rec = "".join(filter(str.isdigit, clean_row_rec))
             for k in _get_norm_keys(row_rec.numero_ot):
                 if k in ot_lookup_map:
-                    return ot_lookup_map[k]
+                    candidate = ot_lookup_map[k]
+                    cand_rec = str(candidate.get("numero_recepcion") or "").strip().upper()
+                    cand_digits = "".join(filter(str.isdigit, cand_rec))
+                    if not cand_rec or cand_rec == "-" or cand_rec == clean_row_rec or (digits_row_rec and digits_row_rec == cand_digits):
+                        return candidate
             return None
 
         items = []
@@ -929,9 +935,24 @@ class RecepcionService:
             recepcion.object_key,
         )
 
-        from app.utils.storage_utils import StorageUtils
-        StorageUtils.safe_cleanup_storage(db, recepcion.bucket, recepcion.object_key)
-        
+        # Eliminar Orden de Trabajo vinculada si existe
+        try:
+            from app.modules.ot.models import OrdenTrabajo
+            ots = db.query(OrdenTrabajo).filter(
+                (OrdenTrabajo.numero_recepcion == recepcion.numero_recepcion) |
+                (OrdenTrabajo.numero_ot == recepcion.numero_ot)
+            ).all()
+            for ot_item in ots:
+                logger.warning(
+                    "[RECEPCION][DELETE] Eliminando OT vinculada. ot_id=%s numero_ot='%s' recepcion='%s'",
+                    ot_item.id,
+                    ot_item.numero_ot,
+                    recepcion.numero_recepcion,
+                )
+                db.delete(ot_item)
+        except Exception as ot_err:
+            logger.warning(f"[RECEPCION][DELETE] Error eliminando OT vinculada: {ot_err}")
+
         numero_backup = recepcion.numero_recepcion
         db.delete(recepcion)
         db.commit()

@@ -1098,3 +1098,21 @@ def download_excel_ot(
     except Exception as exc:
         logger.error("Error al generar Excel de OT %s: %s", ot_id, exc, exc_info=True)
         raise HTTPException(status_code=500, detail=f"No se pudo generar el archivo Excel: {str(exc)}")
+
+
+@router.delete("/{ot_id}")
+def delete_orden_trabajo(
+    ot_id: int,
+    request: Request,
+    db: Session = Depends(get_db_session),
+):
+    ot = db.query(OrdenTrabajo).filter(OrdenTrabajo.id == ot_id).first()
+    if not ot:
+        raise HTTPException(status_code=404, detail="Orden de Trabajo no encontrada")
+    
+    user_id, user_name = _extract_user_info(request)
+    logger.warning("[OT][DELETE] Eliminando OT id=%s numero_ot='%s' usuario='%s'", ot.id, ot.numero_ot, user_name)
+    
+    db.delete(ot)
+    db.commit()
+    return {"message": "Orden de Trabajo eliminada correctamente", "id": ot_id}
