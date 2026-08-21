@@ -73,7 +73,7 @@ class ControlAmbientalService:
         area: Optional[str] = None,
         fecha_inicio: Optional[str] = None,
         fecha_fin: Optional[str] = None,
-        limit: int = 100,
+        limit: int = 5000,
     ) -> List[ControlTemperatura]:
         query = db.query(ControlTemperatura)
         if area:
@@ -187,7 +187,7 @@ class ControlAmbientalService:
         codigo: Optional[str] = None,
         fecha_inicio: Optional[str] = None,
         fecha_fin: Optional[str] = None,
-        limit: int = 100,
+        limit: int = 5000,
     ) -> List[ControlBalanza]:
         query = db.query(ControlBalanza)
         if codigo:
@@ -496,7 +496,7 @@ class ControlAmbientalService:
         template_name = "F-LEM-P-05.01 V03 CONTROL DE TEMPERATURA Y HUMEDAD RELATIVA.xlsx"
         template_path = find_template_path(template_name)
         records = ControlAmbientalService.listar_temperatura(
-            db, area=area, fecha_inicio=fecha_inicio, fecha_fin=fecha_fin, limit=500
+            db, area=area, fecha_inicio=fecha_inicio, fecha_fin=fecha_fin, limit=5000
         )
         if template_path and os.path.exists(template_path):
             first = records[0] if records else None
@@ -612,7 +612,7 @@ class ControlAmbientalService:
         template_name = "F-LEM-IN-01.02 V03 FORMATO DE VERIFICACIÓN DIARIA DE BALANZAS.xlsx"
         template_path = find_template_path(template_name)
         records = ControlAmbientalService.listar_balanza(
-            db, codigo=codigo, fecha_inicio=fecha_inicio, fecha_fin=fecha_fin, limit=500
+            db, codigo=codigo, fecha_inicio=fecha_inicio, fecha_fin=fecha_fin, limit=5000
         )
 
         if template_path and os.path.exists(template_path):

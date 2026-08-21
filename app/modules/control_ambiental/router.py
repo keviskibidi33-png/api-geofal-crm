@@ -58,7 +58,7 @@ def listar_temperaturas(
     area: Optional[str] = Query(None),
     fecha_inicio: Optional[str] = Query(None),
     fecha_fin: Optional[str] = Query(None),
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(5000, ge=1, le=10000),
     db: Session = Depends(get_db_session),
 ):
     try:
@@ -116,7 +116,7 @@ def listar_balanzas(
     codigo: Optional[str] = Query(None),
     fecha_inicio: Optional[str] = Query(None),
     fecha_fin: Optional[str] = Query(None),
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(5000, ge=1, le=10000),
     db: Session = Depends(get_db_session),
 ):
     try:
