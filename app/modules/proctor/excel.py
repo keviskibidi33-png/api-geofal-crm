@@ -180,6 +180,10 @@ def _resolve_centered_styles(sheet_xml: bytes) -> dict[str, int]:
     style_by_ref: dict[str, int] = {}
 
     # Reuse existing style ids from template instead of rewriting xl/styles.xml.
+    h9_style = _get_cell_style_id(sheet_root, "B9") or _get_cell_style_id(sheet_root, "C9") or _get_cell_style_id(sheet_root, "F9")
+    if h9_style is not None:
+        style_by_ref["H9"] = h9_style
+
     i41_style = _get_cell_style_id(sheet_root, "H41") or _get_cell_style_id(sheet_root, "I41")
     if i41_style is not None:
         style_by_ref["I41"] = i41_style
@@ -400,6 +404,7 @@ def _fill_sheet(sheet_xml: bytes, data: ProctorRequest, centered_style_map: dict
 
     # Keep critical output cells centered even when template merges/alignments vary.
     if centered_style_map:
+        _set_cell_style(sd, "H9", centered_style_map.get("H9"))
         _set_cell_style(sd, "I41", centered_style_map.get("I41"))
         _set_cell_style(sd, "H44", centered_style_map.get("H44"))
         _set_cell_style(sd, "H45", centered_style_map.get("H45"))

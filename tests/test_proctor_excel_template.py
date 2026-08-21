@@ -73,6 +73,7 @@ def test_generate_proctor_excel_preserves_formulas_and_sheet_connections():
     assert formato["C9"].value == payload.numero_ot
     assert formato["F9"].value == payload.fecha_ensayo
     assert formato["H9"].value == payload.realizado_por
+    assert formato["H9"].alignment.horizontal == "center"
 
     # Main-sheet formulas must remain intact so linked sheets continue working.
     assert workbook["Proctor"]["C9"].value == "=+formato!L2"
