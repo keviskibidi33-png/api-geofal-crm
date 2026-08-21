@@ -690,32 +690,42 @@ class RecepcionService:
                     modified = True
 
                 # 2. Sincronizar Fecha de Recepción / Inicio
+                f_rec_iso = _to_iso_date(f_rec_raw) if f_rec_raw else None
+                f_fin_iso = _to_iso_date(f_fin_raw) if f_fin_raw else None
+
                 if f_rec_raw:
-                    f_rec_iso = _to_iso_date(f_rec_raw)
-                    if f_rec_iso and recepcion.fecha_recepcion != f_rec_iso:
-                        recepcion.fecha_recepcion = f_rec_iso
-                        modified = True
+                    f_rec_dt = parse_flexible_date(f_rec_raw)
+                    if f_rec_dt:
+                        current_rec_dt = recepcion.fecha_recepcion
+                        if not current_rec_dt or (hasattr(current_rec_dt, "date") and current_rec_dt.date() != f_rec_dt.date()) or str(current_rec_dt).strip() in ("", "-"):
+                            recepcion.fecha_recepcion = f_rec_dt
+                            modified = True
 
                 # 3. Sincronizar Fecha Estimada de Culminación
                 if f_fin_raw:
-                    f_fin_iso = _to_iso_date(f_fin_raw)
-                    if f_fin_iso and recepcion.fecha_estimada_culminacion != f_fin_iso:
-                        recepcion.fecha_estimada_culminacion = f_fin_iso
-                        modified = True
+                    f_fin_dt = parse_flexible_date(f_fin_raw)
+                    if f_fin_dt:
+                        current_fin_dt = recepcion.fecha_estimada_culminacion
+                        if not current_fin_dt or (hasattr(current_fin_dt, "date") and current_fin_dt.date() != f_fin_dt.date()) or str(current_fin_dt).strip() in ("", "-"):
+                            recepcion.fecha_estimada_culminacion = f_fin_dt
+                            modified = True
 
                 # 4. Sincronizar a OrdenTrabajo vinculada
-                if modified:
+                if modified or f_rec_iso or f_fin_iso:
                     ots = db.query(OrdenTrabajo).filter(
                         (OrdenTrabajo.numero_recepcion == recepcion.numero_recepcion) |
                         (OrdenTrabajo.numero_ot == recepcion.numero_ot)
                     ).all()
                     for ot in ots:
-                        if recepcion.fecha_recepcion and ot.fecha_recepcion != recepcion.fecha_recepcion:
-                            ot.fecha_recepcion = recepcion.fecha_recepcion
-                        if recepcion.fecha_recepcion and ot.inicio_programado != recepcion.fecha_recepcion:
-                            ot.inicio_programado = recepcion.fecha_recepcion
-                        if recepcion.fecha_estimada_culminacion and ot.fin_programado != recepcion.fecha_estimada_culminacion:
-                            ot.fin_programado = recepcion.fecha_estimada_culminacion
+                        if f_rec_iso and ot.fecha_recepcion != f_rec_iso:
+                            ot.fecha_recepcion = f_rec_iso
+                            modified = True
+                        if f_rec_iso and (not ot.inicio_programado or ot.inicio_programado in ("", "-")):
+                            ot.inicio_programado = f_rec_iso
+                            modified = True
+                        if f_fin_iso and (not ot.fin_programado or ot.fin_programado in ("", "-")):
+                            ot.fin_programado = f_fin_iso
+                            modified = True
 
                 if modified:
                     db.commit()

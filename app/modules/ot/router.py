@@ -656,6 +656,10 @@ def _sync_ot_to_recepcion(ot: OrdenTrabajo, db: Session):
             recepcion.proyecto = ot.proyecto
         if ot.fecha_recepcion:
             recepcion.fecha_recepcion = parsed_fecha
+        if ot.fin_programado:
+            parsed_fin = parse_flexible_date(ot.fin_programado)
+            if parsed_fin:
+                recepcion.fecha_estimada_culminacion = parsed_fin
         if ot.numero_ot:
             recepcion.numero_ot = ot.numero_ot
 
