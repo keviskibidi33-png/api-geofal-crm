@@ -90,11 +90,16 @@ def list_ordenes_trabajo(
             is_conc = False
             rec_num_clean = ot.numero_recepcion.strip() if ot.numero_recepcion else None
             r_tipo = rec_type_map.get(rec_num_clean) if rec_num_clean else None
+            ot_tipo_direct = str(getattr(ot, "tipo", "") or "").strip().upper()
 
-            if r_tipo:
+            if ot_tipo_direct in ("MUESTRAS", "SU_AG", "SUELO_AGREGADO", "SUELO", "AGREGADO", "LIMA", "ROCA", "ALBANILERIA", "AGUA"):
+                is_conc = False
+            elif ot_tipo_direct in ("CONCRETO", "PROBETAS"):
+                is_conc = True
+            elif r_tipo:
                 is_conc = (r_tipo == "CONCRETO")
             else:
-                # Análisis de items si no se determinó por recepción
+                # Análisis de items si no se determinó por recepción o tipo
                 if ot.items and isinstance(ot.items, list) and len(ot.items) > 0:
                     has_ensayo_code = any(
                         isinstance(it, dict) and it.get("codigo_ensayo") and str(it.get("codigo_ensayo")).strip() not in ("", "-")

@@ -27,6 +27,7 @@ class OrdenTrabajo(Base):
     ot_aperturada_por = Column(String(255), nullable=True)
     ot_designada_a = Column(String(255), nullable=True)
     items = Column(JSON, nullable=False, default=list)
+    tipo = Column(String(50), nullable=True, default="CONCRETO", index=True)
     estado = Column(String(50), nullable=False, default="PENDIENTE", index=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)

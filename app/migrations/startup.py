@@ -51,6 +51,15 @@ def run_startup_migrations(engine) -> None:
     except Exception as err:
         logger.warning("Migration 044-045 skipped: %s", _short_err(err))
 
+    # ── Migration 052: ordenes_trabajo tipo column ──────────────────
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE ordenes_trabajo ADD COLUMN IF NOT EXISTS tipo VARCHAR(50) DEFAULT 'CONCRETO';"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_ordenes_trabajo_tipo ON ordenes_trabajo (tipo);"))
+            logger.info("Migration 052 applied (ordenes_trabajo tipo column).")
+    except Exception as err:
+        logger.warning("Migration 052 skipped: %s", _short_err(err))
+
     # ── Migration 046: densidad_huantar permissions ──────────────────
     try:
         with engine.begin() as conn:

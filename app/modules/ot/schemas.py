@@ -46,6 +46,7 @@ class OTCreateSchema(BaseModel):
     ot_aperturada_por: Optional[str] = None
     ot_designada_a: Optional[str] = None
     items: List[OTItemSchema] = []
+    tipo: Optional[str] = "CONCRETO"
     estado: Optional[str] = "PENDIENTE"
 
     model_config = ConfigDict(extra="allow")
@@ -70,6 +71,7 @@ class OTUpdateSchema(BaseModel):
     ot_aperturada_por: Optional[str] = None
     ot_designada_a: Optional[str] = None
     items: Optional[List[OTItemSchema]] = None
+    tipo: Optional[str] = None
     estado: Optional[str] = None
 
     model_config = ConfigDict(extra="allow")
@@ -95,6 +97,7 @@ class OTOutSchema(BaseModel):
     ot_aperturada_por: Optional[str] = None
     ot_designada_a: Optional[str] = None
     items: List[OTItemSchema] = []
+    tipo: Optional[str] = "CONCRETO"
     estado: str = "PENDIENTE"
     created_at: Optional[datetime.datetime] = None
     updated_at: Optional[datetime.datetime] = None
