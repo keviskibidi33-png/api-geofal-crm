@@ -895,18 +895,43 @@ def download_excel_ot(
     # Enrich OT data before generating Excel to ensure latest values from MuestraConcreto are exported
     _enrich_ot_data(ot, db)
 
-    # Auto-detección del tipo de plantilla
+    # Auto-detección del tipo de plantilla (Concreto vs Suelo y Agregado)
     is_concreto = False
-    if tipo and tipo.upper() == "CONCRETO":
-        is_concreto = True
-    elif ot.items and isinstance(ot.items, list):
-        for it in ot.items:
-            if isinstance(it, dict):
-                cod = str(it.get("codigo_muestra", "")).upper()
-                desc_text = str(it.get("descripcion", "")).upper()
-                if "CO" in cod or "PROBETA" in desc_text or "COMPRESION" in desc_text or it.get("fc_kg_cm2"):
-                    is_concreto = True
-                    break
+    if tipo:
+        tipo_clean = tipo.strip().upper()
+        if tipo_clean in ["CONCRETO", "PROBETAS"]:
+            is_concreto = True
+        elif tipo_clean in ["SU_AG", "SUELO_AGREGADO", "SUELO", "AGREGADO", "LIMA", "MUESTRAS", "ROCA", "ALBANILERIA", "AGUA"]:
+            is_concreto = False
+    else:
+        # Fallback 1: Buscar la recepción vinculada para conocer su tipo_recepcion exacto
+        from app.modules.recepcion.models import RecepcionMuestra
+        recep = None
+        if ot.numero_recepcion:
+            recep = db.query(RecepcionMuestra).filter(RecepcionMuestra.numero_recepcion == ot.numero_recepcion.strip()).first()
+            if not recep and "-" in ot.numero_recepcion:
+                clean_num = ot.numero_recepcion.strip().split("-")[0]
+                recep = db.query(RecepcionMuestra).filter(RecepcionMuestra.numero_recepcion.like(f"%{clean_num}%")).first()
+        if not recep and ot.numero_ot:
+            recep = db.query(RecepcionMuestra).filter(RecepcionMuestra.numero_ot == ot.numero_ot.strip()).first()
+
+        if recep:
+            is_concreto = (recep.tipo_recepcion or "").upper() == "CONCRETO"
+        elif ot.items and isinstance(ot.items, list):
+            # Fallback 2: Analizar los items de la OT
+            for it in ot.items:
+                if isinstance(it, dict):
+                    cod = str(it.get("codigo_muestra", "")).upper()
+                    desc_text = str(it.get("descripcion", "")).upper()
+                    if (
+                        "ASTM C39" in desc_text
+                        or "PROBETA" in desc_text
+                        or it.get("fc_kg_cm2")
+                        or "-CO-" in cod
+                        or cod.endswith("-CO")
+                    ):
+                        is_concreto = True
+                        break
 
     try:
         if is_concreto:
