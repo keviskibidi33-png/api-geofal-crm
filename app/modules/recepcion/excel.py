@@ -271,7 +271,7 @@ class ExcelLogic:
         import json
         import copy
 
-        sheet_name = 'RECEP. SU-AG'
+        sheet_name = 'RECEP. MUESTRA'
         template_filename = "Recepciones/F-LEM-P-01.13 V01 RECEP DE MUESTRA.XLSX"
 
         def format_dt(dt):
