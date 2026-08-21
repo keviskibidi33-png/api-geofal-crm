@@ -378,7 +378,7 @@ def export_informe_medida(
         rec_code = match.group(1) if match else "000"
         
         n_muestras = len(payload.muestras_ids or [])
-        template_prefix = os.getenv("CONCRETE_TEMPLATE_PREFIX", "1-Inf-N-000-26-CO12-COM-V04")
+        template_prefix = os.getenv("CONCRETE_TEMPLATE_PREFIX", "1-INF.-N-000-26-CO12-COM-V04")
         
         if "000" in template_prefix:
             filename_prefix = template_prefix.replace("000", rec_code)

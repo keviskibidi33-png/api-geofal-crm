@@ -734,6 +734,7 @@ class CompresionService:
         from lxml import etree
         from app.modules.recepcion.models import RecepcionMuestra, MuestraConcreto
         from app.modules.common.excel_xml import find_template_path
+        from app.modules.tracing.service import TracingService
         from .excel import _set_cell_value, NAMESPACES
 
         # 1. Validación estricta del payload en Backend (Evita fallos silenciosos y errores 500)
@@ -742,9 +743,8 @@ class CompresionService:
         if n_muestras < 1 or n_muestras > 6:
             raise ValueError(f"Validación de Negocio Fallida: Debe seleccionar entre 1 y 6 probetas. Recibido: {n_muestras}")
 
-        recepcion = db.query(RecepcionMuestra).filter(
-            RecepcionMuestra.numero_recepcion == payload.numero_recepcion
-        ).first()
+        # Búsqueda flexible de recepción
+        recepcion, canonical_num = TracingService._buscar_recepcion_flexible(db, payload.numero_recepcion)
         if not recepcion:
             return None
 
@@ -757,7 +757,6 @@ class CompresionService:
             raise ValueError("Algunas de las probetas seleccionadas no existen o no pertenecen a esta recepción.")
 
         # 2. Plantilla Configurable Dinámicamente (Evita Acoplamiento Estricto / Hardcoding)
-        # Prefijo base configurable por variable de entorno, por defecto la versión de producción actual V04
         template_name = build_concrete_template_filename(n_muestras)
         
         template_path = find_template_path(template_name)
@@ -770,8 +769,32 @@ class CompresionService:
             else:
                 raise FileNotFoundError(f"No se encontró la plantilla de informe concreto a medida: {template_name}")
 
-        # 3. Transaccionalidad Atómica y Consistencia (DB vs Ficheros)
-        # Se abre un punto de restauración de transacción (Savepoint)
+        # 3. Obtener módulos de compresión y verificación consolidados con variantes
+        search_nums = TracingService._build_numero_variantes(recepcion.numero_recepcion, canonical_num)
+        compresion = TracingService._buscar_compresion_preferida(db, search_nums, recepcion.id)
+        verificacion = TracingService._buscar_verificacion_flexible(db, search_nums, canonical_num or recepcion.numero_recepcion)
+
+        # Mapeos por código LEM e item para compresión
+        comp_by_lem = {}
+        comp_by_item = {}
+        if compresion and compresion.items:
+            for it in compresion.items:
+                if it.codigo_lem:
+                    comp_by_lem[it.codigo_lem.strip()] = it
+                if it.item is not None:
+                    comp_by_item[it.item] = it
+
+        # Mapeos por código LEM e item para verificación
+        verif_by_lem = {}
+        verif_by_item = {}
+        if verificacion and verificacion.muestras_verificadas:
+            for mv in verificacion.muestras_verificadas:
+                if mv.codigo_lem:
+                    verif_by_lem[mv.codigo_lem.strip()] = mv
+                if mv.item_numero is not None:
+                    verif_by_item[mv.item_numero] = mv
+
+        # 4. Transaccionalidad Atómica y Consistencia (DB vs Ficheros)
         transaction_sp = db.begin_nested()
         try:
             output = io.BytesIO()
@@ -801,8 +824,8 @@ class CompresionService:
                     ns = sheet_root.nsmap.get(None, NAMESPACES['main'])
                     sheet_data = sheet_root.find(f'.//{{{ns}}}sheetData')
 
-                    _set_cell_value(sheet_data, 'B6', recepcion.solicitante or '-', ns)
-                    _set_cell_value(sheet_data, 'B7', getattr(recepcion, "domicilio_solicitante", None) or '-', ns)
+                    _set_cell_value(sheet_data, 'B6', recepcion.solicitante or recepcion.cliente or '-', ns)
+                    _set_cell_value(sheet_data, 'B7', getattr(recepcion, "domicilio_solicitante", None) or getattr(recepcion, "domicilio_legal", None) or '-', ns)
                     _set_cell_value(sheet_data, 'B8', getattr(recepcion, "proyecto", "") or '', ns)
                     _set_cell_value(sheet_data, 'B9', recepcion.ubicacion or '', ns)
                     
@@ -813,52 +836,46 @@ class CompresionService:
                     has_density = "SI" if any(getattr(m, "requiere_densidad", False) for m in muestras) else "NO"
                     _set_cell_value(sheet_data, 'P11', has_density, ns)
 
-                    # Inyectar probetas
-                    from app.modules.compresion.models import ItemCompresion, EnsayoCompresion
+                    # Inyectar probetas seleccionadas
                     for idx, m in enumerate(muestras):
                         row = 14 + idx
-                        _set_cell_value(sheet_data, f'A{row}', m.codigo_muestra_lem or '', ns)
-                        # Fallback robusto para el código de cliente en caso venga nulo de la DB
-                        client_code = m.codigo_muestra or m.identificacion_muestra
-                        if not client_code and m.codigo_muestra_lem:
-                            # Si es 2312321-CO-26 -> extrae 2312321
-                            client_code = m.codigo_muestra_lem.split("-")[0]
-                        _set_cell_value(sheet_data, f'B{row}', client_code or '', ns)
-                        _set_cell_value(sheet_data, f'C{row}', m.estructura or '', ns)
+                        lem_key = (m.codigo_muestra_lem or "").strip()
+                        item_fisico = comp_by_lem.get(lem_key) or comp_by_item.get(m.item_numero)
+                        m_verif = verif_by_lem.get(lem_key) or verif_by_item.get(m.item_numero)
+
+                        cod_lem = (item_fisico.codigo_lem if (item_fisico and item_fisico.codigo_lem) else m.codigo_muestra_lem) or ""
+                        client_code = m.identificacion_muestra or (getattr(m_verif, "codigo_cliente", None) if m_verif else "") or (m.codigo_muestra if m.codigo_muestra != m.codigo_muestra_lem else "") or "-"
+
+                        _set_cell_value(sheet_data, f'A{row}', cod_lem, ns)
+                        _set_cell_value(sheet_data, f'B{row}', client_code, ns)
+                        _set_cell_value(sheet_data, f'C{row}', m.estructura or '-', ns)
                         _set_cell_value(sheet_data, f'D{row}', m.fc_kg_cm2, ns, is_number=True)
                         _set_cell_value(sheet_data, f'E{row}', m.fecha_moldeo or '', ns)
                         _set_cell_value(sheet_data, f'F{row}', m.fecha_rotura or '', ns)
                         _set_cell_value(sheet_data, f'G{row}', m.hora_moldeo or '', ns)
-                        
-                        item_fisico = db.query(ItemCompresion).join(EnsayoCompresion).filter(
-                            EnsayoCompresion.numero_recepcion == recepcion.numero_recepcion,
-                            ItemCompresion.item == m.item_numero
-                        ).first()
 
-                        if item_fisico:
-                            _set_cell_value(sheet_data, f'H{row}', item_fisico.hora_ensayo or '', ns)
-                            _set_cell_value(sheet_data, f'N{row}', item_fisico.carga_maxima or 0.0, ns, is_number=True)
-                            _set_cell_value(sheet_data, f'O{row}', item_fisico.tipo_fractura or '', ns)
-                        else:
-                            _set_cell_value(sheet_data, f'H{row}', '', ns)
-                            _set_cell_value(sheet_data, f'N{row}', 0.0, ns, is_number=True)
-                            _set_cell_value(sheet_data, f'O{row}', '', ns)
+                        hora_ensayo = (item_fisico.hora_ensayo if item_fisico else "") or ""
+                        _set_cell_value(sheet_data, f'H{row}', hora_ensayo, ns)
 
-                        # Buscar dimensiones
-                        from app.modules.verificacion.models import VerificacionMuestras, MuestraVerificada
-                        verif = db.query(VerificacionMuestras).filter(VerificacionMuestras.numero_verificacion == recepcion.numero_recepcion).first()
-                        if verif:
-                            m_verif = db.query(MuestraVerificada).filter(
-                                MuestraVerificada.verificacion_id == verif.id,
-                                MuestraVerificada.item_numero == m.item_numero
-                            ).first()
-                            if m_verif:
-                                _set_cell_value(sheet_data, f'I{row}', m_verif.diametro_1_mm or 0.0, ns, is_number=True)
-                                _set_cell_value(sheet_data, f'J{row}', m_verif.diametro_2_mm or 0.0, ns, is_number=True)
-                                _set_cell_value(sheet_data, f'K{row}', m_verif.longitud_1_mm or 0.0, ns, is_number=True)
-                                _set_cell_value(sheet_data, f'L{row}', m_verif.longitud_2_mm or 0.0, ns, is_number=True)
-                                _set_cell_value(sheet_data, f'M{row}', m_verif.longitud_3_mm or 0.0, ns, is_number=True)
-                                _set_cell_value(sheet_data, f'P{row}', m_verif.masa_muestra_aire_g or 0.0, ns, is_number=True)
+                        diam1 = getattr(m_verif, "diametro_1_mm", None)
+                        diam2 = getattr(m_verif, "diametro_2_mm", None)
+                        long1 = getattr(m_verif, "longitud_1_mm", None)
+                        long2 = getattr(m_verif, "longitud_2_mm", None)
+                        long3 = getattr(m_verif, "longitud_3_mm", None)
+                        masa_aire = getattr(m_verif, "masa_muestra_aire_g", None)
+
+                        _set_cell_value(sheet_data, f'I{row}', diam1 if diam1 is not None else 0.0, ns, is_number=True)
+                        _set_cell_value(sheet_data, f'J{row}', diam2 if diam2 is not None else 0.0, ns, is_number=True)
+                        _set_cell_value(sheet_data, f'K{row}', long1 if long1 is not None else 0.0, ns, is_number=True)
+                        _set_cell_value(sheet_data, f'L{row}', long2 if long2 is not None else 0.0, ns, is_number=True)
+                        _set_cell_value(sheet_data, f'M{row}', long3 if long3 is not None else 0.0, ns, is_number=True)
+
+                        carga_max = getattr(item_fisico, "carga_maxima", None) if item_fisico else None
+                        tipo_frac = getattr(item_fisico, "tipo_fractura", None) if item_fisico else ""
+
+                        _set_cell_value(sheet_data, f'N{row}', carga_max if carga_max is not None else 0.0, ns, is_number=True)
+                        _set_cell_value(sheet_data, f'O{row}', tipo_frac or '', ns)
+                        _set_cell_value(sheet_data, f'P{row}', masa_aire if masa_aire is not None else 0.0, ns, is_number=True)
 
                     # Escribir de vuelta sin calcChain (I/O en memoria)
                     for item_name in z_in.namelist():
