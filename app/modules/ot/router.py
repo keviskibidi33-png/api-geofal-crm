@@ -402,7 +402,6 @@ def _enrich_ot_data(ot: OrdenTrabajo, db: Session):
         digits_base = "".join(filter(str.isdigit, clean_num))
         ot_digits = "".join(filter(str.isdigit, str(ot.numero_ot or "")))
 
-        # 1. Buscar prioritariamente por número de recepción
         row_lab = db.execute(
             text("""
                 SELECT fecha_recepcion, fecha_inicio, fecha_entrega_estimada, entrega_real, ot, cotizacion_lab
@@ -418,24 +417,6 @@ def _enrich_ot_data(ot: OrdenTrabajo, db: Session):
                 "digits": digits_base,
             }
         ).fetchone()
-
-        # 2. Solo si no se encontró por recepción, buscar por OT
-        if not row_lab and ot_digits:
-            row_lab = db.execute(
-                text("""
-                    SELECT fecha_recepcion, fecha_inicio, fecha_entrega_estimada, entrega_real, ot, cotizacion_lab
-                    FROM programacion_lab
-                    WHERE (
-                        (ot IS NOT NULL AND CAST(ot AS TEXT) ILIKE :ot_pat)
-                        OR (LENGTH(:ot_digits) > 0 AND regexp_replace(CAST(COALESCE(ot, '') AS TEXT), '[^0-9]', '', 'g') = :ot_digits)
-                    )
-                    ORDER BY id DESC LIMIT 1
-                """),
-                {
-                    "ot_pat": f"%{ot.numero_ot}%",
-                    "ot_digits": ot_digits,
-                }
-            ).fetchone()
 
         if row_lab:
             if row_lab[0] and (not ot.fecha_recepcion or ot.fecha_recepcion in ("", "-")):
@@ -679,7 +660,6 @@ def prefill_ot_from_recepcion(
         clean_num = recepcion.numero_recepcion.split("-")[0] if "-" in str(recepcion.numero_recepcion) else str(recepcion.numero_recepcion)
         digits_base = "".join(filter(str.isdigit, clean_num))
         
-        # 1. Buscar prioritariamente por número de recepción
         row_lab = db.execute(
             text("""
                 SELECT fecha_recepcion, fecha_inicio, fecha_entrega_estimada, ot
@@ -692,22 +672,6 @@ def prefill_ot_from_recepcion(
             """),
             {"exact_pat": f"%{clean_num}%", "digits": digits_base}
         ).fetchone()
-
-        # 2. Solo si no se encontró por recepción y se dispone de número de OT
-        if not row_lab and ot_val:
-            clean_ot_digits = "".join(filter(str.isdigit, ot_val))
-            row_lab = db.execute(
-                text("""
-                    SELECT fecha_recepcion, fecha_inicio, fecha_entrega_estimada, ot
-                    FROM programacion_lab
-                    WHERE (
-                        (ot IS NOT NULL AND CAST(ot AS TEXT) ILIKE :ot_pat)
-                        OR (LENGTH(:ot_digits) > 0 AND regexp_replace(CAST(COALESCE(ot, '') AS TEXT), '[^0-9]', '', 'g') = :ot_digits)
-                    )
-                    ORDER BY id DESC LIMIT 1
-                """),
-                {"ot_pat": f"%{ot_val}%", "ot_digits": clean_ot_digits}
-            ).fetchone()
         
         if row_lab:
             if row_lab[0] and not fecha_rec:
