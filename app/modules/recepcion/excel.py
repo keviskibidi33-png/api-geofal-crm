@@ -475,8 +475,8 @@ class ExcelLogic:
         if not os.path.exists(active_template_path):
             raise FileNotFoundError(f"Template no encontrado en {active_template_path}")
 
-        # Formato Especializado para Suelos y Agregados (F-LEM-P-01.13)
-        if tipo_rec == "SUELO_AGREGADO" or "01.13" in str(active_template_path):
+        # Formato Especializado para Muestras (F-LEM-P-01.13 RECEP DE MUESTRA)
+        if tipo_rec in ("SUELO_AGREGADO", "ROCA", "ALBANILERIA", "AGUA") or "01.13" in str(active_template_path):
             return self._generar_excel_suelo_agregado(recepcion, active_template_path)
 
         shared_strings = []

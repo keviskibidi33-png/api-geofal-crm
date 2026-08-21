@@ -14,21 +14,21 @@ TIPO_RECEPCION_CONFIG = {
     },
     "ROCA": {
         "label": "Recepción de Muestras de Roca",
-        "codigo": "F-LEM-P-01.04",
-        "version": "05",
-        "template": "Recepciones/F-LEM-P-01.04 V05 RECEPCIÓN DE MUESTRAS DE ROCA.xlsx"
+        "codigo": "F-LEM-P-01.13",
+        "version": "01",
+        "template": "Recepciones/F-LEM-P-01.13 V01 RECEP DE MUESTRA.XLSX"
     },
     "ALBANILERIA": {
         "label": "Recepción de Muestras de Albañilería",
-        "codigo": "F-LEM-P-01.05",
-        "version": "04",
-        "template": "Recepciones/F-LEM-P-01.05 V04 RECEPCIÓN DE MUESTRAS DE ALBAÑILERIA.xlsx"
+        "codigo": "F-LEM-P-01.13",
+        "version": "01",
+        "template": "Recepciones/F-LEM-P-01.13 V01 RECEP DE MUESTRA.XLSX"
     },
     "AGUA": {
         "label": "Recepción de Muestras de Agua",
-        "codigo": "F-LEM-P-01.06",
-        "version": "04",
-        "template": "Recepciones/F-LEM-P-01.06 V04 RECEPCIÓN DE MUESTRAS DE AGUA.xlsx"
+        "codigo": "F-LEM-P-01.13",
+        "version": "01",
+        "template": "Recepciones/F-LEM-P-01.13 V01 RECEP DE MUESTRA.XLSX"
     },
     "SUELO_AGREGADO": {
         "label": "Recepción Muestra Suelo y Agregado",
