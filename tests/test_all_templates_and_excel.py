@@ -1,5 +1,9 @@
 import os, sys
+from pathlib import Path
 from datetime import datetime
+
+ROOT_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT_DIR))
 
 print("=== INICIANDO VALIDACIÓN DE PLANTILLAS Y GENERACIÓN EXCEL ===")
 
