@@ -7,14 +7,16 @@ import os
 import re
 import unicodedata
 from datetime import date, datetime
+from typing import Any
 
 from app.utils.http_client import http_delete, http_get, http_post
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy import desc, text
 from sqlalchemy.orm import Session
 
 from app.database import get_db_session
+from app.modules.common.router_factory import resolve_export_payload
 from app.utils.export_filename import build_formato_filename
 from .excel import TEMPLATE_FILENAME, generate_proctor_excel
 from .models import ProctorEnsayo
@@ -527,21 +529,30 @@ async def eliminar_ensayo_proctor(
 
 @router.post("/excel")
 def generar_excel_proctor(
-    payload: ProctorRequest,
+    payload: Any = Body(default=None),
     download: bool = Query(default=False, description="true=guardar+descargar, false=solo guardar"),
     ensayo_id: int | None = Query(default=None, ge=1, description="ID a editar (opcional)"),
     db: Session = Depends(get_db_session),
 ):
     try:
         _ensure_payload_column(db)
-        _apply_footer_defaults(payload)
-        excel_bytes = generate_proctor_excel(payload)
+        payload_obj = resolve_export_payload(
+            payload=payload,
+            ensayo_id=ensayo_id,
+            db=db,
+            model=ProctorEnsayo,
+            request_model=ProctorRequest,
+            display_name="Proctor",
+        )
+
+        _apply_footer_defaults(payload_obj)
+        excel_bytes = generate_proctor_excel(payload_obj)
 
         today = date.today()
-        filename = build_formato_filename(payload.muestra, "SU19", "PROCTOR", template_filename=TEMPLATE_FILENAME)
+        filename = build_formato_filename(payload_obj.muestra, "SU19", "PROCTOR", template_filename=TEMPLATE_FILENAME)
 
-        safe_ot = _safe_filename(payload.numero_ot, extension="")
-        safe_muestra = _safe_filename(payload.muestra, extension="")
+        safe_ot = _safe_filename(payload_obj.numero_ot, extension="")
+        safe_muestra = _safe_filename(payload_obj.muestra, extension="")
         storage_name = f"PROCTOR_{safe_ot}_{safe_muestra}_{today.strftime('%Y%m%d')}.xlsx"
         storage_path = f"{today.year}/{storage_name}"
         storage_object_key = _upload_to_supabase_storage(
@@ -550,15 +561,15 @@ def generar_excel_proctor(
             object_path=storage_path,
         )
 
-        densidad_seca_maxima = _calcular_densidad_seca_maxima(payload)
+        densidad_seca_maxima = _calcular_densidad_seca_maxima(payload_obj)
 
         ensayo_guardado = _guardar_ensayo(
             db=db,
-            payload=payload,
+            payload=payload_obj,
             densidad_seca_maxima=densidad_seca_maxima,
             storage_object_key=storage_object_key,
             ensayo_id=ensayo_id,
-            estado="COMPLETO" if _is_payload_completo(payload) else "EN PROCESO",
+            estado="COMPLETO" if _is_payload_completo(payload_obj) else "EN PROCESO",
         )
 
         if not download:
@@ -596,4 +607,12 @@ def generar_excel_proctor(
         db.rollback()
         logger.exception("Error inesperado en generar_excel_proctor")
         raise HTTPException(status_code=500, detail=f"Error generando Excel Proctor: {str(exc)}")
+
+
+@router.get("/{ensayo_id}/excel")
+def descargar_excel_proctor(
+    ensayo_id: int,
+    db: Session = Depends(get_db_session),
+):
+    return generar_excel_proctor(payload=None, download=True, ensayo_id=ensayo_id, db=db)
 

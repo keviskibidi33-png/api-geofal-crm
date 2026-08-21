@@ -10,13 +10,44 @@ from typing import Any, Callable, Sequence
 from app.database import get_db_session
 from app.utils.export_filename import build_filename_from_template
 from app.utils.http_client import http_delete, http_get, http_post
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 from sqlalchemy import desc, text
 from sqlalchemy.orm import Session
 from app.modules.common.notifications import log_audit_action
 
 logger = logging.getLogger(__name__)
+
+
+def resolve_export_payload(
+    payload: Any,
+    ensayo_id: int | None,
+    db: Session,
+    model: type,
+    request_model: type,
+    display_name: str = "Ensayo",
+) -> Any:
+    """Resolves payload either from request body or by loading existing ensayo from database."""
+    is_empty_payload = (
+        payload is None
+        or (isinstance(payload, dict) and not payload)
+        or (isinstance(payload, dict) and "muestra" not in payload and not any(payload.values()))
+    )
+    if is_empty_payload:
+        if not ensayo_id:
+            raise HTTPException(status_code=422, detail="Payload requerido cuando no se especifica ensayo_id.")
+        ensayo_db = db.query(model).filter(model.id == ensayo_id, model.deleted_at.is_(None)).first()
+        if not ensayo_db:
+            raise HTTPException(status_code=404, detail=f"{display_name} con id={ensayo_id} no encontrado.")
+        stored_payload = getattr(ensayo_db, "payload_json", None) or getattr(ensayo_db, "payload", None)
+        if not stored_payload:
+            raise HTTPException(status_code=400, detail=f"El {display_name} no tiene datos guardados para generar el Excel.")
+        return request_model.model_validate(stored_payload)
+    elif isinstance(payload, dict):
+        return request_model.model_validate(payload)
+    elif isinstance(payload, request_model):
+        return payload
+    return request_model.model_validate(payload)
 
 
 def _current_user(request: Request) -> tuple[str | None, str | None]:
@@ -359,23 +390,32 @@ def create_lab_router(
 
     @router.post("/excel")
     def export_excel(
-        payload: request_model,
-        request: Request,
+        payload: Any = Body(default=None),
+        request: Request = None,
         download: bool = Query(default=False, description="true=save+download, false=save only"),
         ensayo_id: int | None = Query(default=None, ge=1, description="ID to edit (optional)"),
         db: Session = Depends(get_db_session),
     ):
         try:
             ensure_payload_columns(db)
+            payload_obj = resolve_export_payload(
+                payload=payload,
+                ensayo_id=ensayo_id,
+                db=db,
+                model=model,
+                request_model=request_model,
+                display_name=display_name,
+            )
+
             if payload_preprocessor is not None:
-                payload_preprocessor(payload)
+                payload_preprocessor(payload_obj)
 
-            excel_bytes = generate_excel(payload)
+            excel_bytes = generate_excel(payload_obj)
             today = date.today()
-            filename = resolve_download_filename(payload, template_filename, build_download_filename)
+            filename = resolve_download_filename(payload_obj, template_filename, build_download_filename)
 
-            safe_ot = safe_filename(payload.numero_ot, extension="")
-            safe_muestra = safe_filename(payload.muestra, extension="")
+            safe_ot = safe_filename(payload_obj.numero_ot, extension="")
+            safe_muestra = safe_filename(payload_obj.muestra, extension="")
             storage_name = f"{storage_prefix}_{safe_ot}_{safe_muestra}_{today.strftime('%Y%m%d')}.xlsx"
             storage_path = f"{today.year}/{storage_name}"
             storage_object_key = upload_to_supabase_storage(
@@ -387,14 +427,14 @@ def create_lab_router(
 
             ensayo = save_ensayo(
                 db=db,
-                payload=payload,
+                payload=payload_obj,
                 storage_object_key=storage_object_key,
                 ensayo_id=ensayo_id,
-                estado="COMPLETO" if is_payload_complete(payload) else "EN PROCESO",
+                estado="COMPLETO" if is_payload_complete(payload_obj) else "EN PROCESO",
             )
 
             # Log audit trail
-            user_id, user_name = _current_user(request)
+            user_id, user_name = _current_user(request) if request else (None, None)
             action_type = "Actualizó" if ensayo_id else "Creó"
             log_audit_action(
                 user_id=user_id,
@@ -429,8 +469,18 @@ def create_lab_router(
         except FileNotFoundError as exc:
             logger.error("Template missing for %s: %s", display_name, exc)
             raise HTTPException(status_code=404, detail=str(exc))
+        except HTTPException:
+            raise
         except Exception as exc:
             logger.exception("Excel export failed for %s", display_name)
             raise HTTPException(status_code=500, detail=f"Export failed: {exc}")
+
+    @router.get("/{ensayo_id}/excel")
+    def descargar_excel_por_id(
+        ensayo_id: int,
+        request: Request,
+        db: Session = Depends(get_db_session),
+    ):
+        return export_excel(payload=None, request=request, download=True, ensayo_id=ensayo_id, db=db)
 
     return router

@@ -36,6 +36,10 @@ from app.modules.cd.models import CDEnsayo  # noqa
 
 from app.main import app
 
+from sqlalchemy.dialects.sqlite.base import SQLiteTypeCompiler
+if not hasattr(SQLiteTypeCompiler, "visit_JSONB"):
+    SQLiteTypeCompiler.visit_JSONB = lambda self, type_, **kw: "JSON"
+
 # Engine SQLite en memoria con StaticPool para compartir el DB state en todas las peticiones
 engine = create_engine(
     "sqlite:///:memory:",

@@ -8,14 +8,16 @@ import os
 import re
 import unicodedata
 from datetime import date, datetime
+from typing import Any
 
 from app.utils.http_client import http_delete, http_get, http_post
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy import desc, text
 from sqlalchemy.orm import Session
 
 from app.database import get_db_session
+from app.modules.common.router_factory import resolve_export_payload
 from app.utils.export_filename import build_filename_from_template
 from .excel import TEMPLATE_FILENAME, generate_cbr_excel
 from .models import CBREnsayo
@@ -29,8 +31,6 @@ from .schemas import (
 router = APIRouter(prefix="/api/cbr", tags=["Laboratorio CBR"])
 logger = logging.getLogger(__name__)
 _PAYLOAD_COLUMN_READY = False
-
-
 def _safe_filename(base_name: str, extension: str = "xlsx") -> str:
     if not base_name:
         base_name = "SinNombre"
@@ -377,6 +377,7 @@ async def obtener_ensayo_cbr(
     return _to_detalle_response(ensayo)
 
 
+
 @router.delete("/{ensayo_id}")
 async def eliminar_ensayo_cbr(
     ensayo_id: int,
@@ -423,21 +424,30 @@ async def eliminar_ensayo_cbr(
 
 @router.post("/excel")
 def generar_excel_cbr(
-    payload: CBRRequest,
+    payload: Any = Body(default=None),
     download: bool = Query(default=False, description="true=guardar+descargar, false=solo guardar"),
     ensayo_id: int | None = Query(default=None, ge=1, description="ID a editar (opcional)"),
     db: Session = Depends(get_db_session),
 ):
     try:
         _ensure_payload_column(db)
-        _apply_footer_defaults(payload)
-        excel_bytes = generate_cbr_excel(payload)
+        payload_obj = resolve_export_payload(
+            payload=payload,
+            ensayo_id=ensayo_id,
+            db=db,
+            model=CBREnsayo,
+            request_model=CBRRequest,
+            display_name="CBR",
+        )
+
+        _apply_footer_defaults(payload_obj)
+        excel_bytes = generate_cbr_excel(payload_obj)
 
         today = date.today()
-        filename = build_filename_from_template(TEMPLATE_FILENAME, payload.muestra)
+        filename = build_filename_from_template(TEMPLATE_FILENAME, payload_obj.muestra)
 
-        safe_ot = _safe_filename(payload.numero_ot, extension="")
-        safe_muestra = _safe_filename(payload.muestra, extension="")
+        safe_ot = _safe_filename(payload_obj.numero_ot, extension="")
+        safe_muestra = _safe_filename(payload_obj.muestra, extension="")
         storage_name = f"CBR_{safe_ot}_{safe_muestra}_{today.strftime('%Y%m%d')}.xlsx"
         storage_path = f"{today.year}/{storage_name}"
         storage_object_key = _upload_to_supabase_storage(
@@ -448,11 +458,11 @@ def generar_excel_cbr(
 
         ensayo_guardado = _guardar_ensayo(
             db=db,
-            payload=payload,
+            payload=payload_obj,
             indice_cbr=None,
             storage_object_key=storage_object_key,
             ensayo_id=ensayo_id,
-            estado="COMPLETO" if _is_payload_completo(payload) else "EN PROCESO",
+            estado="COMPLETO" if _is_payload_completo(payload_obj) else "EN PROCESO",
         )
 
         if not download:
@@ -491,3 +501,10 @@ def generar_excel_cbr(
         logger.exception("Error inesperado en generar_excel_cbr")
         raise HTTPException(status_code=500, detail=f"Error generando Excel CBR: {str(e)}")
 
+
+@router.get("/{ensayo_id}/excel")
+def descargar_excel_cbr(
+    ensayo_id: int,
+    db: Session = Depends(get_db_session),
+):
+    return generar_excel_cbr(payload=None, download=True, ensayo_id=ensayo_id, db=db)

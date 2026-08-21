@@ -9,14 +9,16 @@ import os
 import re
 import unicodedata
 from datetime import date, datetime
+from typing import Any
 
 from app.utils.http_client import http_delete, http_get, http_post
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy import desc, text
 from sqlalchemy.orm import Session
 
 from app.database import get_db_session
+from app.modules.common.router_factory import resolve_export_payload
 from app.utils.export_filename import build_formato_filename
 from .excel import TEMPLATE_FILENAME, generate_equi_arena_excel
 from .models import EquiArenaEnsayo
@@ -382,7 +384,6 @@ async def eliminar_ensayo_equi_arena(
         db.rollback()
         logger.exception("Error enviando ensayo EquiArena a papelera id=%s", ensayo_id)
         raise HTTPException(status_code=500, detail="No se pudo enviar el ensayo EquiArena a papelera.")
-
     return {
         "message": "Ensayo EquiArena movido a papelera correctamente",
         "id": ensayo_id,
@@ -392,21 +393,30 @@ async def eliminar_ensayo_equi_arena(
 
 @router.post("/excel")
 def generar_excel_equi_arena(
-    payload: EquiArenaRequest,
+    payload: Any = Body(default=None),
     download: bool = Query(default=False, description="true=guardar+descargar, false=solo guardar"),
     ensayo_id: int | None = Query(default=None, ge=1, description="ID a editar (opcional)"),
     db: Session = Depends(get_db_session),
 ):
     try:
         _ensure_payload_column(db)
-        _apply_footer_defaults(payload)
-        excel_bytes = generate_equi_arena_excel(payload)
+        payload_obj = resolve_export_payload(
+            payload=payload,
+            ensayo_id=ensayo_id,
+            db=db,
+            model=EquiArenaEnsayo,
+            request_model=EquiArenaRequest,
+            display_name="EquiArena",
+        )
+
+        _apply_footer_defaults(payload_obj)
+        excel_bytes = generate_equi_arena_excel(payload_obj)
 
         today = date.today()
-        filename = build_formato_filename(payload.muestra, "SU21", "EQUI. ARENA", template_filename=TEMPLATE_FILENAME)
+        filename = build_formato_filename(payload_obj.muestra, "SU21", "EQUI. ARENA", template_filename=TEMPLATE_FILENAME)
 
-        safe_ot = _safe_filename(payload.numero_ot, extension="")
-        safe_muestra = _safe_filename(payload.muestra, extension="")
+        safe_ot = _safe_filename(payload_obj.numero_ot, extension="")
+        safe_muestra = _safe_filename(payload_obj.muestra, extension="")
         storage_name = f"EQUI_ARENA_{safe_ot}_{safe_muestra}_{today.strftime('%Y%m%d')}.xlsx"
         storage_path = f"{today.year}/{storage_name}"
         storage_object_key = _upload_to_supabase_storage(
@@ -417,10 +427,10 @@ def generar_excel_equi_arena(
 
         ensayo_guardado = _guardar_ensayo(
             db=db,
-            payload=payload,
+            payload=payload_obj,
             storage_object_key=storage_object_key,
             ensayo_id=ensayo_id,
-            estado="COMPLETO" if _is_payload_completo(payload) else "EN PROCESO",
+            estado="COMPLETO" if _is_payload_completo(payload_obj) else "EN PROCESO",
         )
 
         if not download:
@@ -459,3 +469,10 @@ def generar_excel_equi_arena(
         logger.exception("Error inesperado en generar_excel_equi_arena")
         raise HTTPException(status_code=500, detail=f"Error generando Excel EquiArena: {str(exc)}")
 
+
+@router.get("/{ensayo_id}/excel")
+def descargar_excel_equi_arena(
+    ensayo_id: int,
+    db: Session = Depends(get_db_session),
+):
+    return generar_excel_equi_arena(payload=None, download=True, ensayo_id=ensayo_id, db=db)

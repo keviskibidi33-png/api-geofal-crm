@@ -9,10 +9,13 @@ import os
 import re
 import unicodedata
 from datetime import date, datetime
+from typing import Any
 
+from app.database import get_db_session
+from app.modules.common.router_factory import resolve_export_payload
 from app.utils.export_filename import build_formato_filename
 from app.utils.http_client import http_delete, http_get, http_post
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy import desc, text
 from sqlalchemy.orm import Session
@@ -394,21 +397,30 @@ async def eliminar_ensayo_gran_suelo(
 
 @router.post("/excel")
 def generar_excel_gran_suelo(
-    payload: GranSueloRequest,
+    payload: Any = Body(default=None),
     download: bool = Query(default=False, description="true=guardar+descargar, false=solo guardar"),
     ensayo_id: int | None = Query(default=None, ge=1, description="ID a editar (opcional)"),
     db: Session = Depends(get_db_session),
 ):
     try:
         _ensure_payload_column(db)
-        _apply_footer_defaults(payload)
-        excel_bytes = generate_gran_suelo_excel(payload)
+        payload_obj = resolve_export_payload(
+            payload=payload,
+            ensayo_id=ensayo_id,
+            db=db,
+            model=GranSueloEnsayo,
+            request_model=GranSueloRequest,
+            display_name="Gran Suelo",
+        )
+
+        _apply_footer_defaults(payload_obj)
+        excel_bytes = generate_gran_suelo_excel(payload_obj)
 
         today = date.today()
-        filename = build_formato_filename(payload.muestra, "SU24", "GR. SUELO", template_filename=TEMPLATE_FILENAME)
+        filename = build_formato_filename(payload_obj.muestra, "SU24", "GR. SUELO", template_filename=TEMPLATE_FILENAME)
 
-        safe_ot = _safe_filename(payload.numero_ot, extension="")
-        safe_muestra = _safe_filename(payload.muestra, extension="")
+        safe_ot = _safe_filename(payload_obj.numero_ot, extension="")
+        safe_muestra = _safe_filename(payload_obj.muestra, extension="")
         storage_name = f"GRAN_SUELO_{safe_ot}_{safe_muestra}_{today.strftime('%Y%m%d')}.xlsx"
         storage_path = f"{today.year}/{storage_name}"
         storage_object_key = _upload_to_supabase_storage(
@@ -419,10 +431,10 @@ def generar_excel_gran_suelo(
 
         ensayo_guardado = _guardar_ensayo(
             db=db,
-            payload=payload,
+            payload=payload_obj,
             storage_object_key=storage_object_key,
             ensayo_id=ensayo_id,
-            estado="COMPLETO" if _is_payload_completo(payload) else "EN PROCESO",
+            estado="COMPLETO" if _is_payload_completo(payload_obj) else "EN PROCESO",
         )
 
         if not download:
@@ -460,3 +472,11 @@ def generar_excel_gran_suelo(
         db.rollback()
         logger.exception("Error inesperado en generar_excel_gran_suelo")
         raise HTTPException(status_code=500, detail=f"Error generando Excel Gran Suelo: {str(exc)}")
+
+
+@router.get("/{ensayo_id}/excel")
+def descargar_excel_gran_suelo(
+    ensayo_id: int,
+    db: Session = Depends(get_db_session),
+):
+    return generar_excel_gran_suelo(payload=None, download=True, ensayo_id=ensayo_id, db=db)

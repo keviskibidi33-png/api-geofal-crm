@@ -8,14 +8,16 @@ import os
 import re
 import unicodedata
 from datetime import date, datetime
+from typing import Any
 
 from app.utils.http_client import http_delete, http_get, http_post
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy import desc, text
 from sqlalchemy.orm import Session
 
 from app.database import get_db_session
+from app.modules.common.router_factory import resolve_export_payload
 from app.utils.export_filename import build_formato_filename
 from .excel import generate_sulfatos_solubles_excel
 from .models import SulfatosSolublesEnsayo
@@ -363,21 +365,30 @@ async def eliminar_ensayo(
 
 @router.post("/excel")
 def generar_excel(
-    payload: SulfatosSolublesRequest,
+    payload: Any = Body(default=None),
     download: bool = Query(default=False, description="true=save+download, false=save only"),
     ensayo_id: int | None = Query(default=None, ge=1, description="ID to edit (optional)"),
     db: Session = Depends(get_db_session),
 ):
     try:
         _ensure_payload_column(db)
-        _apply_footer_defaults(payload)
-        excel_bytes = generate_sulfatos_solubles_excel(payload)
+        payload_obj = resolve_export_payload(
+            payload=payload,
+            ensayo_id=ensayo_id,
+            db=db,
+            model=SulfatosSolublesEnsayo,
+            request_model=SulfatosSolublesRequest,
+            display_name="Sulfatos Solubles",
+        )
+
+        _apply_footer_defaults(payload_obj)
+        excel_bytes = generate_sulfatos_solubles_excel(payload_obj)
 
         today = date.today()
-        filename = build_formato_filename(payload.muestra, "SU15", "SULFATOS SOLUBLES")
+        filename = build_formato_filename(payload_obj.muestra, "SU15", "SULFATOS SOLUBLES")
 
-        safe_ot = _safe_filename(payload.numero_ot, extension="")
-        safe_muestra = _safe_filename(payload.muestra, extension="")
+        safe_ot = _safe_filename(payload_obj.numero_ot, extension="")
+        safe_muestra = _safe_filename(payload_obj.muestra, extension="")
         storage_name = f"SULF_{safe_ot}_{safe_muestra}_{today.strftime('%Y%m%d')}.xlsx"
         storage_path = f"{today.year}/{storage_name}"
         storage_object_key = _upload_to_supabase_storage(
@@ -388,10 +399,10 @@ def generar_excel(
 
         ensayo_guardado = _guardar_ensayo(
             db=db,
-            payload=payload,
+            payload=payload_obj,
             storage_object_key=storage_object_key,
             ensayo_id=ensayo_id,
-            estado="COMPLETO" if _is_payload_completo(payload) else "EN PROCESO",
+            estado="COMPLETO" if _is_payload_completo(payload_obj) else "EN PROCESO",
         )
 
         if not download:
@@ -421,7 +432,19 @@ def generar_excel(
     except FileNotFoundError as exc:
         logger.error("Template missing for Sulfatos Solubles: %s", exc)
         raise HTTPException(status_code=404, detail="Template not found: Template_SULFATOS_SOLUBLES.xlsx")
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as exc:
+        db.rollback()
         logger.exception("Excel export failed for Sulfatos Solubles")
         raise HTTPException(status_code=500, detail=f"Export failed: {exc}")
+
+
+@router.get("/{ensayo_id}/excel")
+def descargar_excel_sulfatos_solubles(
+    ensayo_id: int,
+    db: Session = Depends(get_db_session),
+):
+    return generar_excel(payload=None, download=True, ensayo_id=ensayo_id, db=db)
 
