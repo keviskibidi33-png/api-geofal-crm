@@ -114,27 +114,25 @@ async def buscar_recepcion(
     Distingue recepciones completas vs stubs creados por auto-sync desde OT / Control Lab.
     """
     from app.modules.recepcion.models import RecepcionMuestra
-    from app.modules.verificacion.models import VerificacionMuestras
-    from app.modules.compresion.models import EnsayoCompresion
+    from app.modules.tracing.service import TracingService
     
     clean_num = numero.strip().upper()
     base_num = clean_num.split("-")[0] if "-" in clean_num else clean_num
     
-    recepcion = db.query(RecepcionMuestra).filter(
-        (RecepcionMuestra.numero_recepcion == clean_num) |
-        (RecepcionMuestra.numero_recepcion == base_num) |
-        (RecepcionMuestra.numero_ot == clean_num)
-    ).first()
+    # 1. Buscar PRIMERO estrictamente por número de recepción usando búsqueda flexible
+    recepcion, canonical_num = TracingService._buscar_recepcion_flexible(db, clean_num)
     
-    verificacion = db.query(VerificacionMuestras).filter(
-        (VerificacionMuestras.numero_verificacion == clean_num) |
-        (VerificacionMuestras.numero_verificacion == base_num)
-    ).first()
+    # 2. Si no existe por recepción, buscar por OT como fallback secundario
+    if not recepcion:
+        recepcion = db.query(RecepcionMuestra).filter(
+            (RecepcionMuestra.numero_ot == clean_num) |
+            (RecepcionMuestra.numero_ot == base_num)
+        ).first()
+
+    search_nums = TracingService._build_numero_variantes(clean_num, canonical_num or (recepcion.numero_recepcion if recepcion else ""))
     
-    compresion = db.query(EnsayoCompresion).filter(
-        (EnsayoCompresion.numero_recepcion == clean_num) |
-        (EnsayoCompresion.numero_recepcion == base_num)
-    ).first()
+    verificacion = TracingService._buscar_verificacion_flexible(db, search_nums, canonical_num or clean_num)
+    compresion = TracingService._buscar_compresion_preferida(db, search_nums, recepcion.id if recepcion else None)
     
     formatos = {
         "recepcion": recepcion is not None,
