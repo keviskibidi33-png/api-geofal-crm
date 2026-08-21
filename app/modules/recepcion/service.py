@@ -663,7 +663,6 @@ class RecepcionService:
                 ot_lab_raw  = str(res[0]).strip() if res[0] else ""
                 coti_raw    = str(res[1]).strip() if res[1] else ""
                 f_rec_raw   = res[2] or res[3]
-                f_ini_raw   = res[3] or res[2]
                 f_fin_raw   = res[4]
 
                 # 0. Sincronizar numero_ot desde Control Laboratorio
@@ -700,9 +699,8 @@ class RecepcionService:
                         recepcion.numero_cotizacion = coti_raw
                     modified = True
 
-                # 2. Sincronizar Fecha de Recepción en Recepción
+                # 2. Sincronizar Fecha de Recepción / Inicio
                 f_rec_iso = _to_iso_date(f_rec_raw) if f_rec_raw else None
-                f_ini_iso = _to_iso_date(f_ini_raw) if f_ini_raw else None
                 f_fin_iso = _to_iso_date(f_fin_raw) if f_fin_raw else None
 
                 if f_rec_raw:
@@ -713,7 +711,7 @@ class RecepcionService:
                             recepcion.fecha_recepcion = f_rec_dt
                             modified = True
 
-                # 3. Sincronizar Fecha Estimada de Culminación en Recepción
+                # 3. Sincronizar Fecha Estimada de Culminación
                 if f_fin_raw:
                     f_fin_dt = parse_flexible_date(f_fin_raw)
                     if f_fin_dt:
@@ -722,8 +720,8 @@ class RecepcionService:
                             recepcion.fecha_estimada_culminacion = f_fin_dt
                             modified = True
 
-                # 4. Sincronizar las 3 fechas completas a la OrdenTrabajo vinculada
-                if modified or f_rec_iso or f_ini_iso or f_fin_iso:
+                # 4. Sincronizar a OrdenTrabajo vinculada
+                if modified or f_rec_iso or f_fin_iso:
                     ots = db.query(OrdenTrabajo).filter(
                         (OrdenTrabajo.numero_recepcion == recepcion.numero_recepcion) |
                         (OrdenTrabajo.numero_ot == recepcion.numero_ot)
@@ -732,8 +730,8 @@ class RecepcionService:
                         if f_rec_iso and ot.fecha_recepcion != f_rec_iso:
                             ot.fecha_recepcion = f_rec_iso
                             modified = True
-                        if f_ini_iso and (not ot.inicio_programado or ot.inicio_programado in ("", "-")):
-                            ot.inicio_programado = f_ini_iso
+                        if f_rec_iso and (not ot.inicio_programado or ot.inicio_programado in ("", "-")):
+                            ot.inicio_programado = f_rec_iso
                             modified = True
                         if f_fin_iso and (not ot.fin_programado or ot.fin_programado in ("", "-")):
                             ot.fin_programado = f_fin_iso
