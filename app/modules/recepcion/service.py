@@ -761,6 +761,7 @@ class RecepcionService:
                     return True
         except Exception as e:
             logger.warning(f"Error auto-syncing from control laboratorio for recepcion {recepcion.id}: {e}")
+            db.rollback()
         return False
 
     def obtener_recepcion(self, db: Session, recepcion_id: int) -> Optional[RecepcionMuestra]:

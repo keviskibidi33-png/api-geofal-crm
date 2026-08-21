@@ -402,10 +402,10 @@ def _enrich_ot_data(ot: OrdenTrabajo, db: Session):
                 SELECT fecha_recepcion, fecha_inicio, fecha_entrega_estimada, entrega_real, ot, cotizacion_lab
                 FROM programacion_lab
                 WHERE (
-                    (recep_numero IS NOT NULL AND UPPER(TRIM(recep_numero)) LIKE :pattern)
-                    OR (ot IS NOT NULL AND UPPER(TRIM(ot)) LIKE :pattern)
-                    OR (LENGTH(:digits) > 0 AND regexp_replace(COALESCE(recep_numero, ''), '[^0-9]', '', 'g') = :digits)
-                    OR (LENGTH(:ot_digits) > 0 AND regexp_replace(COALESCE(ot, ''), '[^0-9]', '', 'g') = :ot_digits)
+                    (recep_numero IS NOT NULL AND CAST(recep_numero AS TEXT) ILIKE :pattern)
+                    OR (ot IS NOT NULL AND CAST(ot AS TEXT) ILIKE :pattern)
+                    OR (LENGTH(:digits) > 0 AND regexp_replace(CAST(COALESCE(recep_numero, '') AS TEXT), '[^0-9]', '', 'g') = :digits)
+                    OR (LENGTH(:ot_digits) > 0 AND regexp_replace(CAST(COALESCE(ot, '') AS TEXT), '[^0-9]', '', 'g') = :ot_digits)
                 )
                 ORDER BY id DESC LIMIT 1
             """),
@@ -431,6 +431,7 @@ def _enrich_ot_data(ot: OrdenTrabajo, db: Session):
                 modified = True
     except Exception as e:
         logger.warning(f"Error syncing OT from programacion_lab: {e}")
+        db.rollback()
 
     if ot.fecha_recepcion:
         formatted_rec = _to_iso_date(ot.fecha_recepcion)
@@ -662,10 +663,10 @@ def prefill_ot_from_recepcion(
                 SELECT fecha_recepcion, fecha_inicio, fecha_entrega_estimada, ot
                 FROM programacion_lab
                 WHERE (
-                    UPPER(TRIM(recep_numero)) LIKE :pattern
-                    OR UPPER(TRIM(ot)) LIKE :pattern
-                    OR regexp_replace(recep_numero, '[^0-9]', '', 'g') = :digits
-                    OR regexp_replace(ot, '[^0-9]', '', 'g') = :digits
+                    (recep_numero IS NOT NULL AND CAST(recep_numero AS TEXT) ILIKE :pattern)
+                    OR (ot IS NOT NULL AND CAST(ot AS TEXT) ILIKE :pattern)
+                    OR (LENGTH(:digits) > 0 AND regexp_replace(CAST(COALESCE(recep_numero, '') AS TEXT), '[^0-9]', '', 'g') = :digits)
+                    OR (LENGTH(:digits) > 0 AND regexp_replace(CAST(COALESCE(ot, '') AS TEXT), '[^0-9]', '', 'g') = :digits)
                 )
                 ORDER BY id DESC LIMIT 1
             """),
@@ -684,18 +685,24 @@ def prefill_ot_from_recepcion(
                 ot_val = f"{raw_ot}-26" if (raw_ot and "-" not in raw_ot and raw_ot.isdigit()) else raw_ot
     except Exception as e:
         logger.warning(f"Error querying programacion_lab for OT prefill: {e}")
+        db.rollback()
 
     # Prioridad: 1. fecha_inicio explícita de Control Lab, 2. fechas de rotura (si es concreto), 3. fecha_recepcion
     inicio_prog = fecha_inicio_lab or (min(fechas_rotura) if fechas_rotura else (fecha_rec or ""))
     fin_prog = fecha_estimada or (max(fechas_rotura) if fechas_rotura else inicio_prog)
 
-    from app.modules.verificacion.models import VerificacionMuestras
-    verif = (
-        db.query(VerificacionMuestras)
-        .filter(VerificacionMuestras.numero_verificacion == recepcion.numero_recepcion)
-        .first()
-    )
-    tecnico_verif = (verif.verificado_por if verif and verif.verificado_por else None) or recepcion.designada_a or ""
+    tecnico_verif = recepcion.designada_a or ""
+    try:
+        from app.modules.verificacion.models import VerificacionMuestras
+        verif = (
+            db.query(VerificacionMuestras)
+            .filter(VerificacionMuestras.numero_verificacion == recepcion.numero_recepcion)
+            .first()
+        )
+        if verif and verif.verificado_por:
+            tecnico_verif = verif.verificado_por
+    except Exception:
+        db.rollback()
     plazo_dias_calc = None
     if inicio_prog and fin_prog:
         try:
