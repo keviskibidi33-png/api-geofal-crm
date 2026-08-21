@@ -250,11 +250,13 @@ class RecepcionService:
                 if field in recepcion_dict and recepcion_dict[field] == "":
                     recepcion_dict[field] = None
             
-            # Asegurar que campos requeridos no estén vacíos
+            # Asegurar que campos requeridos tengan formato limpio
             for field in ['cliente', 'domicilio_legal', 'ruc', 'persona_contacto', 'email', 'telefono', 
                          'solicitante', 'domicilio_solicitante', 'proyecto', 'ubicacion']:
-                if field in recepcion_dict and recepcion_dict[field] == "":
-                    recepcion_dict[field] = "Sin especificar"
+                if field in recepcion_dict:
+                    val = recepcion_dict[field]
+                    if val is None or str(val).strip() in ("", "Sin especificar", "SIN ESPECIFICAR"):
+                        recepcion_dict[field] = "-"
             
             if recepcion_dict.get('emision_fisica') is None:
                 recepcion_dict['emision_fisica'] = False

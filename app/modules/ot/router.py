@@ -203,9 +203,9 @@ def _evaluate_ot_estado(ot: OrdenTrabajo) -> str:
     is_concreto = False
     for it in items:
         if isinstance(it, dict):
-            cod = str(it.get("codigo_muestra", "")).upper()
             desc_text = str(it.get("descripcion", "")).upper()
-            if "CO" in cod or "PROBETA" in desc_text or "COMPRESION" in desc_text or it.get("fc_kg_cm2"):
+            has_ensayo_code = bool(it.get("codigo_ensayo") and str(it.get("codigo_ensayo")).strip() not in ("", "-"))
+            if not has_ensayo_code and ("ASTM C39" in desc_text or "COMPRESION" in desc_text or it.get("fc_kg_cm2")):
                 is_concreto = True
                 break
 
@@ -220,7 +220,7 @@ def _evaluate_ot_estado(ot: OrdenTrabajo) -> str:
             return "EMITIDO"
     else:
         all_items_valid = has_items and all(
-            bool(item.get("codigo_muestra") and item.get("descripcion"))
+            bool(item.get("codigo_muestra") or item.get("descripcion") or item.get("codigo_ensayo"))
             for item in items if isinstance(item, dict)
         )
         if has_fecha and has_aperturada and has_designada and all_items_valid:
@@ -770,16 +770,16 @@ def _sync_ot_to_recepcion(ot: OrdenTrabajo, db: Session):
         recepcion = RecepcionMuestra(
             numero_recepcion=rec_num,
             numero_ot=ot.numero_ot or rec_num,
-            cliente=ot.cliente or "Sin especificar",
-            proyecto=ot.proyecto or "Sin especificar",
-            domicilio_legal="Sin especificar",
-            ruc="Sin especificar",
-            persona_contacto="Sin especificar",
-            email="Sin especificar",
-            telefono="Sin especificar",
-            solicitante=ot.cliente or "Sin especificar",
-            domicilio_solicitante="Sin especificar",
-            ubicacion="Sin especificar",
+            cliente=ot.cliente or "-",
+            proyecto=ot.proyecto or "-",
+            domicilio_legal="-",
+            ruc="-",
+            persona_contacto="-",
+            email="-",
+            telefono="-",
+            solicitante=ot.cliente or "-",
+            domicilio_solicitante="-",
+            ubicacion="-",
             fecha_recepcion=parsed_fecha,
             fecha_estimada_culminacion=parse_flexible_date(ot.fin_programado) or parsed_fecha,
             tipo_recepcion="CONCRETO",
@@ -788,14 +788,14 @@ def _sync_ot_to_recepcion(ot: OrdenTrabajo, db: Session):
             emision_digital=True,
             emision_fisica=False,
             observaciones=ot.observaciones or "",
-            recibido_por=ot.ot_aperturada_por or "Sin asignar",
+            recibido_por=ot.ot_aperturada_por or "BETZABETH SARAVIA",
         )
         db.add(recepcion)
         db.flush()
     else:
-        if ot.cliente and recepcion.cliente in ("", "Sin especificar", None):
+        if ot.cliente and str(recepcion.cliente).strip() in ("", "Sin especificar", "SIN ESPECIFICAR", "None", "-"):
             recepcion.cliente = ot.cliente
-        if ot.proyecto and recepcion.proyecto in ("", "Sin especificar", None):
+        if ot.proyecto and str(recepcion.proyecto).strip() in ("", "Sin especificar", "SIN ESPECIFICAR", "None", "-"):
             recepcion.proyecto = ot.proyecto
         if ot.fecha_recepcion:
             recepcion.fecha_recepcion = parsed_fecha

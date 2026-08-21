@@ -401,18 +401,26 @@ class ExcelLogic:
             set_cell(sheet_data, "M6", "X" if em_dig else "", merge_anchor_map=merge_map)
             set_cell(sheet_data, "M7", "X" if em_fis else "", merge_anchor_map=merge_map)
 
-            # 2. Datos de Facturación y Solicitante
-            set_cell(sheet_data, "D10", recepcion.cliente or "", merge_anchor_map=merge_map)
-            set_cell(sheet_data, "D11", recepcion.domicilio_legal or "", merge_anchor_map=merge_map)
-            set_cell(sheet_data, "D12", recepcion.ruc or "", merge_anchor_map=merge_map)
-            set_cell(sheet_data, "D13", recepcion.persona_contacto or "", merge_anchor_map=merge_map)
-            set_cell(sheet_data, "D14", recepcion.email or "", merge_anchor_map=merge_map)
-            set_cell(sheet_data, "K14", recepcion.telefono or "", merge_anchor_map=merge_map)
+            def _clean_val(v: Any, default: str = "-") -> str:
+                if v is None:
+                    return default
+                s = str(v).strip()
+                if s.upper() in ("", "-", "SIN ESPECIFICAR", "SIN ASIGNAR", "NULL", "NONE", "N/A", "NA", "NO APLICA"):
+                    return default
+                return s
 
-            set_cell(sheet_data, "D16", recepcion.solicitante or "", merge_anchor_map=merge_map)
-            set_cell(sheet_data, "D17", getattr(recepcion, 'domicilio_solicitante', '') or recepcion.domicilio_legal or "", merge_anchor_map=merge_map)
-            set_cell(sheet_data, "D18", recepcion.proyecto or "", merge_anchor_map=merge_map)
-            set_cell(sheet_data, "D19", recepcion.ubicacion or "", merge_anchor_map=merge_map)
+            # 2. Datos de Facturación y Solicitante
+            set_cell(sheet_data, "D10", _clean_val(recepcion.cliente), merge_anchor_map=merge_map)
+            set_cell(sheet_data, "D11", _clean_val(recepcion.domicilio_legal), merge_anchor_map=merge_map)
+            set_cell(sheet_data, "D12", _clean_val(recepcion.ruc), merge_anchor_map=merge_map)
+            set_cell(sheet_data, "D13", _clean_val(recepcion.persona_contacto), merge_anchor_map=merge_map)
+            set_cell(sheet_data, "D14", _clean_val(recepcion.email), merge_anchor_map=merge_map)
+            set_cell(sheet_data, "K14", _clean_val(recepcion.telefono), merge_anchor_map=merge_map)
+
+            set_cell(sheet_data, "D16", _clean_val(recepcion.solicitante), merge_anchor_map=merge_map)
+            set_cell(sheet_data, "D17", _clean_val(getattr(recepcion, 'domicilio_solicitante', '') or recepcion.domicilio_legal), merge_anchor_map=merge_map)
+            set_cell(sheet_data, "D18", _clean_val(recepcion.proyecto), merge_anchor_map=merge_map)
+            set_cell(sheet_data, "D19", _clean_val(recepcion.ubicacion), merge_anchor_map=merge_map)
 
             # Limpiar zona de muestras
             max_sample_row = 41 + extra_rows
@@ -571,18 +579,26 @@ class ExcelLogic:
         write_to_neighbor("FECHA DE RECEPCIÓN:", format_dt(recepcion.fecha_recepcion))
         write_to_neighbor("OT N°:", recepcion.numero_ot)
         
+        def _clean_val_openpyxl(v: Any, default: str = "-") -> str:
+            if v is None:
+                return default
+            s = str(v).strip()
+            if s.upper() in ("", "-", "SIN ESPECIFICAR", "SIN ASIGNAR", "NULL", "NONE", "N/A", "NA", "NO APLICA"):
+                return default
+            return s
+
         # Details (D/H offsets)
-        write_cell('D', anchors.get("CLIENTE :", ("C", 10))[1], recepcion.cliente)
-        write_cell('D', anchors.get("DOMICILIO LEGAL :", ("C", 11))[1], recepcion.domicilio_legal)
-        write_cell('D', anchors.get("RUC :", ("C", 12))[1], recepcion.ruc)
-        write_cell('D', anchors.get("PERSONA CONTACTO :", ("C", 13))[1], recepcion.persona_contacto)
-        write_cell('D', anchors.get("E-MAIL :", ("C", 14))[1], recepcion.email)
-        write_cell('H', anchors.get("TELÉFONO :", ("G", 14))[1], recepcion.telefono)
+        write_cell('D', anchors.get("CLIENTE :", ("C", 10))[1], _clean_val_openpyxl(recepcion.cliente))
+        write_cell('D', anchors.get("DOMICILIO LEGAL :", ("C", 11))[1], _clean_val_openpyxl(recepcion.domicilio_legal))
+        write_cell('D', anchors.get("RUC :", ("C", 12))[1], _clean_val_openpyxl(recepcion.ruc))
+        write_cell('D', anchors.get("PERSONA CONTACTO :", ("C", 13))[1], _clean_val_openpyxl(recepcion.persona_contacto))
+        write_cell('D', anchors.get("E-MAIL :", ("C", 14))[1], _clean_val_openpyxl(recepcion.email))
+        write_cell('H', anchors.get("TELÉFONO :", ("G", 14))[1], _clean_val_openpyxl(recepcion.telefono))
         
-        write_cell('D', anchors.get("SOLICITANTE :", ("C", 16))[1], recepcion.solicitante)
-        write_cell('D', anchors.get("SOLICITANTE :", ("C", 16))[1] + 1, recepcion.domicilio_solicitante)
-        write_cell('D', anchors.get("PROYECTO :", ("C", 18))[1], recepcion.proyecto)
-        write_cell('D', anchors.get("UBICACIÓN :", ("C", 19))[1], recepcion.ubicacion)
+        write_cell('D', anchors.get("SOLICITANTE :", ("C", 16))[1], _clean_val_openpyxl(recepcion.solicitante))
+        write_cell('D', anchors.get("SOLICITANTE :", ("C", 16))[1] + 1, _clean_val_openpyxl(recepcion.domicilio_solicitante))
+        write_cell('D', anchors.get("PROYECTO :", ("C", 18))[1], _clean_val_openpyxl(recepcion.proyecto))
+        write_cell('D', anchors.get("UBICACIÓN :", ("C", 19))[1], _clean_val_openpyxl(recepcion.ubicacion))
 
         # Samples Table
         tipo_rec = (getattr(recepcion, 'tipo_recepcion', None) or 'CONCRETO').upper()
