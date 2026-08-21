@@ -379,7 +379,7 @@ def listar_seguimiento(db: Session = Depends(get_db_session), skip: int = 0, lim
     if has_fecha_entrega:
         cols.append(Trazabilidad.fecha_entrega)
 
-    # Extraer prefijo numérico de numero_recepcion para ordenar como en verificación
+    # Extraer prefijo numérico de numero_recepcion para ordenar eficientemente
     numeric_prefix = func.cast(
         func.nullif(func.split_part(Trazabilidad.numero_recepcion, '-', 1), ''),
         Integer
@@ -387,7 +387,6 @@ def listar_seguimiento(db: Session = Depends(get_db_session), skip: int = 0, lim
 
     trazas = (
         db.query(Trazabilidad)
-        .options(load_only(*cols))
         .order_by(desc(numeric_prefix), desc(Trazabilidad.numero_recepcion))
         .offset(skip)
         .limit(limit)
@@ -396,38 +395,17 @@ def listar_seguimiento(db: Session = Depends(get_db_session), skip: int = 0, lim
 
     seen_ids = set()
     seen_canonical_numbers = set()
-    synced_trazas = []
+    dedup_trazas = []
     for traza in trazas:
-        try:
-            synced_traza = TracingService.actualizar_trazabilidad(db, traza.numero_recepcion)
-            resolved_traza = synced_traza or traza
-            
-            # Evitar agregar trazabilidad con ID duplicado o número canónico duplicado
-            if resolved_traza:
-                t_id = resolved_traza.id
-                t_num = (resolved_traza.numero_recepcion or "").strip().upper()
-                if t_id not in seen_ids and t_num not in seen_canonical_numbers:
-                    seen_ids.add(t_id)
-                    if t_num:
-                        seen_canonical_numbers.add(t_num)
-                    synced_trazas.append(resolved_traza)
-        except Exception as exc:
-            logger.error(
-                "Error sincronizando trazabilidad en listar para %s: %s",
-                traza.numero_recepcion,
-                exc,
-                exc_info=True,
-            )
-            # Fallback seguro con deduplicación por si acaso
-            t_id = traza.id
-            t_num = (traza.numero_recepcion or "").strip().upper()
-            if t_id not in seen_ids and t_num not in seen_canonical_numbers:
-                seen_ids.add(t_id)
-                if t_num:
-                    seen_canonical_numbers.add(t_num)
-                synced_trazas.append(traza)
+        t_id = traza.id
+        t_num = (traza.numero_recepcion or "").strip().upper()
+        if t_id not in seen_ids and t_num not in seen_canonical_numbers:
+            seen_ids.add(t_id)
+            if t_num:
+                seen_canonical_numbers.add(t_num)
+            dedup_trazas.append(traza)
 
-    trazas = synced_trazas
+    trazas = dedup_trazas
 
     def _normalizar_recep(numero: str) -> str:
         if not numero:
@@ -438,28 +416,8 @@ def listar_seguimiento(db: Session = Depends(get_db_session), skip: int = 0, lim
         return clean
 
     control_map: dict[str, datetime] = {}
-    has_control = db.execute(
-        text(
-            "select 1 from information_schema.tables "
-            "where table_schema = 'public' and table_name = 'cuadro_control'"
-        )
-    ).first() is not None
-
-    if has_control and trazas:
-        has_recep_num = db.execute(
-            text(
-                "select 1 from information_schema.columns "
-                "where table_schema = 'public' and table_name = 'cuadro_control' and column_name = 'recep_numero'"
-            )
-        ).first() is not None
-        has_fecha_est = db.execute(
-            text(
-                "select 1 from information_schema.columns "
-                "where table_schema = 'public' and table_name = 'cuadro_control' and column_name = 'fecha_entrega_estimada'"
-            )
-        ).first() is not None
-
-        if has_recep_num and has_fecha_est:
+    if trazas:
+        try:
             variantes: set[str] = set()
             for t in trazas:
                 variantes.update(TracingService._build_numero_variantes(t.numero_recepcion, t.numero_recepcion))
@@ -483,14 +441,16 @@ def listar_seguimiento(db: Session = Depends(get_db_session), skip: int = 0, lim
                     norm = _normalizar_recep(recep_num)
                     if norm and norm not in control_map:
                         control_map[norm] = fecha_est
+        except Exception:
+            pass
 
     resultado = []
     for t in trazas:
         stages = [
-            StageSummary(key="recepcion", status=t.estado_recepcion),
-            StageSummary(key="verificacion", status=t.estado_verificacion),
-            StageSummary(key="compresion", status=t.estado_compresion),
-            StageSummary(key="informe", status=t.estado_informe),
+            StageSummary(key="recepcion", status=t.estado_recepcion or "pendiente"),
+            StageSummary(key="verificacion", status=t.estado_verificacion or "pendiente"),
+            StageSummary(key="compresion", status=t.estado_compresion or "pendiente"),
+            StageSummary(key="informe", status=t.estado_informe or "pendiente"),
         ]
 
         fecha_control = None
@@ -498,7 +458,7 @@ def listar_seguimiento(db: Session = Depends(get_db_session), skip: int = 0, lim
             key_norm = _normalizar_recep(t.numero_recepcion)
             fecha_control = control_map.get(t.numero_recepcion) or (control_map.get(key_norm) if key_norm else None)
 
-        fecha_entrega = fecha_control or (t.fecha_entrega if has_fecha_entrega else None)
+        fecha_entrega = fecha_control or getattr(t, "fecha_entrega", None)
         resultado.append(
             TracingSummary(
                 numero_recepcion=t.numero_recepcion,
