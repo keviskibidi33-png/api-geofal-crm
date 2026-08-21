@@ -193,8 +193,12 @@ class RecepcionListItem(BaseModel):
     proyecto: Optional[str] = ""
     fecha_recepcion: Optional[str] = None
     estado: Optional[str] = None
+    tecnico: Optional[str] = "-"
     muestras_count: int = 0
     ot_emitida: bool = False
+    ot_exists: bool = False
+    ot_estado: Optional[str] = "PENDIENTE"
+    ot_missing_fields: Optional[List[str]] = None
     ot_id: Optional[int] = None
 
     @validator('fecha_recepcion', pre=True)

@@ -531,12 +531,20 @@ class RecepcionService:
                     if elementos_vacios:
                         missing.append("Elemento asignado en todas las probetas de OT")
 
+                tecnico_candidate = (
+                    str(ot.ot_designada_a or "").strip()
+                    or str(ot.ot_aperturada_por or "").strip()
+                    or str(ot.creado_por or "").strip()
+                )
+                if tecnico_candidate.upper() in ("", "-", "NONE", "NULL"):
+                    tecnico_candidate = "-"
+
                 ot_info = {
                     "id": ot.id,
                     "numero_ot": ot.numero_ot,
                     "numero_recepcion": ot.numero_recepcion,
                     "estado": estado_calc,
-                    "tecnico": (ot.ot_designada_a or ot.ot_aperturada_por or "").strip(),
+                    "tecnico": tecnico_candidate,
                     "missing": missing,
                     "is_emitida": estado_calc in ("EMITIDO", "DESCARGADO", "COMPLETADO") or (has_apertura and has_designada and has_items),
                 }
@@ -565,7 +573,15 @@ class RecepcionService:
             ot_estado = ot_match["estado"] if ot_match else "PENDIENTE"
             ot_emitida = ot_match["is_emitida"] if ot_match else False
             ot_missing = ot_match["missing"] if ot_match else ["OT Concreto no ha sido creada para esta recepción"]
-            tecnico_calc = (ot_match.get("tecnico") if ot_match and ot_match.get("tecnico") else (row.recibido_por or "-"))
+            
+            # Prioridad 1: Técnico asignado en la Orden de Trabajo (ot_designada_a / ot_aperturada_por)
+            tecnico_calc = "-"
+            if ot_match and ot_match.get("tecnico") and ot_match.get("tecnico") != "-":
+                tecnico_calc = ot_match["tecnico"]
+            elif row.recibido_por and str(row.recibido_por).strip() not in ("", "-", "None", "null"):
+                tecnico_calc = str(row.recibido_por).strip()
+            elif row.aperturada_por and str(row.aperturada_por).strip() not in ("", "-", "None", "null"):
+                tecnico_calc = str(row.aperturada_por).strip()
 
             # Auto-sync en tiempo real de cotización y fechas desde Control Laboratorio
             self._sync_from_control_laboratorio(row, db)
