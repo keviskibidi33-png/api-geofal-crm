@@ -543,8 +543,48 @@ def prefill_ot_from_recepcion(
     # Normalizar fecha recepción a ISO
     fecha_rec = _to_iso_date(recepcion.fecha_recepcion)
     fecha_estimada = _to_iso_date(recepcion.fecha_estimada_culminacion)
+    fecha_inicio_lab = None
 
-    inicio_prog = min(fechas_rotura) if fechas_rotura else (fecha_rec or "")
+    # Resolver N° OT y fechas desde Control Laboratorio
+    ot_val = (recepcion.numero_ot or "").strip()
+    if ot_val and not ot_val.upper().startswith("OT") and "-" not in ot_val and ot_val.isdigit():
+        ot_val = f"{ot_val}-26"
+
+    from sqlalchemy import text
+    try:
+        clean_num = recepcion.numero_recepcion.split("-")[0] if "-" in str(recepcion.numero_recepcion) else str(recepcion.numero_recepcion)
+        digits_base = "".join(filter(str.isdigit, clean_num))
+        
+        row_lab = db.execute(
+            text("""
+                SELECT fecha_recepcion, fecha_inicio, fecha_entrega_estimada, ot
+                FROM programacion_lab
+                WHERE (
+                    UPPER(TRIM(recep_numero)) LIKE :pattern
+                    OR UPPER(TRIM(ot)) LIKE :pattern
+                    OR regexp_replace(recep_numero, '[^0-9]', '', 'g') = :digits
+                    OR regexp_replace(ot, '[^0-9]', '', 'g') = :digits
+                )
+                ORDER BY id DESC LIMIT 1
+            """),
+            {"pattern": f"%{digits_base}%" if digits_base else f"%{clean_num}%", "digits": digits_base}
+        ).fetchone()
+        
+        if row_lab:
+            if row_lab[0] and not fecha_rec:
+                fecha_rec = _to_iso_date(row_lab[0])
+            if row_lab[1]:
+                fecha_inicio_lab = _to_iso_date(row_lab[1])
+            if row_lab[2] and not fecha_estimada:
+                fecha_estimada = _to_iso_date(row_lab[2])
+            if not ot_val and row_lab[3]:
+                raw_ot = str(row_lab[3]).strip()
+                ot_val = f"{raw_ot}-26" if (raw_ot and "-" not in raw_ot and raw_ot.isdigit()) else raw_ot
+    except Exception as e:
+        logger.warning(f"Error querying programacion_lab for OT prefill: {e}")
+
+    # Prioridad: 1. fecha_inicio explícita de Control Lab, 2. fechas de rotura (si es concreto), 3. fecha_recepcion
+    inicio_prog = fecha_inicio_lab or (min(fechas_rotura) if fechas_rotura else (fecha_rec or ""))
     fin_prog = fecha_estimada or (max(fechas_rotura) if fechas_rotura else inicio_prog)
 
     from app.modules.verificacion.models import VerificacionMuestras
@@ -555,27 +595,6 @@ def prefill_ot_from_recepcion(
     )
     tecnico_verif = (verif.verificado_por if verif and verif.verificado_por else None) or recepcion.designada_a or ""
     aperturada = recepcion.aperturada_por or "BETZABETH SARAVIA"
-
-    # Resolver N° OT vinculado
-    ot_val = (recepcion.numero_ot or "").strip()
-    if ot_val and not ot_val.upper().startswith("OT") and "-" not in ot_val and ot_val.isdigit():
-        ot_val = f"{ot_val}-26"
-
-    if not ot_val:
-        from sqlalchemy import text
-        try:
-            row_lab = db.execute(
-                text("SELECT ot FROM programacion_lab WHERE UPPER(TRIM(recep_numero)) LIKE :q ORDER BY id DESC LIMIT 1"),
-                {"q": f"%{clean_num}%"}
-            ).fetchone()
-            if row_lab and row_lab[0]:
-                raw_ot = str(row_lab[0]).strip()
-                if raw_ot and not "-" in raw_ot and raw_ot.isdigit():
-                    ot_val = f"{raw_ot}-26"
-                else:
-                    ot_val = raw_ot
-        except Exception:
-            pass
 
     return {
         "numero_ot": ot_val or "",
