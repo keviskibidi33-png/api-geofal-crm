@@ -703,6 +703,7 @@ def prefill_ot_from_recepcion(
             tecnico_verif = verif.verificado_por
     except Exception:
         db.rollback()
+    aperturada = recepcion.aperturada_por or "BETZABETH SARAVIA"
     plazo_dias_calc = None
     if inicio_prog and fin_prog:
         try:
