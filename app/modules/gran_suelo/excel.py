@@ -305,14 +305,10 @@ def _fill_sheet(
 
     set_cell("K39", data.masa_retenida_primer_tamiz_g, is_number=True)
 
-    # Pesos por tamiz — escribir en D (anchor de la celda fusionada D:E) con centrado
-    # s=744 = horizontal:center + bordes completos (l+r+t+b) para cuadro visible en ambos grupos
+    # Pesos por tamiz — escribir en E (columna real de datos de la plantilla oficial donde apuntan las fórmulas de A.Granul)
     for idx, row_num in enumerate(SIEVE_ROWS):
         val = data.masa_retenida_tamiz_g[idx]
-        set_cell(f"D{row_num}", val, is_number=True, style_id=744)
-
-    # Fusionar D:E programáticamente para todas las filas de tamiz en el XML
-    _add_sieve_merge_cells(root)
+        set_cell(f"E{row_num}", val, is_number=True)
 
     # Equipos / observaciones
     set_cell("I51", data.balanza_01g_codigo)
