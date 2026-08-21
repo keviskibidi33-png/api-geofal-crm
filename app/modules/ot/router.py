@@ -367,7 +367,50 @@ def _enrich_ot_data(ot: OrdenTrabajo, db: Session):
             if est_iso and ot.fin_programado != est_iso:
                 ot.fin_programado = est_iso
                 modified = True
-            
+
+    # Sincronizar fechas y ejecución desde Control Laboratorio (programacion_lab)
+    try:
+        from sqlalchemy import text
+        from datetime import datetime
+        clean_num = rec_num.split("-")[0] if "-" in rec_num else rec_num
+        digits_base = "".join(filter(str.isdigit, clean_num))
+        ot_digits = "".join(filter(str.isdigit, str(ot.numero_ot or "")))
+
+        row_lab = db.execute(
+            text("""
+                SELECT fecha_recepcion, fecha_inicio, fecha_entrega_estimada, entrega_real, ot, cotizacion_lab
+                FROM programacion_lab
+                WHERE (
+                    (recep_numero IS NOT NULL AND UPPER(TRIM(recep_numero)) LIKE :pattern)
+                    OR (ot IS NOT NULL AND UPPER(TRIM(ot)) LIKE :pattern)
+                    OR (LENGTH(:digits) > 0 AND regexp_replace(COALESCE(recep_numero, ''), '[^0-9]', '', 'g') = :digits)
+                    OR (LENGTH(:ot_digits) > 0 AND regexp_replace(COALESCE(ot, ''), '[^0-9]', '', 'g') = :ot_digits)
+                )
+                ORDER BY id DESC LIMIT 1
+            """),
+            {
+                "pattern": f"%{digits_base}%" if digits_base else f"%{clean_num}%",
+                "digits": digits_base,
+                "ot_digits": ot_digits,
+            }
+        ).fetchone()
+
+        if row_lab:
+            if row_lab[0] and (not ot.fecha_recepcion or ot.fecha_recepcion in ("", "-")):
+                ot.fecha_recepcion = _to_iso_date(row_lab[0])
+                modified = True
+            if row_lab[1] and (not ot.inicio_programado or ot.inicio_programado in ("", "-")):
+                ot.inicio_programado = _to_iso_date(row_lab[1])
+                modified = True
+            if row_lab[2] and (not ot.fin_programado or ot.fin_programado in ("", "-")):
+                ot.fin_programado = _to_iso_date(row_lab[2])
+                modified = True
+            if row_lab[3] and (not ot.fin_real or ot.fin_real in ("", "-")):
+                ot.fin_real = _to_iso_date(row_lab[3])
+                modified = True
+    except Exception as e:
+        logger.warning(f"Error syncing OT from programacion_lab: {e}")
+
     if ot.fecha_recepcion:
         formatted_rec = _to_iso_date(ot.fecha_recepcion)
         if ot.fecha_recepcion != formatted_rec:
@@ -383,6 +426,40 @@ def _enrich_ot_data(ot: OrdenTrabajo, db: Session):
         if ot.fin_programado != formatted_fin:
             ot.fin_programado = formatted_fin
             modified = True
+
+    # Calcular plazo de entrega si tenemos inicio y fin programado
+    if ot.inicio_programado and ot.fin_programado and (not ot.plazo_entrega_dias or ot.plazo_entrega_dias in ("", "-")):
+        try:
+            d_ini = datetime.fromisoformat(ot.inicio_programado).date()
+            d_fin = datetime.fromisoformat(ot.fin_programado).date()
+            diff_dias = (d_fin - d_ini).days + 1
+            if diff_dias > 0:
+                ot.plazo_entrega_dias = str(diff_dias)
+                modified = True
+        except Exception:
+            pass
+
+    # Calcular duración real y variaciones si tenemos entrega real
+    if ot.fin_real and ot.inicio_programado and (not ot.duracion_real_ejecucion_dias or ot.duracion_real_ejecucion_dias in ("", "-")):
+        try:
+            d_ini = datetime.fromisoformat(ot.inicio_programado).date()
+            d_real = datetime.fromisoformat(ot.fin_real).date()
+            diff_real = (d_real - d_ini).days + 1
+            if diff_real > 0:
+                ot.duracion_real_ejecucion_dias = str(diff_real)
+                modified = True
+        except Exception:
+            pass
+
+    if ot.fin_real and ot.fin_programado and (not ot.variacion_fin or ot.variacion_fin in ("", "-")):
+        try:
+            d_prog = datetime.fromisoformat(ot.fin_programado).date()
+            d_real = datetime.fromisoformat(ot.fin_real).date()
+            v_fin = (d_real - d_prog).days
+            ot.variacion_fin = str(v_fin)
+            modified = True
+        except Exception:
+            pass
 
     # Evaluar estado
     new_est = _evaluate_ot_estado(ot)
@@ -595,7 +672,17 @@ def prefill_ot_from_recepcion(
         .first()
     )
     tecnico_verif = (verif.verificado_por if verif and verif.verificado_por else None) or recepcion.designada_a or ""
-    aperturada = recepcion.aperturada_por or "BETZABETH SARAVIA"
+    from datetime import datetime
+    plazo_dias_calc = None
+    if inicio_prog and fin_prog:
+        try:
+            d_ini = datetime.fromisoformat(inicio_prog).date()
+            d_fin = datetime.fromisoformat(fin_prog).date()
+            d_diff = (d_fin - d_ini).days + 1
+            if d_diff > 0:
+                plazo_dias_calc = str(d_diff)
+        except Exception:
+            pass
 
     return {
         "numero_ot": ot_val or "",
@@ -605,6 +692,10 @@ def prefill_ot_from_recepcion(
         "fecha_recepcion": fecha_rec or "",
         "inicio_programado": inicio_prog or "",
         "fin_programado": fin_prog or "",
+        "plazo_entrega_dias": plazo_dias_calc,
+        "duracion_real_ejecucion_dias": None,
+        "variacion_inicio": "-",
+        "variacion_fin": "-",
         "observaciones": recepcion.observaciones or "",
         "ot_aperturada_por": aperturada,
         "ot_designada_a": tecnico_verif,
