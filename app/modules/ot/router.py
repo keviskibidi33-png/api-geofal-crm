@@ -147,6 +147,27 @@ def _to_iso_date(val: Any) -> str:
     return s
 
 
+def _parse_date_safe(val: Any):
+    """Parsea de forma segura cualquier formato de fecha a datetime.date."""
+    if not val:
+        return None
+    from datetime import datetime, date
+    if isinstance(val, date) and not isinstance(val, datetime):
+        return val
+    if isinstance(val, datetime):
+        return val.date()
+    iso_str = _to_iso_date(val)
+    if not iso_str:
+        return None
+    try:
+        parts = iso_str.split("-")
+        if len(parts) == 3 and len(parts[0]) == 4:
+            return date(int(parts[0]), int(parts[1]), int(parts[2]))
+    except Exception:
+        pass
+    return None
+
+
 def _normalize_code_suffix(code: Optional[str], default_year: str = "26") -> Optional[str]:
     """Garantiza consistencia en sufijo de año (ej. 1924 -> 1924-26)."""
     if not code:
@@ -430,34 +451,37 @@ def _enrich_ot_data(ot: OrdenTrabajo, db: Session):
     # Calcular plazo de entrega si tenemos inicio y fin programado
     if ot.inicio_programado and ot.fin_programado and (not ot.plazo_entrega_dias or ot.plazo_entrega_dias in ("", "-")):
         try:
-            d_ini = datetime.fromisoformat(ot.inicio_programado).date()
-            d_fin = datetime.fromisoformat(ot.fin_programado).date()
-            diff_dias = (d_fin - d_ini).days + 1
-            if diff_dias > 0:
-                ot.plazo_entrega_dias = str(diff_dias)
-                modified = True
+            d_ini = _parse_date_safe(ot.inicio_programado)
+            d_fin = _parse_date_safe(ot.fin_programado)
+            if d_ini and d_fin:
+                diff_dias = (d_fin - d_ini).days + 1
+                if diff_dias > 0:
+                    ot.plazo_entrega_dias = str(diff_dias)
+                    modified = True
         except Exception:
             pass
 
     # Calcular duración real y variaciones si tenemos entrega real
     if ot.fin_real and ot.inicio_programado and (not ot.duracion_real_ejecucion_dias or ot.duracion_real_ejecucion_dias in ("", "-")):
         try:
-            d_ini = datetime.fromisoformat(ot.inicio_programado).date()
-            d_real = datetime.fromisoformat(ot.fin_real).date()
-            diff_real = (d_real - d_ini).days + 1
-            if diff_real > 0:
-                ot.duracion_real_ejecucion_dias = str(diff_real)
-                modified = True
+            d_ini = _parse_date_safe(ot.inicio_programado)
+            d_real = _parse_date_safe(ot.fin_real)
+            if d_ini and d_real:
+                diff_real = (d_real - d_ini).days + 1
+                if diff_real > 0:
+                    ot.duracion_real_ejecucion_dias = str(diff_real)
+                    modified = True
         except Exception:
             pass
 
     if ot.fin_real and ot.fin_programado and (not ot.variacion_fin or ot.variacion_fin in ("", "-")):
         try:
-            d_prog = datetime.fromisoformat(ot.fin_programado).date()
-            d_real = datetime.fromisoformat(ot.fin_real).date()
-            v_fin = (d_real - d_prog).days
-            ot.variacion_fin = str(v_fin)
-            modified = True
+            d_prog = _parse_date_safe(ot.fin_programado)
+            d_real = _parse_date_safe(ot.fin_real)
+            if d_prog and d_real:
+                v_fin = (d_real - d_prog).days
+                ot.variacion_fin = str(v_fin)
+                modified = True
         except Exception:
             pass
 
@@ -672,15 +696,15 @@ def prefill_ot_from_recepcion(
         .first()
     )
     tecnico_verif = (verif.verificado_por if verif and verif.verificado_por else None) or recepcion.designada_a or ""
-    from datetime import datetime
     plazo_dias_calc = None
     if inicio_prog and fin_prog:
         try:
-            d_ini = datetime.fromisoformat(inicio_prog).date()
-            d_fin = datetime.fromisoformat(fin_prog).date()
-            d_diff = (d_fin - d_ini).days + 1
-            if d_diff > 0:
-                plazo_dias_calc = str(d_diff)
+            d_ini = _parse_date_safe(inicio_prog)
+            d_fin = _parse_date_safe(fin_prog)
+            if d_ini and d_fin:
+                d_diff = (d_fin - d_ini).days + 1
+                if d_diff > 0:
+                    plazo_dias_calc = str(d_diff)
         except Exception:
             pass
 
