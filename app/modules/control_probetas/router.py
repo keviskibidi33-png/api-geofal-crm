@@ -1,6 +1,7 @@
 import io
 import logging
 import math
+import re
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
