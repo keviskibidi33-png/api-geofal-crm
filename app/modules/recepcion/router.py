@@ -174,7 +174,16 @@ async def prefill_recepcion_from_cotizacion(
            OR UPPER(TRIM(COALESCE(ot, ''))) = :q
            OR UPPER(TRIM(COALESCE(ot, ''))) = :base
            OR UPPER(TRIM(COALESCE(ot, ''))) = :with_year
-        ORDER BY id DESC
+        ORDER BY 
+           CASE 
+               WHEN UPPER(TRIM(COALESCE(recep_numero, ''))) IN (:q, :with_year) THEN 1
+               WHEN UPPER(TRIM(COALESCE(recep_numero, ''))) = :base THEN 2
+               WHEN UPPER(TRIM(COALESCE(recep_numero, ''))) LIKE :pattern THEN 3
+               WHEN UPPER(TRIM(COALESCE(ot, ''))) IN (:q, :with_year) THEN 4
+               WHEN UPPER(TRIM(COALESCE(ot, ''))) = :base THEN 5
+               ELSE 6
+           END,
+           id DESC
         LIMIT 1
     """)
     try:
@@ -255,6 +264,8 @@ async def prefill_recepcion_from_cotizacion(
 
         fecha_rec = row.get("fecha_recepcion") or row.get("fecha_inicio")
         fecha_fin = row.get("fecha_entrega_estimada")
+        cliente_nom = row.get("cliente_nombre") or ""
+        proyecto_nom = row.get("proyecto") or ""
 
         return {
             "success": True,
@@ -263,15 +274,15 @@ async def prefill_recepcion_from_cotizacion(
             "numero_ot": ot_formatted,
             "cotizacion_numero": coti_formatted,
             "numero_cotizacion": coti_formatted,
-            "cliente": "",
+            "cliente": cliente_nom,
             "ruc": "",
             "persona_contacto": "",
             "email": "",
             "telefono": "",
-            "proyecto": "",
+            "proyecto": proyecto_nom,
             "ubicacion": "",
             "domicilio_legal": "",
-            "solicitante": "",
+            "solicitante": cliente_nom,
             "domicilio_solicitante": "",
             "fecha_recepcion": str(fecha_rec) if fecha_rec else None,
             "fecha_estimada_culminacion": str(fecha_fin) if fecha_fin else None,
@@ -469,11 +480,18 @@ async def actualizar_recepcion(
 
 @router.post("/importar-excel")
 @router.post("/import-excel")
-async def importar_excel_recepcion(file: UploadFile = File(...)):
+async def importar_excel_recepcion(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db_session),
+):
     """
     Importa datos desde un Excel (puede ser Cotización o Plantilla) para llenar el formulario de Recepción.
     Expande los items según cantidad.
+    Además enriquece el numero_ot consultando Control Laboratorio para garantizar la OT oficial.
     """
+    from sqlalchemy import text as sa_text
+    import re as _re
+
     if not file.filename.endswith(('.xlsx', '.xlsm')):
         raise HTTPException(status_code=400, detail="Solo se permiten archivos Excel (.xlsx)")
     
@@ -482,10 +500,69 @@ async def importar_excel_recepcion(file: UploadFile = File(...)):
     try:
         # Use decoupled ExcelLogic for robust parsing
         parsed_data = excel_logic.parsear_recepcion(content)
-        
-        # Check if it looks empty or failed, maybe fallback? 
-        if not parsed_data.get('cliente') and not parsed_data.get('muestras'):
-             pass
+
+        # Enriquecer OT, cotización y cliente desde Control Laboratorio
+        # El Excel puede tener la celda OT vacía o igual al número de recepción
+        rec_num_raw = str(parsed_data.get("numero_recepcion") or "").strip().upper()
+        if rec_num_raw:
+            match_rec = _re.search(r"(\d+)", rec_num_raw)
+            digits_rec = match_rec.group(1) if match_rec else rec_num_raw
+            with_year = f"{digits_rec}-26" if digits_rec else rec_num_raw
+            try:
+                sql_lab = sa_text("""
+                    SELECT ot, cotizacion_lab, cliente_nombre, proyecto, fecha_recepcion,
+                           fecha_inicio, fecha_entrega_estimada
+                    FROM programacion_lab
+                    WHERE UPPER(TRIM(COALESCE(recep_numero, ''))) IN (:q, :with_year, :digits)
+                    ORDER BY
+                        CASE WHEN UPPER(TRIM(COALESCE(recep_numero, ''))) IN (:q, :with_year) THEN 1
+                             WHEN UPPER(TRIM(COALESCE(recep_numero, ''))) = :digits THEN 2
+                             ELSE 3
+                        END,
+                        id DESC
+                    LIMIT 1
+                """)
+                lab_row = db.execute(sql_lab, {
+                    "q": rec_num_raw,
+                    "with_year": with_year,
+                    "digits": digits_rec,
+                }).fetchone()
+
+                if lab_row:
+                    lab = dict(lab_row._mapping)
+
+                    # Sobreescribir OT con la oficial de Control Laboratorio
+                    ot_lab = str(lab.get("ot") or "").strip()
+                    if ot_lab and ot_lab != "-":
+                        if not "-" in ot_lab and _re.match(r"^\d+$", ot_lab):
+                            ot_lab = f"{ot_lab}-26"
+                        parsed_data["numero_ot"] = ot_lab
+
+                    # Completar cotización si faltaba
+                    cot_raw = str(lab.get("cotizacion_lab") or "").strip()
+                    if cot_raw and cot_raw != "-" and not parsed_data.get("numero_cotizacion"):
+                        cm = _re.search(r"(\d+)(?:-(\d{2}))?", cot_raw)
+                        if cm:
+                            parsed_data["numero_cotizacion"] = f"{cm.group(1)}-{cm.group(2) or '26'}"
+
+                    # Completar cliente/proyecto si el Excel no los traía
+                    if not parsed_data.get("cliente") and lab.get("cliente_nombre"):
+                        parsed_data["cliente"] = lab["cliente_nombre"]
+                        parsed_data["solicitante"] = lab["cliente_nombre"]
+                    if not parsed_data.get("proyecto") and lab.get("proyecto"):
+                        parsed_data["proyecto"] = lab["proyecto"]
+
+                    # Completar fechas si faltaban
+                    fecha_rec_lab = lab.get("fecha_recepcion") or lab.get("fecha_inicio")
+                    if fecha_rec_lab and not parsed_data.get("fecha_recepcion"):
+                        parsed_data["fecha_recepcion"] = str(fecha_rec_lab)
+                    fecha_fin_lab = lab.get("fecha_entrega_estimada")
+                    if fecha_fin_lab and not parsed_data.get("fecha_estimada_culminacion"):
+                        parsed_data["fecha_estimada_culminacion"] = str(fecha_fin_lab)
+
+            except Exception as e_lab:
+                # No bloqueamos la importación si falla la consulta a Control Laboratorio
+                print(f"[import-excel] Advertencia: no se pudo enriquecer desde Control Laboratorio: {e_lab}")
 
         return parsed_data
         

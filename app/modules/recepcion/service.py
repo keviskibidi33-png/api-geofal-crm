@@ -93,17 +93,25 @@ class RecepcionService:
         
         # Ensayos lista / JSON
         ensayos_lista = cleaned.pop("ensayos_lista", None)
-        if ensayos_lista and isinstance(ensayos_lista, list):
+        if ensayos_lista and isinstance(ensayos_lista, list) and len(ensayos_lista) > 0:
             import json
-            cleaned["ensayos_json"] = json.dumps(ensayos_lista, ensure_ascii=False)
-            if not cleaned.get("codigo_ensayo") and len(ensayos_lista) > 0:
-                cleaned["codigo_ensayo"] = str(ensayos_lista[0].get("codigo") or "").strip()
-            if not cleaned.get("ensayos_requeridos") and len(ensayos_lista) > 0:
-                cleaned["ensayos_requeridos"] = ", ".join([str(e.get("descripcion") or "").strip() for e in ensayos_lista if e.get("descripcion")])
-            if not cleaned.get("norma_requerida") and len(ensayos_lista) > 0:
-                cleaned["norma_requerida"] = str(ensayos_lista[0].get("norma") or "").strip()
+            # Filtrar entradas vacías (sin código ni descripción)
+            valid_ensayos = [
+                e for e in ensayos_lista
+                if e.get("codigo") or e.get("descripcion")
+            ]
+            if valid_ensayos:
+                cleaned["ensayos_json"] = json.dumps(valid_ensayos, ensure_ascii=False)
+                # Siempre sincronizar los campos planos desde ensayos_lista para que
+                # el último estado del formulario gane (evita valores obsoletos en BD)
+                cleaned["codigo_ensayo"] = str(valid_ensayos[0].get("codigo") or "").strip()
+                cleaned["ensayos_requeridos"] = ", ".join(
+                    [str(e.get("descripcion") or "").strip() for e in valid_ensayos if e.get("descripcion")]
+                )
+                cleaned["norma_requerida"] = str(valid_ensayos[0].get("norma") or "").strip()
         elif cleaned.get("ensayos_json"):
             cleaned["ensayos_json"] = str(cleaned.get("ensayos_json"))
+
 
         cleaned["elemento"] = str(cleaned.get("elemento") or "").strip() or "-"
         cleaned["densidad"] = str(cleaned.get("densidad") or "").strip() or "-"
@@ -614,7 +622,7 @@ class RecepcionService:
 
         try:
             sql = text("""
-                SELECT cotizacion_lab, fecha_recepcion, fecha_inicio, fecha_entrega_estimada
+                SELECT ot, cotizacion_lab, fecha_recepcion, fecha_inicio, fecha_entrega_estimada
                 FROM programacion_lab
                 WHERE UPPER(TRIM(COALESCE(recep_numero, ''))) = :q
                    OR UPPER(TRIM(COALESCE(recep_numero, ''))) = :base
@@ -623,7 +631,14 @@ class RecepcionService:
                    OR UPPER(TRIM(COALESCE(ot, ''))) = :q
                    OR UPPER(TRIM(COALESCE(ot, ''))) = :base
                    OR (:ot_digits != '' AND UPPER(TRIM(COALESCE(ot, ''))) = :ot_digits)
-                ORDER BY id DESC
+                ORDER BY
+                    CASE
+                        WHEN UPPER(TRIM(COALESCE(recep_numero, ''))) IN (:q, :with_year) THEN 1
+                        WHEN UPPER(TRIM(COALESCE(recep_numero, ''))) = :base THEN 2
+                        WHEN UPPER(TRIM(COALESCE(recep_numero, ''))) LIKE :pattern THEN 3
+                        ELSE 4
+                    END,
+                    id DESC
                 LIMIT 1
             """)
             res = db.execute(sql, {
@@ -635,9 +650,33 @@ class RecepcionService:
             }).fetchone()
 
             if res:
-                coti_raw = str(res[0]).strip() if res[0] else ""
-                f_rec_raw = res[1] or res[2]
-                f_fin_raw = res[3]
+                ot_lab_raw  = str(res[0]).strip() if res[0] else ""
+                coti_raw    = str(res[1]).strip() if res[1] else ""
+                f_rec_raw   = res[2] or res[3]
+                f_fin_raw   = res[4]
+
+                # 0. Sincronizar numero_ot desde Control Laboratorio
+                if ot_lab_raw and ot_lab_raw != "-":
+                    # Normalizar formato (agregar año si es solo dígitos)
+                    if not "-" in ot_lab_raw and re.match(r"^\d+$", ot_lab_raw):
+                        ot_lab_raw = f"{ot_lab_raw}-26"
+                    # Actualizar si la recepción no tiene OT o tiene la misma que el número de recepción
+                    current_ot = str(recepcion.numero_ot or "").strip().upper()
+                    current_rec = str(recepcion.numero_recepcion or "").strip().upper()
+                    is_missing_or_same = (
+                        not current_ot
+                        or current_ot == "-"
+                        or current_ot == current_rec
+                        or current_ot == digits_base
+                    )
+                    if is_missing_or_same and ot_lab_raw.upper() != current_ot:
+                        recepcion.numero_ot = ot_lab_raw
+                        modified = True
+                        logger.info(
+                            "_sync_from_control_laboratorio: OT sincronizada %s -> %s",
+                            recepcion.numero_recepcion,
+                            ot_lab_raw,
+                        )
 
                 # 1. Sincronizar Cotización si faltaba o cambió
                 if coti_raw and coti_raw != "-" and (not recepcion.numero_cotizacion or recepcion.numero_cotizacion.strip() in ("", "-")):

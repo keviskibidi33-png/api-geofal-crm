@@ -272,7 +272,7 @@ class ExcelLogic:
         import copy
 
         sheet_name = 'RECEP. SU-AG'
-        template_filename = "Recepciones/F-LEM-P-01.13 V01 RECEP. SU Y AG.XLSX"
+        template_filename = "Recepciones/F-LEM-P-01.13 V01 RECEP DE MUESTRA.XLSX"
 
         def format_dt(dt):
             if not dt:

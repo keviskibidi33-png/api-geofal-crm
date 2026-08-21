@@ -34,7 +34,7 @@ TIPO_RECEPCION_CONFIG = {
         "label": "Recepción Muestra Suelo y Agregado",
         "codigo": "F-LEM-P-01.13",
         "version": "01",
-        "template": "Recepciones/F-LEM-P-01.13 V01 RECEP. SU Y AG.XLSX"
+        "template": "Recepciones/F-LEM-P-01.13 V01 RECEP DE MUESTRA.XLSX"
     }
 }
 
