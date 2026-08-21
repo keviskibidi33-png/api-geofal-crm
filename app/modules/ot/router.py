@@ -114,9 +114,9 @@ def list_ordenes_trabajo(
                         if has_probeta_fields or has_compresion_desc:
                             is_conc = True
 
-            if target_tipo == "CONCRETO" and is_conc:
+            if target_tipo in ("CONCRETO", "PROBETAS") and is_conc:
                 filtered.append(ot)
-            elif target_tipo == "MUESTRAS" and not is_conc:
+            elif target_tipo in ("MUESTRAS", "SU_AG", "SUELO_AGREGADO", "SUELO", "AGREGADO", "LIMA", "ROCA", "ALBANILERIA", "AGUA") and not is_conc:
                 filtered.append(ot)
         all_candidates = filtered
 
