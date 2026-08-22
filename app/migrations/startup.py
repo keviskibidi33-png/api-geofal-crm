@@ -550,6 +550,356 @@ def run_startup_migrations(engine) -> None:
     except Exception as err:
         logger.warning("Migration 064 skipped: %s", _short_err(err))
 
+    # ── Migration 065: seed recepciones y ordenes_trabajo 2075-2079 ─────
+    try:
+        from datetime import datetime as _dt
+        from app.modules.recepcion.models import RecepcionMuestra, MuestraConcreto
+        from app.modules.ot.models import OrdenTrabajo
+        from sqlalchemy.orm import Session
+        import json
+
+        DATA_2075_2079 = [
+            {
+                "numero_recepcion": "2075-26",
+                "numero_ot": "2075-26",
+                "fecha_recepcion": "2026-08-21",
+                "emision_digital": True,
+                "emision_fisica": False,
+                "cliente": "R PROYECTOS S.A.C",
+                "domicilio_legal": "Calle Aricota N° 106 int. 701 - Tambo de Monterrico - Santiago de Surco",
+                "ruc": "20483973951",
+                "persona_contacto": "DIEGO LAZO R. / ALEX VICENTE J.",
+                "email": "dlazo@rproyectos.com; avicente@mproyectos.com",
+                "telefono": "902 706 371 / 999 922 660",
+                "solicitante": "R PROYECTOS S.A.C",
+                "domicilio_solicitante": "Calle Aricota N° 106 int. 701 - Tambo de Monterrico - Santiago de Surco",
+                "proyecto": "Vial Alterno a Base de Rescate / Mejoras en la Estación SSEI",
+                "ubicacion": "AEROPUERTO JORGE CHÁVEZ-CALLAO",
+                "tipo_recepcion": "SUELO_AGREGADO",
+                "items": [
+                    {
+                        "item_no": 1,
+                        "codigo_muestra_lem": "245-AG-26",
+                        "identificacion_muestra": "USO BASE GRANULAR | PROCEDENCIA: CARRASCO | CANTERA: CARRASCO | CANTIDAD (KG): 26",
+                        "procedencia": "CARRASCO",
+                        "cantera": "CARRASCO",
+                        "cantidad": "26",
+                        "ensayos": [
+                            {"codigo_ensayo": "SU21", "nombre_ensayo": "Equivalente de arena", "norma": "ASTM D2419-22"}
+                        ]
+                    }
+                ]
+            },
+            {
+                "numero_recepcion": "2076-26",
+                "numero_ot": "2076-26",
+                "fecha_recepcion": "2026-08-21",
+                "emision_digital": True,
+                "emision_fisica": False,
+                "cliente": "GEOFAL SAC",
+                "domicilio_legal": "AV. MARAÑON 763, LOS OLIVOS - LIMA",
+                "ruc": "20549356762",
+                "persona_contacto": "Mariah Carhuaricra",
+                "email": "ingenieria@geofal.com.pe",
+                "telefono": "961 721 290",
+                "solicitante": "-",
+                "domicilio_solicitante": "-",
+                "proyecto": "SANTA CRUZ",
+                "ubicacion": "-",
+                "tipo_recepcion": "SUELO_AGREGADO",
+                "items": [
+                    {
+                        "item_no": 1,
+                        "codigo_muestra_lem": "3429-SU-26",
+                        "identificacion_muestra": "SUELO | PROCEDENCIA: C-1 | CANTERA: M-1 | CANTIDAD (KG): 56",
+                        "procedencia": "C-1",
+                        "cantera": "M-1",
+                        "cantidad": "56",
+                        "ensayos": [
+                            {"codigo_ensayo": "SU20", "nombre_ensayo": "Contenido de humedad en suelos", "norma": "ASTM D2216-19"},
+                            {"codigo_ensayo": "SU24", "nombre_ensayo": "Análisis granulométrico por tamizado en Suelo", "norma": "ASTM D6913/D6913M-17"},
+                            {"codigo_ensayo": "SU23", "nombre_ensayo": "Límite líquido y Límite Plástico del Suelo", "norma": "ASTM D4318-17ε1"},
+                            {"codigo_ensayo": "SU22", "nombre_ensayo": "Clasificación suelo SUCS - AASHTO", "norma": "ASTM D2487-17 (Reapproved 2025) / ASTM D3282-24"},
+                            {"codigo_ensayo": "SU03", "nombre_ensayo": "Determinación del PH en Suelo y Agua.", "norma": "NTP 339.176"},
+                            {"codigo_ensayo": "SU14", "nombre_ensayo": "Cloruros Solubles en Suelos y Agua.", "norma": "NTP 339.177"},
+                            {"codigo_ensayo": "SU15", "nombre_ensayo": "Sulfatos Solubles en Suelos y Agua.", "norma": "NTP 339.178"},
+                            {"codigo_ensayo": "SU13", "nombre_ensayo": "Sales solubles en Suelos y Agua.", "norma": "NTP 339.152"},
+                            {"codigo_ensayo": "SU33", "nombre_ensayo": "Resistencia a la Compresión no confinada de suelos cohesivos", "norma": "NTP 339.167"}
+                        ]
+                    }
+                ]
+            },
+            {
+                "numero_recepcion": "2077-26",
+                "numero_ot": "2077-26",
+                "fecha_recepcion": "2026-08-21",
+                "emision_digital": True,
+                "emision_fisica": False,
+                "cliente": "GEOFAL SAC",
+                "domicilio_legal": "AV. MARAÑON 763, LOS OLIVOS - LIMA",
+                "ruc": "20549356762",
+                "persona_contacto": "Mariah Carhuaricra",
+                "email": "ingenieria@geofal.com.pe",
+                "telefono": "961 721 290",
+                "solicitante": "GEOFAL SAC",
+                "domicilio_solicitante": "--",
+                "proyecto": "TUPAC AMARU",
+                "ubicacion": "-",
+                "tipo_recepcion": "SUELO_AGREGADO",
+                "items": [
+                    {
+                        "item_no": 1,
+                        "codigo_muestra_lem": "3430-CO-26",
+                        "identificacion_muestra": "SUELO | PROCEDENCIA: C-1 | CANTERA: M-1 | CANTIDAD (KG): 49",
+                        "procedencia": "C-1",
+                        "cantera": "M-1",
+                        "cantidad": "49",
+                        "ensayos": [
+                            {"codigo_ensayo": "SU20", "nombre_ensayo": "Contenido de humedad en suelos", "norma": "ASTM D2216-19"},
+                            {"codigo_ensayo": "SU24", "nombre_ensayo": "Análisis granulométrico por tamizado en Suelo", "norma": "ASTM D6913/D6913M-17"},
+                            {"codigo_ensayo": "SU23", "nombre_ensayo": "Límite líquido y Límite Plástico del Suelo", "norma": "ASTM D4318-17ε1"},
+                            {"codigo_ensayo": "SU22", "nombre_ensayo": "Clasificación suelo SUCS - AASHTO", "norma": "ASTM D2487-17 (Reapproved 2025) / ASTM D3282-24"},
+                            {"codigo_ensayo": "SU03", "nombre_ensayo": "Determinación del PH en Suelo y Agua.", "norma": "NTP 339.176"},
+                            {"codigo_ensayo": "SU14", "nombre_ensayo": "Cloruros Solubles en Suelos y Agua.", "norma": "NTP 339.177"},
+                            {"codigo_ensayo": "SU15", "nombre_ensayo": "Sulfatos Solubles en Suelos y Agua.", "norma": "NTP 339.178"},
+                            {"codigo_ensayo": "SU13", "nombre_ensayo": "Sales solubles en Suelos y Agua.", "norma": "NTP 339.152"},
+                            {"codigo_ensayo": "SU33", "nombre_ensayo": "Resistencia a la Compresión no confinada de suelos cohesivos", "norma": "NTP 339.167"}
+                        ]
+                    }
+                ]
+            },
+            {
+                "numero_recepcion": "2078-26",
+                "numero_ot": "2078-26",
+                "fecha_recepcion": "2026-08-21",
+                "emision_digital": True,
+                "emision_fisica": False,
+                "cliente": "GEOFAL SAC",
+                "domicilio_legal": "AV. MARAÑON 763, LOS OLIVOS - LIMA",
+                "ruc": "20549356762",
+                "persona_contacto": "Mariah Carhuaricra",
+                "email": "ingenieria@geofal.com.pe",
+                "telefono": "961 721 290",
+                "solicitante": "-",
+                "domicilio_solicitante": "-",
+                "proyecto": "TEMBLADERA",
+                "ubicacion": "-",
+                "tipo_recepcion": "SUELO_AGREGADO",
+                "items": [
+                    {
+                        "item_no": 1,
+                        "codigo_muestra_lem": "3431-SU-26",
+                        "identificacion_muestra": "SUELO | PROCEDENCIA: C-1 | CANTERA: M-1 | CANTIDAD (KG): 96",
+                        "procedencia": "C-1",
+                        "cantera": "M-1",
+                        "cantidad": "96",
+                        "ensayos": [
+                            {"codigo_ensayo": "SU20", "nombre_ensayo": "Contenido de humedad en suelos", "norma": "ASTM D2216-19"},
+                            {"codigo_ensayo": "SU24", "nombre_ensayo": "Análisis granulométrico por tamizado en Suelo", "norma": "ASTM D6913/D6913M-17"},
+                            {"codigo_ensayo": "SU23", "nombre_ensayo": "Límite líquido y Límite Plástico del Suelo", "norma": "ASTM D4318-17ε1"},
+                            {"codigo_ensayo": "SU22", "nombre_ensayo": "Clasificación suelo SUCS - AASHTO", "norma": "ASTM D2487-17 (Reapproved 2025) / ASTM D3282-24"},
+                            {"codigo_ensayo": "SU03", "nombre_ensayo": "Determinación del PH en Suelo y Agua.", "norma": "NTP 339.176"},
+                            {"codigo_ensayo": "SU14", "nombre_ensayo": "Cloruros Solubles en Suelos y Agua.", "norma": "NTP 339.177"},
+                            {"codigo_ensayo": "SU15", "nombre_ensayo": "Sulfatos Solubles en Suelos y Agua.", "norma": "NTP 339.178"},
+                            {"codigo_ensayo": "SU13", "nombre_ensayo": "Sales solubles en Suelos y Agua.", "norma": "NTP 339.152"},
+                            {"codigo_ensayo": "SU05", "nombre_ensayo": "Corte Directo.", "norma": "NTP 339.171"}
+                        ]
+                    }
+                ]
+            },
+            {
+                "numero_recepcion": "2079-26",
+                "numero_ot": "2079-26",
+                "fecha_recepcion": "2026-08-21",
+                "emision_digital": True,
+                "emision_fisica": False,
+                "cliente": "GEOFAL SAC",
+                "domicilio_legal": "AV. MARAÑON 763, LOS OLIVOS - LIMA",
+                "ruc": "20549356762",
+                "persona_contacto": "Mariah Carhuaricra",
+                "email": "ingenieria@geofal.com.pe",
+                "telefono": "961 721 290",
+                "solicitante": "-",
+                "domicilio_solicitante": "-",
+                "proyecto": "JIBITO",
+                "ubicacion": "-",
+                "tipo_recepcion": "SUELO_AGREGADO",
+                "items": [
+                    {
+                        "item_no": 1,
+                        "codigo_muestra_lem": "3432-SU-26",
+                        "identificacion_muestra": "SUELO | PROCEDENCIA: C-1 | CANTERA: M-1 | CANTIDAD (KG): 97",
+                        "procedencia": "C-1",
+                        "cantera": "M-1",
+                        "cantidad": "97",
+                        "ensayos": [
+                            {"codigo_ensayo": "SU20", "nombre_ensayo": "Contenido de humedad en suelos", "norma": "ASTM D2216-19"},
+                            {"codigo_ensayo": "SU24", "nombre_ensayo": "Análisis granulométrico por tamizado en Suelo", "norma": "ASTM D6913/D6913M-17"},
+                            {"codigo_ensayo": "SU23", "nombre_ensayo": "Límite líquido y Límite Plástico del Suelo", "norma": "ASTM D4318-17ε1"},
+                            {"codigo_ensayo": "SU22", "nombre_ensayo": "Clasificación suelo SUCS - AASHTO", "norma": "ASTM D2487-17 (Reapproved 2025) / ASTM D3282-24"},
+                            {"codigo_ensayo": "SU03", "nombre_ensayo": "Determinación del PH en Suelo y Agua.", "norma": "NTP 339.176"},
+                            {"codigo_ensayo": "SU14", "nombre_ensayo": "Cloruros Solubles en Suelos y Agua.", "norma": "NTP 339.177"},
+                            {"codigo_ensayo": "SU15", "nombre_ensayo": "Sulfatos Solubles en Suelos y Agua.", "norma": "NTP 339.178"},
+                            {"codigo_ensayo": "SU13", "nombre_ensayo": "Sales solubles en Suelos y Agua.", "norma": "NTP 339.152"},
+                            {"codigo_ensayo": "SU05", "nombre_ensayo": "Corte Directo.", "norma": "NTP 339.171"}
+                        ]
+                    }
+                ]
+            }
+        ]
+
+        with Session(engine) as session:
+            for item in DATA_2075_2079:
+                rec_num = item["numero_recepcion"]
+                ot_num = item["numero_ot"]
+
+                # 1. Upsert Recepcion
+                existing_rec = session.query(RecepcionMuestra).filter(
+                    RecepcionMuestra.numero_recepcion == rec_num
+                ).first()
+
+                parsed_fecha = _dt.strptime(item["fecha_recepcion"], "%Y-%m-%d") if item.get("fecha_recepcion") else None
+
+                if not existing_rec:
+                    existing_rec = RecepcionMuestra(
+                        numero_recepcion=rec_num,
+                        numero_ot=ot_num,
+                        cliente=item["cliente"],
+                        domicilio_legal=item["domicilio_legal"],
+                        ruc=item["ruc"],
+                        persona_contacto=item["persona_contacto"],
+                        email=item["email"],
+                        telefono=item["telefono"],
+                        solicitante=item["solicitante"],
+                        domicilio_solicitante=item["domicilio_solicitante"],
+                        proyecto=item["proyecto"],
+                        ubicacion=item["ubicacion"],
+                        tipo_recepcion=item["tipo_recepcion"],
+                        emision_digital=item["emision_digital"],
+                        emision_fisica=item["emision_fisica"],
+                        aperturada_por="BETZABETH SARAVIA",
+                        designada_a="OFICINA TECNICA",
+                        estado="EMITIDO",
+                        fecha_recepcion=parsed_fecha,
+                    )
+                    session.add(existing_rec)
+                    session.flush()
+                else:
+                    existing_rec.numero_ot = ot_num
+                    existing_rec.cliente = item["cliente"]
+                    existing_rec.domicilio_legal = item["domicilio_legal"]
+                    existing_rec.ruc = item["ruc"]
+                    existing_rec.persona_contacto = item["persona_contacto"]
+                    existing_rec.email = item["email"]
+                    existing_rec.telefono = item["telefono"]
+                    existing_rec.solicitante = item["solicitante"]
+                    existing_rec.domicilio_solicitante = item["domicilio_solicitante"]
+                    existing_rec.proyecto = item["proyecto"]
+                    existing_rec.ubicacion = item["ubicacion"]
+                    existing_rec.tipo_recepcion = item["tipo_recepcion"]
+                    existing_rec.aperturada_por = "BETZABETH SARAVIA"
+                    existing_rec.designada_a = "OFICINA TECNICA"
+                    existing_rec.estado = "EMITIDO"
+                    if parsed_fecha:
+                        existing_rec.fecha_recepcion = parsed_fecha
+
+                # Upsert Muestras
+                for m_it in item["items"]:
+                    m_lem = m_it["codigo_muestra_lem"]
+                    existing_m = session.query(MuestraConcreto).filter(
+                        MuestraConcreto.recepcion_id == existing_rec.id,
+                        MuestraConcreto.codigo_muestra_lem == m_lem,
+                    ).first()
+
+                    ens_json_str = json.dumps(m_it["ensayos"], ensure_ascii=False)
+                    first_ens_code = m_it["ensayos"][0]["codigo_ensayo"] if m_it["ensayos"] else None
+                    first_ens_name = m_it["ensayos"][0]["nombre_ensayo"] if m_it["ensayos"] else None
+                    first_norma = m_it["ensayos"][0]["norma"] if m_it["ensayos"] else None
+
+                    if not existing_m:
+                        new_m = MuestraConcreto(
+                            recepcion_id=existing_rec.id,
+                            item_numero=m_it["item_no"],
+                            codigo_muestra=m_lem,
+                            codigo_muestra_lem=m_lem,
+                            identificacion_muestra=m_it["identificacion_muestra"],
+                            procedencia=m_it.get("procedencia", "-"),
+                            cantera=m_it.get("cantera", "-"),
+                            cantidad=m_it.get("cantidad", "-"),
+                            codigo_ensayo=first_ens_code,
+                            ensayos_requeridos=first_ens_name,
+                            norma_requerida=first_norma,
+                            ensayos_json=ens_json_str,
+                            elemento="-",
+                            status_ensayo="PENDIENTE",
+                        )
+                        session.add(new_m)
+                    else:
+                        existing_m.identificacion_muestra = m_it["identificacion_muestra"]
+                        existing_m.procedencia = m_it.get("procedencia", "-")
+                        existing_m.cantera = m_it.get("cantera", "-")
+                        existing_m.cantidad = m_it.get("cantidad", "-")
+                        existing_m.codigo_ensayo = first_ens_code
+                        existing_m.ensayos_requeridos = first_ens_name
+                        existing_m.norma_requerida = first_norma
+                        existing_m.ensayos_json = ens_json_str
+
+                # 2. Upsert OT
+                ot_items = []
+                for it_m in item["items"]:
+                    cod_lem = it_m["codigo_muestra_lem"]
+                    ident = it_m["identificacion_muestra"]
+                    for ens in it_m["ensayos"]:
+                        if not ens.get("codigo_ensayo"):
+                            continue
+                        ot_items.append({
+                            "item": len(ot_items) + 1,
+                            "codigo_muestra": cod_lem,
+                            "descripcion": ens["nombre_ensayo"],
+                            "cantidad": 1,
+                            "codigo_ensayo": ens["codigo_ensayo"],
+                            "norma": ens["norma"],
+                            "identificacion": ident,
+                            "procedencia": it_m.get("procedencia", "-"),
+                            "cantera": it_m.get("cantera", "-"),
+                            "cantidad_kg": it_m.get("cantidad", "-"),
+                        })
+
+                existing_ot = session.query(OrdenTrabajo).filter(
+                    OrdenTrabajo.numero_ot == ot_num
+                ).first()
+
+                if not existing_ot:
+                    existing_ot = OrdenTrabajo(
+                        numero_ot=ot_num,
+                        numero_recepcion=rec_num,
+                        cliente=item["cliente"],
+                        proyecto=item["proyecto"],
+                        referencia="-",
+                        fecha_recepcion=item["fecha_recepcion"],
+                        ot_aperturada_por="BETZABETH SARAVIA",
+                        ot_designada_a="OFICINA TECNICA",
+                        tipo="SU_AG",
+                        estado="EMITIDO",
+                        items=ot_items,
+                    )
+                    session.add(existing_ot)
+                else:
+                    existing_ot.numero_recepcion = rec_num
+                    existing_ot.cliente = item["cliente"]
+                    existing_ot.proyecto = item["proyecto"]
+                    existing_ot.fecha_recepcion = item["fecha_recepcion"]
+                    existing_ot.ot_aperturada_por = "BETZABETH SARAVIA"
+                    existing_ot.ot_designada_a = "OFICINA TECNICA"
+                    existing_ot.tipo = "SU_AG"
+                    existing_ot.estado = "EMITIDO"
+                    existing_ot.items = ot_items
+
+            session.commit()
+            logger.info("Migration 065 applied (seeded recepciones & OTs 2075-2079).")
+    except Exception as err:
+        logger.warning("Migration 065 skipped: %s", _short_err(err))
+
     _MIGRATIONS_RUN = True
 
 
