@@ -459,8 +459,8 @@ def importar_recepcion_probetas(
                 estado="PENDIENTE",
             )
             db.add(new_ot)
-        db.commit()
     except Exception as ot_err:
+        db.rollback()
         logger.error("Error sincronizando Orden de Trabajo para recepción %s: %s", recep.id, ot_err)
 
     try:

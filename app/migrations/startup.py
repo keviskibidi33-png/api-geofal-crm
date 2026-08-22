@@ -522,6 +522,34 @@ def run_startup_migrations(engine) -> None:
     except Exception as err:
         logger.warning("Migration 063 skipped: %s", _short_err(err))
 
+    # ── Migration 064: Expand string columns to TEXT to avoid truncation ──
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                ALTER TABLE ordenes_trabajo ALTER COLUMN proyecto TYPE TEXT;
+                ALTER TABLE ordenes_trabajo ALTER COLUMN cliente TYPE TEXT;
+                ALTER TABLE ordenes_trabajo ALTER COLUMN referencia TYPE TEXT;
+                ALTER TABLE ordenes_trabajo ALTER COLUMN ot_aperturada_por TYPE TEXT;
+                ALTER TABLE ordenes_trabajo ALTER COLUMN ot_designada_a TYPE TEXT;
+                
+                ALTER TABLE recepcion ALTER COLUMN proyecto TYPE TEXT;
+                ALTER TABLE recepcion ALTER COLUMN cliente TYPE TEXT;
+                ALTER TABLE recepcion ALTER COLUMN solicitante TYPE TEXT;
+                ALTER TABLE recepcion ALTER COLUMN domicilio_legal TYPE TEXT;
+                ALTER TABLE recepcion ALTER COLUMN domicilio_solicitante TYPE TEXT;
+                ALTER TABLE recepcion ALTER COLUMN ubicacion TYPE TEXT;
+
+                ALTER TABLE datos_clientes ALTER COLUMN proyecto TYPE TEXT;
+                ALTER TABLE datos_clientes ALTER COLUMN cliente TYPE TEXT;
+                ALTER TABLE datos_clientes ALTER COLUMN solicitante TYPE TEXT;
+                ALTER TABLE datos_clientes ALTER COLUMN domicilio_legal TYPE TEXT;
+                ALTER TABLE datos_clientes ALTER COLUMN domicilio_solicitante TYPE TEXT;
+                ALTER TABLE datos_clientes ALTER COLUMN ubicacion TYPE TEXT;
+            """))
+            logger.info("Migration 064 applied (expanded project & text columns to TEXT).")
+    except Exception as err:
+        logger.warning("Migration 064 skipped: %s", _short_err(err))
+
     _MIGRATIONS_RUN = True
 
 
