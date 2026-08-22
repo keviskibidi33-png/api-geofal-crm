@@ -333,9 +333,18 @@ def get_probetas_by_recepcion(
     return [build_probeta_response(m, r, ic, e) for m, r, ic, e in results]
 
 
+def _format_fecha_recepcion(recep: Optional[RecepcionMuestra]) -> str:
+    """Formatea de manera segura la fecha de recepción a formato ISO (YYYY-MM-DD)"""
+    if not recep or not recep.fecha_recepcion:
+        return ""
+    if hasattr(recep.fecha_recepcion, "strftime"):
+        return recep.fecha_recepcion.strftime("%Y-%m-%d")
+    return str(recep.fecha_recepcion).strip()
+
+
 @router.post("/importar-recepcion/{recepcion_id}", response_model=List[ProbetaListItem])
 def importar_recepcion_probetas(
-    recepcion_id: int,
+    recepcion_id: str,
     request: Request,
     db: Session = Depends(get_db_session)
 ):
@@ -344,12 +353,39 @@ def importar_recepcion_probetas(
     Marks them with es_control_probetas=True, calculates density from verification
     data if available, and returns the list.
     """
-    recep = db.query(RecepcionMuestra).filter(RecepcionMuestra.id == recepcion_id).first()
+    clean_id = str(recepcion_id).strip()
+    recep = None
+
+    # 1. Búsqueda por ID numérico primario
+    if clean_id.isdigit():
+        recep = db.query(RecepcionMuestra).filter(RecepcionMuestra.id == int(clean_id)).first()
+
+    # 2. Fallback: búsqueda por número de recepción o número de OT
+    if not recep:
+        recep = db.query(RecepcionMuestra).filter(
+            or_(
+                RecepcionMuestra.numero_recepcion == clean_id,
+                RecepcionMuestra.numero_ot == clean_id,
+                RecepcionMuestra.numero_recepcion.ilike(f"%{clean_id}%"),
+                RecepcionMuestra.numero_ot.ilike(f"%{clean_id}%"),
+            )
+        ).first()
+
     if not recep:
         raise HTTPException(status_code=404, detail="Recepción no encontrada")
 
+    # Validación de tipo: únicamente probetas de concreto
+    tipo = str(recep.tipo_recepcion or "CONCRETO").strip().upper()
+    if tipo not in ("CONCRETO", "PROBETAS"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"La recepción {recep.numero_recepcion or clean_id} es de tipo {tipo}. Solo se pueden importar recepciones de CONCRETO / PROBETAS a Control Probetas."
+        )
+
+    target_id = recep.id
+
     muestras = db.query(MuestraConcreto).filter(
-        MuestraConcreto.recepcion_id == recepcion_id,
+        MuestraConcreto.recepcion_id == target_id,
     ).order_by(asc(MuestraConcreto.item_numero)).all()
 
     if not muestras:
@@ -453,7 +489,7 @@ def importar_recepcion_probetas(
     ).join(
         RecepcionMuestra, MuestraConcreto.recepcion_id == RecepcionMuestra.id
     ).filter(
-        MuestraConcreto.recepcion_id == recepcion_id,
+        MuestraConcreto.recepcion_id == target_id,
         MuestraConcreto.es_control_probetas == True
     ).outerjoin(
         EnsayoCompresion, or_(
@@ -467,7 +503,6 @@ def importar_recepcion_probetas(
         )
     ).order_by(asc(MuestraConcreto.item_numero))
 
-    recep = db.query(RecepcionMuestra).filter(RecepcionMuestra.id == recepcion_id).first()
     is_ot_descargada = False
     if recep:
         ot_rec = db.query(OrdenTrabajo).filter(
