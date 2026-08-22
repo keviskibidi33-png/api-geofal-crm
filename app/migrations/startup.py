@@ -477,6 +477,51 @@ def run_startup_migrations(engine) -> None:
     except Exception as err:
         logger.warning("Migration 062 skipped: %s", _short_err(err))
 
+    # ── Migration 063: create datos_clientes table & permissions ─────────
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS public.datos_clientes (
+                    id SERIAL PRIMARY KEY,
+                    cliente VARCHAR(255) NOT NULL,
+                    ruc VARCHAR(20) NOT NULL,
+                    domicilio_legal TEXT NOT NULL,
+                    persona_contacto VARCHAR(255),
+                    email VARCHAR(255),
+                    telefono VARCHAR(50),
+                    solicitante VARCHAR(255) NOT NULL,
+                    domicilio_solicitante TEXT NOT NULL,
+                    proyecto VARCHAR(500) NOT NULL,
+                    ubicacion TEXT NOT NULL,
+                    estado VARCHAR(20) DEFAULT 'INCOMPLETO',
+                    activo BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS idx_datos_clientes_cliente ON public.datos_clientes(cliente);
+                CREATE INDEX IF NOT EXISTS idx_datos_clientes_ruc ON public.datos_clientes(ruc);
+                CREATE INDEX IF NOT EXISTS idx_datos_clientes_proyecto ON public.datos_clientes(proyecto);
+                CREATE INDEX IF NOT EXISTS idx_datos_clientes_estado ON public.datos_clientes(estado);
+
+                UPDATE role_definitions
+                SET permissions = jsonb_set(
+                    permissions,
+                    '{datos_clientes}',
+                    '{"read": true, "write": true, "delete": true}'::jsonb,
+                    true
+                )
+                WHERE role_id IN (
+                    'admin', 'admin_general', 'jefe_laboratorio', 'oficina_tecnica',
+                    'oficina_tecnica_humedad', 'oficina_tecnica_humedad_tipificador',
+                    'oficina_tecnica_sup', 'laboratorio', 'laboratorio_tipificador',
+                    'auxiliar_comercial', 'recepcion'
+                );
+                NOTIFY pgrst, 'reload schema';
+            """))
+            logger.info("Migration 063 applied (datos_clientes table & role permissions).")
+    except Exception as err:
+        logger.warning("Migration 063 skipped: %s", _short_err(err))
+
     _MIGRATIONS_RUN = True
 
 
