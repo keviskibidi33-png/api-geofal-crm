@@ -250,11 +250,14 @@ def _fill_datos_sheet(sheet_xml: bytes, data: GranAgregadoRequest) -> bytes:
     else:
         _set_cell(sd, "C9", "-")
 
-    # F10: Operador
+    # F10: Operador (la celda dentro del recuadro OPERADORES)
     if data.realizado_por and data.realizado_por.strip() not in ("", "-"):
         _set_cell(sd, "F10", data.realizado_por.strip())
     else:
         _set_cell(sd, "F10", "-")
+
+    # G10: Limpiar para evitar duplicado
+    _set_cell(sd, "G10", None)
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
