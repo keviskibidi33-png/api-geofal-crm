@@ -483,7 +483,7 @@ def _fill_a_granul(sheet_xml: bytes, data: GranSueloRequest) -> bytes:
             font_size=font_size,
         )
 
-    # R3: Tipo de tamizado para las fórmulas ("Global" o "Fraccionada")
+    # R3: Tipo de tamizado para las fórmulas ("Global", "Fraccionada" o "-")
     if data.tamizado_tipo == "GLOBAL":
         set_cell("R3", "Global")
     elif data.tamizado_tipo == "FRACCIONADO":
@@ -494,17 +494,21 @@ def _fill_a_granul(sheet_xml: bytes, data: GranSueloRequest) -> bytes:
         elif data.masa_seca_porcion_gruesa_cp_md_g or data.masa_humeda_porcion_fina_fp_mm_g:
             set_cell("R3", "Fraccionada")
         else:
-            set_cell("R3", "Global")
+            set_cell("R3", "-")
 
-    # R2: Método de prueba ("Método A" o "Método B")
+    # R2: Método de prueba ("Método A", "Método B" o "-")
     if data.metodo_prueba == "A":
         set_cell("R2", "Método A")
     elif data.metodo_prueba == "B":
         set_cell("R2", "Método B")
+    else:
+        set_cell("R2", "-")
 
     # V3: Operador / Realizado Por
-    if data.realizado_por:
-        set_cell("V3", data.realizado_por)
+    if data.realizado_por and data.realizado_por.strip() not in ("", "-"):
+        set_cell("V3", data.realizado_por.strip())
+    else:
+        set_cell("V3", "-")
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 

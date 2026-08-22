@@ -212,37 +212,49 @@ def _fill_datos_sheet(sheet_xml: bytes, data: GranAgregadoRequest) -> bytes:
     if sd is None:
         return sheet_xml
 
-    # C10: Método ("Global" o "Fraccionada")
-    # Auto-detect: si vienen datos de granulometría fraccionada -> "Fraccionada", de lo contrario "Global"
+    # C10: Método ("Global", "Fraccionada" o "-" si no hay datos ingresados)
     is_fraccionada = any([
-        data.masa_muestra_humeda_inicial_total_fraccionada_g,
-        data.masa_muestra_seca_inicial_total_fraccionada_g,
-        data.masa_muestra_seca_grueso_g,
-        data.masa_muestra_humeda_fino_g,
-        data.masa_muestra_seca_fino_g,
-        data.masa_muestra_humeda_fraccion_g,
-        data.masa_muestra_seca_fraccion_g,
+        data.masa_muestra_humeda_inicial_total_fraccionada_g is not None,
+        data.masa_muestra_seca_inicial_total_fraccionada_g is not None,
+        data.masa_muestra_seca_grueso_g is not None,
+        data.masa_muestra_humeda_fino_g is not None,
+        data.masa_muestra_seca_fino_g is not None,
+        data.masa_muestra_humeda_fraccion_g is not None,
+        data.masa_muestra_seca_fraccion_g is not None,
     ])
-    metodo = "Fraccionada" if is_fraccionada else "Global"
-    _set_cell(sd, "C10", metodo)
+    is_global = any([
+        data.masa_muestra_humeda_inicial_total_global_g is not None,
+        data.masa_muestra_seca_global_g is not None,
+        data.masa_muestra_seca_constante_global_g is not None,
+        data.masa_muestra_seca_lavada_global_g is not None,
+    ])
 
-    # C9: Tipo Agregado ("Fino", "Grueso", "Global")
-    tipo_agg = "Global"
-    if data.tipo_muestra:
+    if is_fraccionada:
+        _set_cell(sd, "C10", "Fraccionada")
+    elif is_global:
+        _set_cell(sd, "C10", "Global")
+    else:
+        _set_cell(sd, "C10", "-")
+
+    # C9: Tipo Agregado ("Fino", "Grueso", "Global" o "-" si no se especificó)
+    if data.tipo_muestra and data.tipo_muestra.strip() not in ("", "-"):
         tm_upper = data.tipo_muestra.strip().upper()
-        if "FINO" in tm_upper:
-            tipo_agg = "Fino"
-        elif "GRUESO" in tm_upper or "GRAVA" in tm_upper:
-            tipo_agg = "Grueso"
-        elif "GLOBAL" in tm_upper:
-            tipo_agg = "Global"
+        if "FINO" in tm_upper or "ARENA" in tm_upper:
+            _set_cell(sd, "C9", "Fino")
+        elif "GRUESO" in tm_upper or "GRAVA" in tm_upper or "PIEDRA" in tm_upper:
+            _set_cell(sd, "C9", "Grueso")
+        elif "GLOBAL" in tm_upper or "AFG" in tm_upper:
+            _set_cell(sd, "C9", "Global")
         else:
-            tipo_agg = data.tipo_muestra.strip()
-    _set_cell(sd, "C9", tipo_agg)
+            _set_cell(sd, "C9", data.tipo_muestra.strip())
+    else:
+        _set_cell(sd, "C9", "-")
 
     # F10: Operador
-    if data.realizado_por:
-        _set_cell(sd, "F10", data.realizado_por)
+    if data.realizado_por and data.realizado_por.strip() not in ("", "-"):
+        _set_cell(sd, "F10", data.realizado_por.strip())
+    else:
+        _set_cell(sd, "F10", "-")
 
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
