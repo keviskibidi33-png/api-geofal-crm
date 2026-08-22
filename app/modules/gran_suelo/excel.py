@@ -458,6 +458,57 @@ def _fill_incertidumbre(sheet_xml: bytes, data: GranSueloRequest) -> bytes:
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
+def _fill_a_granul(sheet_xml: bytes, data: GranSueloRequest) -> bytes:
+    root = etree.fromstring(sheet_xml)
+    sd = root.find(f".//{{{NS_SHEET}}}sheetData")
+    if sd is None:
+        return sheet_xml
+
+    merge_anchor_map = _build_merge_anchor_map(root)
+
+    def set_cell(
+        ref: str,
+        value: Any,
+        is_number: bool = False,
+        style_id: int | None = None,
+        font_size: float | None = None,
+    ) -> None:
+        _set_cell(
+            sd,
+            ref,
+            value,
+            is_number=is_number,
+            merge_anchor_map=merge_anchor_map,
+            style_id=style_id,
+            font_size=font_size,
+        )
+
+    # R3: Tipo de tamizado para las fórmulas ("Global" o "Fraccionada")
+    if data.tamizado_tipo == "GLOBAL":
+        set_cell("R3", "Global")
+    elif data.tamizado_tipo == "FRACCIONADO":
+        set_cell("R3", "Fraccionada")
+    else:
+        if data.masa_seca_global_g or data.subespecie_masa_humeda_g or data.subespecie_masa_seca_g:
+            set_cell("R3", "Global")
+        elif data.masa_seca_porcion_gruesa_cp_md_g or data.masa_humeda_porcion_fina_fp_mm_g:
+            set_cell("R3", "Fraccionada")
+        else:
+            set_cell("R3", "Global")
+
+    # R2: Método de prueba ("Método A" o "Método B")
+    if data.metodo_prueba == "A":
+        set_cell("R2", "Método A")
+    elif data.metodo_prueba == "B":
+        set_cell("R2", "Método B")
+
+    # V3: Operador / Realizado Por
+    if data.realizado_por:
+        set_cell("V3", data.realizado_por)
+
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
 def generate_gran_suelo_excel(data: GranSueloRequest) -> bytes:
     """Generates the Gran Suelo Excel file from template."""
     logger.info("Generating Gran Suelo Excel - ASTM D6913/D6913M-17")
@@ -472,6 +523,14 @@ def generate_gran_suelo_excel(data: GranSueloRequest) -> bytes:
     with zipfile.ZipFile(io.BytesIO(template_bytes), "r") as zin, zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zout:
         sheet_original = zin.read("xl/worksheets/sheet1.xml")
         sheet_xml = _fill_sheet(sheet_original, data)
+
+        # prepare A.Granul sheet (sheet2.xml)
+        agranul_xml = None
+        try:
+            raw_agranul = zin.read("xl/worksheets/sheet2.xml")
+            agranul_xml = _fill_a_granul(raw_agranul, data)
+        except KeyError:
+            agranul_xml = None
 
         # prepare Incertidumbre sheet (sheet3.xml) if present
         incert_xml = None
@@ -489,6 +548,8 @@ def generate_gran_suelo_excel(data: GranSueloRequest) -> bytes:
 
             if item.filename == "xl/worksheets/sheet1.xml":
                 raw = sheet_xml
+            elif item.filename == "xl/worksheets/sheet2.xml" and agranul_xml is not None:
+                raw = agranul_xml
             elif item.filename == "xl/worksheets/sheet3.xml" and incert_xml is not None:
                 raw = incert_xml
             elif item.filename == "xl/workbook.xml":

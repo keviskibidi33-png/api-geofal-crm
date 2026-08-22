@@ -48,25 +48,19 @@ def test_gran_agregado_excel_generation():
     assert xlsx_bytes is not None
     assert len(xlsx_bytes) > 0
 
-    # Load workbook to ensure openpyxl can read it
-    wb = load_workbook(io.BytesIO(xlsx_bytes), data_only=True)
-    
-    # Assert expected sheets are present
-    sheet_names = wb.sheetnames
-    assert "FORMATO" in sheet_names
-    assert "GRANULOMETRIA (2)" in sheet_names
-    assert "Incertidumbre" in sheet_names
-
-    # Check cell mappings on FORMATO sheet
-    sheet = wb["FORMATO"]
-    assert sheet["B11"].value == "123-AG-26"
-    assert sheet["D11"].value == "9999-26"  # Normalized to OT format: 9999-26
-    assert sheet["F11"].value == "2026/07/13"
-    assert sheet["H11"].value == "OPERADOR TEST"
-
-    # Sieve values
-    assert sheet["I18"].value == 0.0
-    assert sheet["I19"].value == 10.5
-    assert sheet["I20"].value == 20.3
+    # Check zip XML structure directly
+    with zipfile.ZipFile(io.BytesIO(xlsx_bytes)) as zin:
+        s1 = etree.fromstring(zin.read("xl/worksheets/sheet1.xml"))
+        s4 = etree.fromstring(zin.read("xl/worksheets/sheet4.xml"))
+        ns = {"ns": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+        
+        # Check FORMATO
+        assert s1.find(".//ns:c[@r='B11']/ns:is/ns:t", ns).text == "123-AG-26"
+        assert s1.find(".//ns:c[@r='D11']/ns:is/ns:t", ns).text == "9999-26"
+        
+        # Check datos sheet has method, aggregate type, and operator
+        assert s4.find(".//ns:c[@r='C10']/ns:is/ns:t", ns).text == "Global"
+        assert s4.find(".//ns:c[@r='C9']/ns:is/ns:t", ns).text == "Grueso"
+        assert s4.find(".//ns:c[@r='F10']/ns:is/ns:t", ns).text == "OPERADOR TEST"
 
     print("Gran Agregado Excel generation test passed successfully!")

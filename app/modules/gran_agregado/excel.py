@@ -206,6 +206,47 @@ def _fill_incertidumbre_sheet(sheet_xml: bytes, data: GranAgregadoRequest) -> by
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
+def _fill_datos_sheet(sheet_xml: bytes, data: GranAgregadoRequest) -> bytes:
+    root = etree.fromstring(sheet_xml)
+    sd = root.find(f".//{{{NS_SHEET}}}sheetData")
+    if sd is None:
+        return sheet_xml
+
+    # C10: Método ("Global" o "Fraccionada")
+    # Auto-detect: si vienen datos de granulometría fraccionada -> "Fraccionada", de lo contrario "Global"
+    is_fraccionada = any([
+        data.masa_muestra_humeda_inicial_total_fraccionada_g,
+        data.masa_muestra_seca_inicial_total_fraccionada_g,
+        data.masa_muestra_seca_grueso_g,
+        data.masa_muestra_humeda_fino_g,
+        data.masa_muestra_seca_fino_g,
+        data.masa_muestra_humeda_fraccion_g,
+        data.masa_muestra_seca_fraccion_g,
+    ])
+    metodo = "Fraccionada" if is_fraccionada else "Global"
+    _set_cell(sd, "C10", metodo)
+
+    # C9: Tipo Agregado ("Fino", "Grueso", "Global")
+    tipo_agg = "Global"
+    if data.tipo_muestra:
+        tm_upper = data.tipo_muestra.strip().upper()
+        if "FINO" in tm_upper:
+            tipo_agg = "Fino"
+        elif "GRUESO" in tm_upper or "GRAVA" in tm_upper:
+            tipo_agg = "Grueso"
+        elif "GLOBAL" in tm_upper:
+            tipo_agg = "Global"
+        else:
+            tipo_agg = data.tipo_muestra.strip()
+    _set_cell(sd, "C9", tipo_agg)
+
+    # F10: Operador
+    if data.realizado_por:
+        _set_cell(sd, "F10", data.realizado_por)
+
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
 def _fill_drawing(drawing_xml: bytes, data: GranAgregadoRequest) -> bytes:
     return fill_standard_footer_shapes(
         drawing_xml,
@@ -231,6 +272,9 @@ def generate_gran_agregado_excel(data: GranAgregadoRequest, db: Any = None) -> b
         sheet_original = zin.read("xl/worksheets/sheet1.xml")
         sheet_xml = _fill_sheet(sheet_original, data)
 
+        datos_original = zin.read("xl/worksheets/sheet4.xml")
+        datos_xml = _fill_datos_sheet(datos_original, data)
+
         incertidumbre_original = zin.read("xl/worksheets/sheet5.xml")
         incertidumbre_xml = _fill_incertidumbre_sheet(incertidumbre_original, data)
 
@@ -242,6 +286,8 @@ def generate_gran_agregado_excel(data: GranAgregadoRequest, db: Any = None) -> b
 
             if item.filename == "xl/worksheets/sheet1.xml":
                 raw = sheet_xml
+            elif item.filename == "xl/worksheets/sheet4.xml":
+                raw = datos_xml
             elif item.filename == "xl/worksheets/sheet5.xml":
                 raw = incertidumbre_xml
             else:
