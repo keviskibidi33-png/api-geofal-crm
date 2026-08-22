@@ -19,6 +19,16 @@ NS_DRAW = "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"
 NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
 
+BACKUP_FOLDER_NAMES = {
+    "copias",
+    "backup",
+    "backups",
+    "subir auditoria",
+    "subir_auditoria",
+    "backup_auditoria",
+}
+
+
 def find_template_path(filename: str) -> Path:
     current_dir = Path(__file__).resolve().parent
     app_dir = current_dir.parents[1]
@@ -42,13 +52,14 @@ def find_template_path(filename: str) -> Path:
         # Use recursive search to find the filename
         try:
             basename = os.path.basename(clean_filename)
-            # First pass: ignore any templates in 'copias' to prioritize new production ones
+            # First pass: ignore backup folders to prioritize official production templates
             for match in root.rglob(basename):
-                if match.is_file() and "copias" not in match.parts:
+                parts_lower = {p.lower() for p in match.parts}
+                if match.is_file() and not (parts_lower & BACKUP_FOLDER_NAMES):
                     if match.as_posix().endswith(clean_filename):
                         return match
             
-            # Second pass: fallback to 'copias' if nothing else matches
+            # Second pass: fallback if nothing else matches
             for match in root.rglob(basename):
                 if match.is_file():
                     if match.as_posix().endswith(clean_filename):
