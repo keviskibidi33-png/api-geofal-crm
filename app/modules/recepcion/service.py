@@ -317,6 +317,9 @@ class RecepcionService:
             except Exception as e:
                 logger.exception("Error post-procesamiento de recepción (Excel/Supabase)")
 
+            # Sincronización automática de trazabilidad a datos_clientes
+            self._sync_to_datos_clientes(db, recepcion)
+
             return recepcion
             
         except DuplicateRecepcionError:
@@ -862,9 +865,86 @@ class RecepcionService:
         # Propagación en cascada a módulos dependientes (Verificación y Compresión)
         self._propagate_muestras_to_modules(db, recepcion)
 
+        # Sincronización automática de trazabilidad a datos_clientes
+        self._sync_to_datos_clientes(db, recepcion)
+
         db.commit()
         db.refresh(recepcion)
         return recepcion
+
+    def _sync_to_datos_clientes(self, db: Session, recepcion: RecepcionMuestra):
+        """
+        Sincroniza automáticamente los datos de cliente, proyecto, solicitante y ubicación
+        de la recepción hacia la tabla maestra `datos_clientes` para trazabilidad de informes.
+        """
+        try:
+            from app.modules.datos_clientes.models import DatosCliente
+            from app.modules.datos_clientes.service import evaluar_estado_datos_cliente
+
+            cliente = str(recepcion.cliente or "").strip()
+            if not cliente or cliente in ("-", "Sin especificar", "SIN ESPECIFICAR"):
+                return
+
+            proyecto = str(recepcion.proyecto or "").strip()
+            if not proyecto or proyecto == "-":
+                proyecto = "PROYECTO GENERAL"
+
+            ruc = str(recepcion.ruc or "").strip()
+            domicilio_legal = str(recepcion.domicilio_legal or "").strip()
+            contacto = str(recepcion.persona_contacto or "").strip()
+            email = str(recepcion.email or "").strip()
+            telefono = str(recepcion.telefono or "").strip()
+            solicitante = str(recepcion.solicitante or "").strip() or cliente
+            domicilio_sol = str(recepcion.domicilio_solicitante or "").strip() or domicilio_legal
+            ubicacion = str(recepcion.ubicacion or "").strip()
+
+            # Buscar si ya existe para este cliente y proyecto
+            existente = db.query(DatosCliente).filter(
+                DatosCliente.cliente.ilike(cliente),
+                DatosCliente.proyecto.ilike(proyecto),
+                DatosCliente.activo.is_(True),
+            ).first()
+
+            if existente:
+                # Actualizar campos vacíos o incompletos
+                if ruc and ruc != "-" and (not existente.ruc or existente.ruc == "-"):
+                    existente.ruc = ruc
+                if domicilio_legal and domicilio_legal != "-" and (not existente.domicilio_legal or existente.domicilio_legal == "-"):
+                    existente.domicilio_legal = domicilio_legal
+                if contacto and contacto != "-" and not existente.persona_contacto:
+                    existente.persona_contacto = contacto
+                if email and email != "-" and not existente.email:
+                    existente.email = email
+                if telefono and telefono != "-" and not existente.telefono:
+                    existente.telefono = telefono
+                if solicitante and solicitante != "-" and (not existente.solicitante or existente.solicitante == "-"):
+                    existente.solicitante = solicitante
+                if domicilio_sol and domicilio_sol != "-" and (not existente.domicilio_solicitante or existente.domicilio_solicitante == "-"):
+                    existente.domicilio_solicitante = domicilio_sol
+                if ubicacion and ubicacion != "-" and (not existente.ubicacion or existente.ubicacion == "-"):
+                    existente.ubicacion = ubicacion
+
+                existente.estado = evaluar_estado_datos_cliente(existente)
+            else:
+                nuevo = DatosCliente(
+                    cliente=cliente,
+                    ruc=ruc if ruc != "-" else "",
+                    domicilio_legal=domicilio_legal if domicilio_legal != "-" else "",
+                    persona_contacto=contacto if contacto != "-" else "",
+                    email=email if email != "-" else "",
+                    telefono=telefono if telefono != "-" else "",
+                    solicitante=solicitante if solicitante != "-" else cliente,
+                    domicilio_solicitante=domicilio_sol if domicilio_sol != "-" else domicilio_legal,
+                    proyecto=proyecto,
+                    ubicacion=ubicacion if ubicacion != "-" else "",
+                    activo=True,
+                )
+                nuevo.estado = evaluar_estado_datos_cliente(nuevo)
+                db.add(nuevo)
+
+            db.commit()
+        except Exception as e:
+            logger.warning(f"Error sincronizando recepción a datos_clientes: {e}")
 
     def _propagate_muestras_to_modules(self, db: Session, recepcion: RecepcionMuestra):
         """Propaga códigos LEM, identificación y cliente de la recepción hacia Verificación y Compresión"""
